@@ -1,0 +1,51 @@
+# Project code
+backup/
+test/
+
+# Python Bytecode and Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyPI configuration file
+.pypirc
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+*.lcov
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment Variables (Sensitive Data)
+.env
+.envrc
+
+# IDE and Editor Configurations
+# VS Code
+.vscode/
+.vs/
+*.code-workspace
+
+# CLion / JetBrains IDEs
+.idea/
+*.iml
+
+# OS-Specific Files (Optional but Recommended)
+.DS_Store
+Thumbs.db

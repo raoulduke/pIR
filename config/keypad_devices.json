@@ -1,0 +1,34 @@
+[
+  {
+    "label": "Bedroom TV",
+    "home": "home",
+    "device": "tv",
+    "location": "bedroom",
+    "up_button": "volume_up",
+    "down_button": "volume_down"
+  },
+  {
+    "label": "Receiver",
+    "home": "home",
+    "device": "receiver",
+    "location": "",
+    "up_button": "volume_up",
+    "down_button": "volume_down"
+  },
+  {
+    "label": "AC",
+    "home": "home",
+    "device": "ac",
+    "location": "",
+    "up_button": "temp_up",
+    "down_button": "temp_down"
+  },
+  {
+    "label": "Hall Light",
+    "home": "home",
+    "device": "light",
+    "location": "hall",
+    "up_button": "brighten",
+    "down_button": "dim"
+  }
+]

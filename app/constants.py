@@ -53,3 +53,23 @@ FILE_OWNER = "matt"
 
 # Signals directory (relative to project root)
 SIGNALS_DIR = "signals"
+
+# Keypad matrix — BCM pin numbers in wiring-table order (wire 1 .. wire 12).
+# See CLAUDE.md Pin Wiring Table. Order matters: it is the index the wizard
+# and the runtime scanner both use to identify a physical wire.
+KEYPAD_GPIO_PINS = [14, 15, 17, 18, 27, 5, 6, 13, 19, 16, 26, 20]
+
+# Mapping file produced by scripts/keypad_wizard.py, consumed by hardware/keypad.py
+KEYPAD_MAP_FILE = "config/keypad_map.json"
+
+# Device-slot and preset config consumed by services/device_slot_service.py
+# and services/preset_service.py.
+KEYPAD_DEVICES_FILE = "config/keypad_devices.json"
+KEYPAD_PRESETS_FILE = "config/keypad_presets.json"
+KEYPAD_DEVICE_SLOTS = 4
+PRESET_DEFAULT_DELAY_SECONDS = 0.3
+
+# Debounce / scan timing
+KEYPAD_SCAN_DELAY_SECONDS = 0.001   # settle time after driving a pin low
+KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
+KEYPAD_POLL_INTERVAL_SECONDS = 0.01 # thread loop sleep when idle

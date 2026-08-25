@@ -1,2 +1,5 @@
 *
 !.gitignore
+!keypad_map.json
+!keypad_devices.json
+!keypad_presets.json

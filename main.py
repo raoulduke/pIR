@@ -12,8 +12,9 @@ print(f"[BOOT] PID={os.getpid()}")
 
 from app.startup import initialize
 from app.constants import MENU_SEND, MENU_RECEIVE, MENU_COMMAND, MENU_HOME
+from app import quick_actions
 from hardware.lcd import lcd
-from hardware.input import KEY_QUIT, close as close_input
+from hardware.input import KEY_QUIT, set_quick_action_handler, close as close_input
 import screens.main_menu as main_menu
 import screens.send_screen as send_screen
 import screens.receive_screen as receive_screen
@@ -28,6 +29,8 @@ def main() -> None:
     state = initialize()
     if state is None:
         sys.exit(0)
+
+    set_quick_action_handler(quick_actions.handle)
 
     def _handle_signal(signum, frame):
         print(f"[BOOT] signal {signum}")

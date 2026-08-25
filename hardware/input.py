@@ -30,6 +30,37 @@ KEY_BACKSPACE = "BACKSPACE"
 
 _COMMANDS = {KEY_UP, KEY_DOWN, KEY_RIGHT, KEY_LEFT, KEY_ENTER, KEY_QUIT, KEY_BACKSPACE}
 
+# ---------------------------------------------------------------------------
+# Keypad quick-action keys — physical shortcuts with no on-screen equivalent.
+# These never come from a USB keyboard or SSH; only hardware/keypad.py emits
+# them. They're intercepted globally by read_key() below (see
+# set_quick_action_handler) so they work from any screen, not just whichever
+# one currently has read_key() blocked.
+# ---------------------------------------------------------------------------
+KEY_DEVICE_1_UP   = "DEVICE_1_UP"
+KEY_DEVICE_1_DOWN = "DEVICE_1_DOWN"
+KEY_DEVICE_2_UP   = "DEVICE_2_UP"
+KEY_DEVICE_2_DOWN = "DEVICE_2_DOWN"
+KEY_DEVICE_3_UP   = "DEVICE_3_UP"
+KEY_DEVICE_3_DOWN = "DEVICE_3_DOWN"
+KEY_DEVICE_4_UP   = "DEVICE_4_UP"
+KEY_DEVICE_4_DOWN = "DEVICE_4_DOWN"
+KEY_DEVICE_NEXT   = "DEVICE_NEXT"
+KEY_DEVICE_PREV   = "DEVICE_PREV"
+KEY_PRESET_1      = "PRESET_1"
+KEY_PRESET_2      = "PRESET_2"
+KEY_PRESET_3      = "PRESET_3"
+KEY_PRESET_4      = "PRESET_4"
+KEY_LEARN         = "LEARN"
+
+QUICK_ACTION_KEYS = frozenset({
+    KEY_DEVICE_1_UP, KEY_DEVICE_1_DOWN, KEY_DEVICE_2_UP, KEY_DEVICE_2_DOWN,
+    KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
+    KEY_DEVICE_NEXT, KEY_DEVICE_PREV,
+    KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
+    KEY_LEARN,
+})
+
 
 class InputReader:
     def __init__(self) -> None:
@@ -47,13 +78,28 @@ class InputReader:
         self._old_settings = termios.tcgetattr(self.stdin_fd)
         tty.setraw(self.stdin_fd)
 
+        self.keypad = None
+        try:
+            from hardware import keypad as keypad_module
+            self.keypad = keypad_module.KeypadScanner()
+        except Exception as e:
+            print(f"Keypad unavailable: {e}\r")
+
         if self.devices:
             print("Monitoring USB input devices:\r")
             for device in self.devices.values():
                 print(f"  - {device.name}\r")
+        if self.keypad:
+            print("Monitoring GPIO keypad\r")
         print("Also monitoring SSH keyboard input\r")
 
     def close(self) -> None:
+        if self.keypad is not None:
+            try:
+                self.keypad.close()
+            except Exception:
+                pass
+            self.keypad = None
         try:
             if hasattr(self, "stdin_fd") and hasattr(self, "_old_settings"):
                 termios.tcsetattr(self.stdin_fd, termios.TCSADRAIN, self._old_settings)
@@ -143,12 +189,16 @@ class InputReader:
                 raise SystemExit(0)
 
             read_fds = list(self.devices.keys()) + [self.stdin_fd]
+            if self.keypad is not None:
+                read_fds.append(self.keypad.wake_fd)
 
             r, _, _ = select(read_fds, [], [])
 
             for fd in r:
                 if fd == self.stdin_fd:
                     result = self._read_stdin_key()
+                elif self.keypad is not None and fd == self.keypad.wake_fd:
+                    result = self.keypad.pop()
                 else:
                     result = self._read_usb_key(fd)
                 if result:
@@ -159,6 +209,7 @@ class InputReader:
 # Module-level singleton and convenience function
 # ---------------------------------------------------------------------------
 _reader: InputReader | None = None
+_quick_handler = None
 
 
 def _get_reader() -> InputReader:
@@ -168,8 +219,25 @@ def _get_reader() -> InputReader:
     return _reader
 
 
+def set_quick_action_handler(handler) -> None:
+    """Register a callback for QUICK_ACTION_KEYS.
+
+    Called from app/quick_actions.py at startup. When set, read_key() runs
+    the handler itself and keeps waiting instead of returning the key to its
+    caller — that's what makes device/preset/learn shortcuts work no matter
+    which screen currently has read_key() blocked.
+    """
+    global _quick_handler
+    _quick_handler = handler
+
+
 def read_key() -> str:
-    return _get_reader().read_key()
+    while True:
+        key = _get_reader().read_key()
+        if _quick_handler is not None and key in QUICK_ACTION_KEYS:
+            _quick_handler(key)
+            continue
+        return key
 
 
 def close() -> None:

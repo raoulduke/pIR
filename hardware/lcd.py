@@ -1,7 +1,8 @@
 """LCD hardware abstraction.
 
-Wraps the DM2021 16×2 display over I²C.  All other layers call only
-``lcd.write(line1, line2)`` and ``lcd.clear()``.
+Wraps the 1602 IIC 16×2 HD44780 display (PCF8574 I²C backpack) over
+software I²C.  All other layers call only ``lcd.write(line1, line2)``
+and ``lcd.clear()``.
 """
 
 from RPLCD.i2c import CharLCD

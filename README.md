@@ -72,10 +72,9 @@ hdmi_ignore_hotplug=1
 dtoverlay=dwc2
 ```
 
-For USB serial console fallback, also add `modules-load=dwc2,g_serial` to `cmdline.txt` (after `rootwait`) and run:
-```bash
-sudo systemctl enable getty@ttyGS0.service
-```
+The full reference config lives at [`boot/config.txt`](boot/config.txt) — copy it to `/boot/firmware/config.txt` on the Pi and keep it in sync with any changes made there.
+
+For USB recovery access (SSH over the data-capable micro-USB port when Wi-Fi is unavailable), also add `modules-load=dwc2,g_ether` to `cmdline.txt` (after `rootwait`). Micro-HDMI is not a usable fallback — the display driver overlays are intentionally not loaded on this fully headless device.
 
 ### 2. Python environment
 

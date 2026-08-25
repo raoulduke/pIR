@@ -82,12 +82,14 @@ config/
 dtparam=i2c_arm=off      # frees GPIO3 for gpio-shutdown overlay
 gpu_mem=16                # headless, no display output needed
 hdmi_ignore_hotplug=1
-dtoverlay=dwc2             # USB gadget serial console fallback
+dtoverlay=dwc2             # USB OTG gadget — Ethernet-over-USB recovery access
 ```
 
-USB serial console (`g_serial`) also requires:
-- `modules-load=dwc2,g_serial` appended to `cmdline.txt` after `rootwait`
-- `sudo systemctl enable getty@ttyGS0.service`
+The `vc4-fkms-v3d`/`vc4-kms-v3d` display driver overlays are **not** loaded — the device never drives a display, and `vc4-fkms-v3d` needs `gpu_mem >= 64`, which would conflict with `gpu_mem=16`. Micro-HDMI is not usable as a recovery path as a result.
+
+USB gadget recovery access also requires:
+- `modules-load=dwc2,g_ether` appended to `cmdline.txt` after `rootwait`
+- Connect via the Pi's data-capable micro-USB port (separate from the PWR IN port the PowerBoost 500C feeds) to get an Ethernet-over-USB interface and SSH in when Wi-Fi is unavailable.
 
 ## Key Engineering Decisions
 
@@ -106,7 +108,7 @@ USB serial console (`g_serial`) also requires:
 
 ## Setup (on the Pi)
 
-1. Ensure `/boot/firmware/config.txt` has the settings listed above.
+1. Ensure `/boot/firmware/config.txt` has the settings listed above. The full reference config is checked in at `boot/config.txt` — copy it to `/boot/firmware/config.txt` and keep both in sync whenever one changes.
 2. Create the venv inside the project and install dependencies:
    ```bash
    python3 -m venv .venv

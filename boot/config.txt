@@ -1,0 +1,85 @@
+# For more options and information see
+# http://rptl.io/configtxt
+# Some settings may impact device functionality. See link above for details
+
+# Uncomment some or all of these to enable the optional hardware interfaces
+dtparam=i2c_arm=off
+#dtparam=i2s=on
+#dtparam=spi=on
+
+# Disable ACT (activity) LED
+dtparam=act_led_trigger=none
+dtparam=act_led_activelow=on
+
+# Disable PWR (power) LED
+dtparam=pwr_led_trigger=none
+dtparam=pwr_led_activelow=on
+
+# Enable audio (loads snd_bcm2835)
+dtparam=audio=off
+
+# Additional overlays and parameters are documented
+# /boot/firmware/overlays/README
+
+# Automatically load overlays for detected cameras
+camera_auto_detect=0
+
+# Automatically load overlays for detected DSI displays
+display_auto_detect=0
+
+# Automatically load initramfs files, if found
+auto_initramfs=1
+
+# DRM VC4 V3D driver — not loaded. Device is fully headless (hdmi_ignore_hotplug
+# below) and never drives a display; loading this needs gpu_mem >= 64 to work
+# reliably, which conflicts with gpu_mem=16 below. Recovery access instead goes
+# through the USB OTG data port (dtoverlay=dwc2 + g_ether, under [all]).
+#dtoverlay=vc4-kms-v3d
+#max_framebuffers=2
+#dtoverlay=vc4-fkms-v3d
+#max_framebuffers=1
+
+# Don't have the firmware create an initial video= setting in cmdline.txt.
+# Use the kernel's default instead.
+disable_fw_kms_setup=1
+
+# Disable HDMI completely (major power saving)
+hdmi_ignore_hotplug=1
+
+# Disable compensation for displays with overscan
+disable_overscan=1
+
+# Run as fast as firmware / board allows
+arm_boost=1
+
+# Headless — no display output needed
+gpu_mem=16
+
+[cm4]
+# Enable host mode on the 2711 built-in XHCI USB controller.
+# This line should be removed if the legacy DWC2 controller is required
+# (e.g. for USB device mode) or if USB support is not required.
+otg_mode=1
+
+[cm5]
+dtoverlay=dwc2,dr_mode=host
+
+[all]
+# USB OTG gadget (Ethernet-over-USB) via the Pi's data-capable micro-USB port —
+# recovery access (SSH) when Wi-Fi is unavailable. Also requires
+# modules-load=dwc2,g_ether appended to cmdline.txt after rootwait.
+dtoverlay=dwc2
+
+# Software I2C for LCD
+dtoverlay=i2c-gpio,bus=3,i2c_gpio_sda=23,i2c_gpio_scl=24
+
+# IR transmitter and receiver interfaces
+dtoverlay=gpio-ir,gpio_pin=2
+dtoverlay=gpio-ir-tx,gpio_pin=4
+
+# Disable Bluetooth interface
+dtoverlay=disable-bt
+
+# GPIO Linux shutdown and hardware power-on
+#dtoverlay=gpio-shutdown,gpio_pin=17,active_low=1,gpio_pull=up
+dtoverlay=gpio-shutdown,active_low=1,gpio_pull=up

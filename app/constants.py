@@ -22,14 +22,12 @@ STATEMENT_SENDING = "Sending..."
 STATEMENT_SENT = "Done!"
 STATEMENT_FAILED = "Failed!"
 
-# Questions
-QUESTION_OVERWRITE = "Overwrite?"
-
 # Menu options
 MENU_SEND = "Send"
-MENU_RECEIVE = "Receive"
 MENU_COMMAND = "Command"
 MENU_HOME = "Home"
+MENU_QUIT = "Quit"
+MENU_IP = "IP Address"
 
 # Misc
 LABEL_ENTER_LOCATION = "Enter location"
@@ -37,8 +35,6 @@ LABEL_SINGLE_DEVICE = "Single device"
 LABEL_CANCEL = "Cancel"
 LABEL_TRY_AGAIN = "Try again"
 LABEL_OVERWRITE = "Overwrite?"
-LABEL_REPEAT = "Enter = Repeat"
-LABEL_GO_BACK = "<-    = Go Back"
 
 # IR hardware
 LIRC_TX_DEVICE = "/dev/lirc0"
@@ -66,10 +62,14 @@ KEYPAD_MAP_FILE = "config/keypad_map.json"
 # and services/preset_service.py.
 KEYPAD_DEVICES_FILE = "config/keypad_devices.json"
 KEYPAD_PRESETS_FILE = "config/keypad_presets.json"
-KEYPAD_DEVICE_SLOTS = 4
 PRESET_DEFAULT_DELAY_SECONDS = 0.3
 
 # Debounce / scan timing
-KEYPAD_SCAN_DELAY_SECONDS = 0.001   # settle time after driving a pin low
+# Kept deliberately light: a full sweep already drives every one of the 12
+# matrix pins in turn, and this thread runs continuously for the life of the
+# app. Too aggressive here (short idle gap, long per-pin settle) generates
+# enough sustained RPi.GPIO traffic to disrupt the LCD's bit-banged software
+# I2C (GPIO23/24) — seen as garbled LCD output / crashes during testing.
+KEYPAD_SCAN_DELAY_SECONDS = 0.0005  # settle time after driving a pin low
 KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
-KEYPAD_POLL_INTERVAL_SECONDS = 0.01 # thread loop sleep when idle
+KEYPAD_POLL_INTERVAL_SECONDS = 0.05 # gap between sweeps when idle

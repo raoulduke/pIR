@@ -34,6 +34,19 @@ def list_devices(home: str) -> list[str]:
     return sorted(p.name for p in d.iterdir() if p.is_dir())
 
 
+def cycle_device(home: str, current_device: str, direction: int) -> str:
+    """Return the device before (-1) or after (+1) *current_device* in
+    list_devices() order, wrapping around at the ends."""
+    devices = list_devices(home)
+    if not devices:
+        return current_device
+    try:
+        index = devices.index(current_device)
+    except ValueError:
+        index = 0
+    return devices[(index + direction) % len(devices)]
+
+
 def list_locations(home: str, device: str) -> list[str]:
     d = home_dir(home) / device
     if not d.is_dir():

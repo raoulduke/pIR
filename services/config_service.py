@@ -40,15 +40,5 @@ def get_google_sdk_path() -> str | None:
     return _load().get("google_sdk_path")
 
 
-def get_bridge_ip() -> str | None:
-    return _load().get("bridge_ip")
-
-
 def get_device_slot_offset() -> int:
     return _load().get("device_slot_offset", 0)
-
-
-def set_device_slot_offset(offset: int) -> None:
-    data = _load()
-    data["device_slot_offset"] = offset
-    _save(data)

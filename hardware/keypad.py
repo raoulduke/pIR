@@ -25,6 +25,7 @@ import os
 import queue
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 # noinspection PyUnresolvedReferences
@@ -40,7 +41,7 @@ from app.constants import (
 from app.exceptions import HardwareError
 from hardware.input import (
     KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_BACK,
-    KEY_BACKSPACE, KEY_QUIT, KEY_LEARN, KEY_DEVICE_NEXT, KEY_DEVICE_PREV,
+    KEY_BACKSPACE, KEY_LEARN, KEY_DEVICE_PREV, KEY_TV_MUTE,
     KEY_DEVICE_1_UP, KEY_DEVICE_1_DOWN, KEY_DEVICE_2_UP, KEY_DEVICE_2_DOWN,
     KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
@@ -56,15 +57,14 @@ _LABEL_ALIASES = {
     "ENTER": KEY_ENTER, "OK": KEY_ENTER,
     "BACK": KEY_BACK, "*": KEY_BACK,
     "BACKSPACE": KEY_BACKSPACE, "DEL": KEY_BACKSPACE,
-    "QUIT": KEY_QUIT,
     "LEARN": KEY_LEARN,
-    "DEVICE >": KEY_DEVICE_NEXT, "< DEVICE": KEY_DEVICE_PREV,
-    "DEVICE 1 UP": KEY_DEVICE_1_UP, "DEVICE 1 DOWN": KEY_DEVICE_1_DOWN,
-    "DEVICE 2 UP": KEY_DEVICE_2_UP, "DEVICE 2 DOWN": KEY_DEVICE_2_DOWN,
-    "DEVICE 3 UP": KEY_DEVICE_3_UP, "DEVICE 3 DOWN": KEY_DEVICE_3_DOWN,
-    "DEVICE 4 UP": KEY_DEVICE_4_UP, "DEVICE 4 DOWN": KEY_DEVICE_4_DOWN,
-    "PRESET 1": KEY_PRESET_1, "PRESET 2": KEY_PRESET_2,
-    "PRESET 3": KEY_PRESET_3, "PRESET 4": KEY_PRESET_4,
+    "DEVICE >": KEY_TV_MUTE, "< DEVICE": KEY_DEVICE_PREV,
+    "PRESET DEVICE 1 - UP": KEY_DEVICE_1_UP, "PRESET DEVICE 1 - DOWN": KEY_DEVICE_1_DOWN,
+    "PRESET DEVICE 2 - UP": KEY_DEVICE_2_UP, "PRESET DEVICE 2 - DOWN": KEY_DEVICE_2_DOWN,
+    "PRESET DEVICE 3 - UP": KEY_DEVICE_3_UP, "PRESET DEVICE 3 - DOWN": KEY_DEVICE_3_DOWN,
+    "PRESET DEVICE 4 - UP": KEY_DEVICE_4_UP, "PRESET DEVICE 4 - DOWN": KEY_DEVICE_4_DOWN,
+    "PRESET FUNCTION 1": KEY_PRESET_1, "PRESET FUNCTION 2": KEY_PRESET_2,
+    "PRESET FUNCTION 3": KEY_PRESET_3, "PRESET FUNCTION 4": KEY_PRESET_4,
 }
 
 
@@ -116,15 +116,16 @@ def scan_once() -> str | None:
     return None
 
 
-def _read_debounced(stop_event: threading.Event) -> str | None:
+def _read_debounced(stop_event: threading.Event, scan_fn=scan_once) -> str | None:
     """Block until a press is stable for KEYPAD_DEBOUNCE_SCANS scans in a
     row, then block again until release. Returns the id, or None if
-    stop_event was set first.
+    stop_event was set first. *scan_fn* defaults to the general-purpose
+    scan_once(); KeypadScanner passes its own faster scan instead.
     """
     last = None
     streak = 0
     while not stop_event.is_set():
-        reading = scan_once()
+        reading = scan_fn()
         if reading == last and reading is not None:
             streak += 1
         else:
@@ -133,12 +134,52 @@ def _read_debounced(stop_event: threading.Event) -> str | None:
 
         if streak >= KEYPAD_DEBOUNCE_SCANS:
             # wait for release so one press doesn't repeat-fire
-            while scan_once() is not None and not stop_event.is_set():
+            while scan_fn() is not None and not stop_event.is_set():
                 time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
             return reading
 
         time.sleep(KEYPAD_POLL_INTERVAL_SECONDS if reading is None else KEYPAD_SCAN_DELAY_SECONDS)
     return None
+
+
+def _infer_partition(
+        pins: list[int], edges: set[tuple[int, int]]
+) -> tuple[set[int], set[int]] | None:
+    """2-color the matrix graph so every known key-press edge crosses sides.
+
+    Lets KeypadScanner drive one side's pins as fixed OUTPUTs (idle HIGH)
+    and read the other side as fixed INPUTs, so a sweep only toggles output
+    *values* instead of calling GPIO.setup() on every pin every sweep — a
+    direction change, which is a slow sysfs write and, done continuously in
+    a background thread, generates enough traffic to disrupt the LCD's
+    bit-banged software I2C (seen as garbled output / I2C timeouts).
+
+    Returns (side_a, side_b), or None if the graph isn't bipartite — caller
+    falls back to the slower, fully general scan_once().
+    """
+    adjacency: dict[int, set[int]] = {p: set() for p in pins}
+    for a, b in edges:
+        adjacency.setdefault(a, set()).add(b)
+        adjacency.setdefault(b, set()).add(a)
+
+    color: dict[int, int] = {}
+    for start in adjacency:
+        if start in color:
+            continue
+        color[start] = 0
+        pending = deque([start])
+        while pending:
+            node = pending.popleft()
+            for neighbor in adjacency[node]:
+                if neighbor not in color:
+                    color[neighbor] = 1 - color[node]
+                    pending.append(neighbor)
+                elif color[neighbor] == color[node]:
+                    return None  # odd cycle — not bipartite
+
+    side_a = {p for p, c in color.items() if c == 0}
+    side_b = {p for p, c in color.items() if c == 1}
+    return side_a, side_b
 
 
 def _load_map() -> dict:
@@ -164,7 +205,38 @@ class KeypadScanner:
         if not self._map:
             raise HardwareError("keypad map missing — run scripts/keypad_wizard.py")
 
-        setup_pins()
+        self._direct_pins: list[int] = []
+        edges: set[tuple[int, int]] = set()
+        matrix_pins: set[int] = set()
+
+        for wire_id in self._map:
+            parts = wire_id.split("+")
+            if len(parts) == 1:
+                self._direct_pins.append(int(parts[0]))
+            else:
+                a, b = int(parts[0]), int(parts[1])
+                edges.add((a, b))
+                matrix_pins.update((a, b))
+
+        partition = _infer_partition(sorted(matrix_pins), edges) if edges else None
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+
+        if partition is not None:
+            self._fast_path = True
+            self._side_a, self._side_b = partition
+            configured = self._side_a | self._side_b | set(self._direct_pins)
+            for pin in self._side_a:
+                GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
+            for pin in (self._side_b | set(self._direct_pins)):
+                GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            # Any wired-but-unmapped pin still needs a defined, harmless state.
+            for pin in set(KEYPAD_GPIO_PINS) - configured:
+                GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        else:
+            self._fast_path = False
+            setup_pins()
 
         self.events: "queue.Queue[str]" = queue.Queue()
         self._wake_r, self._wake_w = os.pipe()
@@ -177,9 +249,38 @@ class KeypadScanner:
         """Readable fd — becomes ready whenever an event is queued."""
         return self._wake_r
 
+    def _scan(self) -> str | None:
+        """Fast path: pins are pre-configured once in __init__, so a sweep
+        only toggles output *values* — no GPIO.setup() calls. Falls back to
+        the general scan_once() when the map isn't a clean bipartite matrix.
+        """
+        if not self._fast_path:
+            return scan_once()
+
+        for pin in self._direct_pins:
+            if GPIO.input(pin) == GPIO.LOW:
+                return str(pin)
+
+        for drive_pin in self._side_a:
+            GPIO.output(drive_pin, GPIO.LOW)
+            time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
+
+            hit = None
+            for sense_pin in self._side_b:
+                if GPIO.input(sense_pin) == GPIO.LOW:
+                    hit = sense_pin
+                    break
+
+            GPIO.output(drive_pin, GPIO.HIGH)
+
+            if hit is not None:
+                return f"{min(drive_pin, hit)}+{max(drive_pin, hit)}"
+
+        return None
+
     def _run(self) -> None:
         while not self._stop.is_set():
-            reading = _read_debounced(self._stop)
+            reading = _read_debounced(self._stop, self._scan)
             if reading is None:
                 continue
             label = self._map.get(reading)

@@ -8,7 +8,7 @@ import time
 from hardware.lcd import LCD
 from hardware import ir_receiver
 from hardware.input import KEY_QUIT, KEY_BACK
-from services import signal_service, home_service
+from services import home_service
 from services.signal_service import signal_exists, save_signal
 from screens.widgets.selector import select_from_list
 from screens.widgets.text_input import read_text

@@ -52,14 +52,18 @@ KEY_PRESET_2      = "PRESET_2"
 KEY_PRESET_3      = "PRESET_3"
 KEY_PRESET_4      = "PRESET_4"
 KEY_LEARN         = "LEARN"
+KEY_TV_MUTE       = "TV_MUTE"
 
 QUICK_ACTION_KEYS = frozenset({
     KEY_DEVICE_1_UP, KEY_DEVICE_1_DOWN, KEY_DEVICE_2_UP, KEY_DEVICE_2_DOWN,
     KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
-    KEY_DEVICE_NEXT, KEY_DEVICE_PREV,
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
-    KEY_LEARN,
+    KEY_LEARN, KEY_TV_MUTE,
 })
+# KEY_DEVICE_NEXT/KEY_DEVICE_PREV ("Device >"/"< Device") are deliberately
+# NOT quick-action keys — they're Send-screen-scoped (see send_screen.py),
+# not global. Their former quick-action use (cycling the device-slot
+# window in app/quick_actions.py) was retired to free these two keys up.
 
 
 class InputReader:
@@ -115,13 +119,18 @@ class InputReader:
             if ch2 == "[":
                 ch3 = sys.stdin.read(1)
                 return {"A": KEY_UP, "B": KEY_DOWN, "C": KEY_RIGHT, "D": KEY_LEFT}.get(ch3)
-            return KEY_QUIT
+            return None
 
         if ch in ("\r", "\n"):
             return KEY_ENTER
         if ch == "\x7f":
             return KEY_BACKSPACE
-        if ch.lower() == "q":
+        if ch == "\x03":
+            # Ctrl+C, for SSH development sessions only. Raw mode
+            # (tty.setraw above) clears ISIG, so the tty driver never turns
+            # this into SIGINT — it arrives here as a plain byte instead.
+            # 'q'/Esc are intentionally NOT quit keys — use the menu's Quit
+            # option or the physical shutdown button.
             return KEY_QUIT
         if ch.isprintable():
             return ch
@@ -146,8 +155,6 @@ class InputReader:
                     "KEY_RIGHT":     KEY_RIGHT,
                     "KEY_ENTER":     KEY_ENTER,
                     "KEY_KPENTER":   KEY_ENTER,
-                    "KEY_Q":         KEY_QUIT,
-                    "KEY_ESC":       KEY_QUIT,
                     "BTN_RIGHT":     KEY_ENTER,
                     "KEY_BACKSPACE": KEY_BACKSPACE,
                     "KEY_DELETE":    KEY_BACKSPACE,

@@ -1,13 +1,5 @@
 [
   {
-    "label": "Bedroom TV",
-    "home": "home",
-    "device": "tv",
-    "location": "bedroom",
-    "up_button": "volume_up",
-    "down_button": "volume_down"
-  },
-  {
     "label": "Receiver",
     "home": "home",
     "device": "receiver",
@@ -30,5 +22,11 @@
     "location": "hall",
     "up_button": "brighten",
     "down_button": "dim"
+  },
+  {
+    "label": "Google Home",
+    "type": "voice",
+    "up_command": "Turn living room lights up",
+    "down_command": "Turn living room lights down"
   }
 ]

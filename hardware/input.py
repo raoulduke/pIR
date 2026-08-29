@@ -77,9 +77,16 @@ class InputReader:
             except Exception:
                 continue
 
-        self.stdin_fd = sys.stdin.fileno()
-        self._old_settings = termios.tcgetattr(self.stdin_fd)
-        tty.setraw(self.stdin_fd)
+        # SSH/terminal input is only available when stdin is an actual TTY —
+        # under systemd (no controlling terminal) stdin is /dev/null, and
+        # termios.tcgetattr on it raises. Skip that path there; USB/GPIO
+        # keypad input still works either way.
+        self.stdin_fd: int | None = None
+        self._old_settings = None
+        if sys.stdin.isatty():
+            self.stdin_fd = sys.stdin.fileno()
+            self._old_settings = termios.tcgetattr(self.stdin_fd)
+            tty.setraw(self.stdin_fd)
 
         self.keypad = None
         try:
@@ -94,7 +101,8 @@ class InputReader:
                 print(f"  - {device.name}\r")
         if self.keypad:
             print("Monitoring GPIO keypad\r")
-        print("Also monitoring SSH keyboard input\r")
+        if self.stdin_fd is not None:
+            print("Also monitoring SSH keyboard input\r")
 
     def close(self) -> None:
         if self.keypad is not None:
@@ -104,7 +112,7 @@ class InputReader:
                 pass
             self.keypad = None
         try:
-            if hasattr(self, "stdin_fd") and hasattr(self, "_old_settings"):
+            if self.stdin_fd is not None:
                 termios.tcsetattr(self.stdin_fd, termios.TCSADRAIN, self._old_settings)
         except Exception:
             pass
@@ -189,12 +197,14 @@ class InputReader:
         from hardware.lcd import lcd
 
         while True:
-            if not self.devices:
+            if not self.devices and self.keypad is None and self.stdin_fd is None:
                 lcd.write("Input unavailable", "Exiting.")
                 time.sleep(5)
                 raise SystemExit(0)
 
-            read_fds = list(self.devices.keys()) + [self.stdin_fd]
+            read_fds = list(self.devices.keys())
+            if self.stdin_fd is not None:
+                read_fds.append(self.stdin_fd)
             if self.keypad is not None:
                 read_fds.append(self.keypad.wake_fd)
 

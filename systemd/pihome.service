@@ -1,0 +1,22 @@
+[Unit]
+Description=Pi Home Control
+After=systemd-udevd.service ir-keymap.service ir-nec.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/matt/dev/ir
+
+ExecStart=/home/matt/dev/ir/.venv/bin/python3 -u /home/matt/dev/ir/main.py
+
+RestartSec=2
+Restart=on-failure
+
+KillSignal=SIGTERM
+TimeoutStopSec=5
+
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

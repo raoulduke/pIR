@@ -95,10 +95,29 @@ sudo .venv/bin/python3 main.py
 
 Do **not** run `sudo python3 main.py` — that bypasses the venv entirely.
 
+### 4. Run as a service (recommended)
+
+The app runs as a systemd service so it starts on boot without a login session. Unit files and IR config live in this repo and are deployed by copying them to their real system paths:
+
+```bash
+sudo cp systemd/pihome.service systemd/ir-keymap.service systemd/ir-nec.service /etc/systemd/system/
+sudo cp etc/rc_maps.cfg /etc/rc_maps.cfg
+sudo cp etc/rc_keymaps/shutdown.toml /etc/rc_keymaps/shutdown.toml
+sudo systemctl daemon-reload
+sudo systemctl enable --now ir-keymap.service ir-nec.service pihome.service
+```
+
+Keep both copies in sync whenever one changes, the same as `boot/config.txt`.
+
+- **`pihome.service`** — runs the app (as root — required for keypad/GPIO access) from `.venv/bin/python3`, ordered to start after the two IR units below.
+- **`ir-keymap.service`** — loads the custom IR keymap (`etc/rc_keymaps/shutdown.toml`, matched via `etc/rc_maps.cfg`) onto the receiver.
+- **`ir-nec.service`** — locks the receiver to NEC-only decoding. The board's `gpio_ir_recv` (RX) and `gpio-ir-tx` (TX) devices don't get a stable `rc0`/`rc1` index across boots, so both IR units resolve the correct device dynamically via `dmesg` rather than hardcoding one — locking out the kernel's default `rc-6` decoder prevents it from also decoding real NEC signals and injecting spurious keypresses into the app (which reads `gpio_ir_recv` as a keyboard-like input device for menu navigation).
+
 ## Development
 
 - Developed locally on WSL2, synced to the Pi for testing (hardware-dependent libraries like `smbus2` do not function on WSL2)
 - `.venv/` is excluded from sync — Windows-built venvs are not compatible with ARM Linux
+- SSH to the Pi: `ssh 10.0.0.56` (bash alias `pi`). The connection can be flaky on the first attempt — retry a few times before assuming it's down.
 
 ## Notes
 

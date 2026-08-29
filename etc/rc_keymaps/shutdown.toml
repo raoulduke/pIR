@@ -1,0 +1,6 @@
+[[protocols]]
+name = "shutdown"
+protocol = "nec"
+
+[protocols.scancodes]
+0x87eec75c = "KEY_POWER"

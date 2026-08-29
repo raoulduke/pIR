@@ -1,0 +1,10 @@
+[Unit]
+Description=Set IR protocol to NEC
+After=ir-keymap.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'exec /usr/bin/ir-keytable -p nec -s $(dmesg | grep -o "rc[0-9]: gpio_ir_recv" | grep -o "rc[0-9]*")'
+
+[Install]
+WantedBy=multi-user.target

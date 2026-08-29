@@ -60,10 +60,9 @@ QUICK_ACTION_KEYS = frozenset({
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
     KEY_LEARN, KEY_TV_MUTE,
 })
-# KEY_DEVICE_NEXT/KEY_DEVICE_PREV ("Device >"/"< Device") are deliberately
-# NOT quick-action keys — they're Send-screen-scoped (see send_screen.py),
-# not global. Their former quick-action use (cycling the device-slot
-# window in app/quick_actions.py) was retired to free these two keys up.
+# KEY_DEVICE_PREV ("< Device") is deliberately NOT a quick-action key —
+# it's Send-screen-scoped (see send_screen.py), not global. KEY_DEVICE_NEXT
+# has no physical key bound to it currently (see send_screen.py).
 
 
 class InputReader:

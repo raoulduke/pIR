@@ -34,7 +34,7 @@ _DEVICE_KEYS = {
 }
 _PRESET_KEYS = {KEY_PRESET_1: 1, KEY_PRESET_2: 2, KEY_PRESET_3: 3, KEY_PRESET_4: 4}
 
-# "Device >" — mute for the Google TV remote. Not a device-slot entry since
+# "Mute" — mute for the Google TV remote. Not a device-slot entry since
 # it's a single fixed button, not a configurable up/down pair.
 _TV_MUTE_DEVICE = "google_tv"
 _TV_MUTE_BUTTON = "mute"

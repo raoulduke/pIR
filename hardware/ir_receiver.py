@@ -66,12 +66,18 @@ def capture(lcd: "LCD") -> str:
                         tmp.write(line)
                         tmp.flush()
 
+                        # ir-ctl -r emits one line per burst, e.g.
+                        # "+8559 -4195 +659 -1520 ...", not lines literally
+                        # starting with "pulse"/"space" — count the +/-
+                        # tokens themselves instead.
                         stripped = line.strip()
-                        if stripped.startswith("pulse") or stripped.startswith("space"):
-                            pulse_count += 1
-                            if pulse_count == 1:
+                        if stripped:
+                            new_pulses = len(stripped.split())
+                            was_first = pulse_count == 0
+                            pulse_count += new_pulses
+                            if was_first:
                                 lcd.write(STATEMENT_RECEIVING, STATEMENT_SIGNAL_DETECTED)
-                            elif pulse_count % 20 == 0:
+                            elif pulse_count // 20 > (pulse_count - new_pulses) // 20:
                                 lcd.write(STATEMENT_RECEIVING, f"{pulse_count} pulses")
 
                         captured = True

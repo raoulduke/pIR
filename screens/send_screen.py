@@ -13,9 +13,11 @@ from screens.widgets.selector import select_from_list
 from screens.widgets.format import format_name
 from app.exceptions import HardwareError
 
-# "< Device" / "Device >" — cycle to the prev/next device from the Location
-# or Button level, without backing out to the top Device list first. Maps
-# each key straight to the direction signal_service.cycle_device() expects.
+# "< Device" cycles to the prev/next device from the Location or Button
+# level, without backing out to the top Device list first. Maps each key
+# straight to the direction signal_service.cycle_device() expects.
+# KEY_DEVICE_NEXT has no physical key bound to it currently, but the
+# cycle-forward behavior stays wired here for whenever a key is assigned.
 _CYCLE_KEYS = {KEY_DEVICE_PREV: -1, KEY_DEVICE_NEXT: 1}
 
 

@@ -2,7 +2,13 @@
   "1": [
     {"type": "voice", "command": "Rest"}
   ],
-  "2": [],
-  "3": [],
-  "4": []
+  "2": [
+    {"home": "home", "device": "google_tv", "location": "", "button": "back"}
+  ],
+  "3": [
+    {"type": "androidtv", "keyevent": "KEYCODE_HOME"}
+  ],
+  "4": [
+    {"home": "home", "device": "google_tv", "location": "", "button": "mute"}
+  ]
 }

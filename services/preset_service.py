@@ -13,6 +13,11 @@ aborting the rest of the sequence.
 A voice step sends free-text through Home Assistant
 (services/voice_service.py) instead of an IR signal:
   {"type": "voice", "command": "Rest", "delay_after": 0.3}
+
+An androidtv step sends an Android keyevent over adb
+(services/androidtv_service.py) — for Google TV functions IR can't reach
+(Home, true Back distinct from Menu):
+  {"type": "androidtv", "keyevent": "KEYCODE_HOME", "delay_after": 0.3}
 """
 
 import json
@@ -22,7 +27,7 @@ from pathlib import Path
 from app.constants import KEYPAD_PRESETS_FILE, PRESET_DEFAULT_DELAY_SECONDS
 from app.exceptions import HardwareError
 from hardware import ir_transmitter
-from services import signal_service, voice_service
+from services import signal_service, voice_service, androidtv_service
 
 _PATH = Path(__file__).parent.parent / KEYPAD_PRESETS_FILE
 
@@ -48,6 +53,10 @@ def run_preset(number: int) -> int:
     for i, step in enumerate(steps):
         if step.get("type") == "voice":
             success, _ = voice_service.send_command(step["command"])
+            if success:
+                sent += 1
+        elif step.get("type") == "androidtv":
+            success, _ = androidtv_service.send_keyevent(step["keyevent"])
             if success:
                 sent += 1
         else:

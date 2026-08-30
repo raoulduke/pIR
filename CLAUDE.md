@@ -50,7 +50,7 @@ DIY IR remote control and home automation device. Runs headless on a Raspberry P
 Notes:
 - LCD uses **software I²C (bit-banged)** on GPIO23 (SDA) / GPIO24 (SCL), not hardware I²C.
 - Shutdown button (Philmore 30-146) requires hardware I²C1 **disabled** (`dtparam=i2c_arm=off` in `config.txt`) to free GPIO3 for the `gpio-shutdown` overlay.
-- LCD backlight control is **not built** — GPIO12 was intended to drive an NPN transistor / N-channel MOSFET low-side switch (GPIO can't supply the 80–120mA the backlight draws directly), but that switch circuit isn't actually wired: toggling GPIO12 HIGH/LOW (verified 2026-08-29) has no effect on the backlight, which stays on. `hardware/lcd.py` has no backlight code, and no `lcd.backlight_enabled` exists in the codebase. Building this needs the transistor switch wired between GPIO12 and the backlight supply first. The J1 jumper removal from the PCF8574 backpack (disconnecting the backpack's own I²C-controlled backlight switch) has been done, per prior notes.
+- LCD backlight control is **not built** — GPIO12 was intended to drive an NPN transistor / N-channel MOSFET low-side switch (GPIO can't supply the 80–120mA the backlight draws directly), but that switch circuit isn't actually wired: toggling GPIO12 HIGH/LOW (verified 2026-08-29) has no effect on the backlight, which stays on. `hardware/lcd.py` has no backlight code, and no `lcd.backlight_enabled` exists in the codebase. Building this needs the transistor switch wired between GPIO12 and the backlight supply first. The PCF8574 backpack is connected via its standard 4 wires (VCC/GND/SDA/SCL) as-is — no jumper has been removed or otherwise modified on it; unverified claims to that effect in earlier notes were wrong and are retracted. Whether the backpack's own backlight jumper (present on most of these boards, usually labeled near the contrast pot) is populated or not has not been checked and should not be assumed either way.
 - Battery monitoring is not yet implemented. LBO pin (binary OK/LOW at ~10% remaining) has been chosen over an ADC approach; debounce recommended since IR transmitter current spikes can cause false triggers. LBO GPIO pin not yet assigned.
 
 ## Software Architecture
@@ -97,6 +97,7 @@ USB gadget recovery access also requires:
 - **Software I²C for the LCD** — bit-banged on GPIO23/24, not the Pi's hardware I²C bus.
 - **Hardware I²C1 disabled** (`dtparam=i2c_arm=off`) — required to free GPIO3 for `gpio-shutdown`; otherwise a 3-pin workaround via GPIO17 would be needed.
 - **Transistor/MOSFET low-side switch for backlight control** (decided, not yet built) — GPIO pins cap at ~16mA; backlight draws 80–120mA, so GPIO12 needs to switch a transistor rather than drive the backlight directly. I²C cannot carry this. Confirmed 2026-08-29: this switch isn't wired yet — GPIO12 currently has no effect on the backlight.
+- The backpack's own PCF8574-driven backlight switch has not been ruled out as a cheaper alternative to the GPIO12 transistor — needs physically inspecting the board for a backlight jumper before deciding.
 - **Wi-Fi power management disabled** — introduces 100–500ms wake latency that disrupts IR timing and LCD responsiveness. Disable via systemd service (most reliable method on Kali).
 - **`pigpio`, `asyncio`, and `gpu_mem=16`** are the highest-impact performance changes for this build.
 

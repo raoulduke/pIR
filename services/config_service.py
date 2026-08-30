@@ -42,3 +42,11 @@ def get_google_sdk_path() -> str | None:
 
 def get_device_slot_offset() -> int:
     return _load().get("device_slot_offset", 0)
+
+
+def get_androidtv_ip() -> str | None:
+    return _load().get("androidtv_ip")
+
+
+def get_androidtv_port() -> int | None:
+    return _load().get("androidtv_port")

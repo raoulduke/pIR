@@ -18,6 +18,25 @@ An androidtv step sends an Android keyevent over adb
 (services/androidtv_service.py) — for Google TV functions IR can't reach
 (Home, true Back distinct from Menu):
   {"type": "androidtv", "keyevent": "KEYCODE_HOME", "delay_after": 0.3}
+
+An androidtv_app step launches an app by package name over adb — for
+functions with no keyevent equivalent (e.g. a YouTube shortcut button):
+  {"type": "androidtv_app", "package": "com.google.android.youtube.tv",
+   "delay_after": 0.3}
+
+Top-level "1".."4" are the global defaults — what fires when the active
+device (screens/active_device_screen.py's state.active_device/location) has
+no override for that slot. A top-level "by_device" key adds per-device
+overrides, keyed "device" or "device/location" (matching whatever's active
+when the button is pressed):
+  "by_device": {
+    "light/hall": {"1": [{"home": "home", "device": "light",
+                           "location": "hall", "button": "on"}]}
+  }
+A device's override block only needs the slots it wants to change — any
+slot it doesn't define still falls through to the matching global default,
+so e.g. a device can override Preset Function 1 while 2-4 keep firing
+their usual global macros.
 """
 
 import json
@@ -41,13 +60,27 @@ def _load() -> dict:
     return {}
 
 
-def get_preset(number: int) -> list[dict]:
-    return _load().get(str(number), [])
+def _device_key(device: str, location: str) -> str:
+    return f"{device}/{location}" if location else device
 
 
-def run_preset(number: int) -> int:
-    """Fire every step of preset *number* in order. Returns steps actually sent."""
-    steps = get_preset(number)
+def get_preset(number: int, device: str = "", location: str = "") -> list[dict]:
+    data = _load()
+    slot = str(number)
+
+    if device:
+        overrides = data.get("by_device", {}).get(_device_key(device, location), {})
+        if slot in overrides:
+            return overrides[slot]
+
+    return data.get(slot, [])
+
+
+def run_preset(number: int, device: str = "", location: str = "") -> int:
+    """Fire every step of preset *number* in order — the active device's
+    override if it has one for this slot, else the global default.
+    Returns steps actually sent."""
+    steps = get_preset(number, device, location)
     sent = 0
 
     for i, step in enumerate(steps):
@@ -57,6 +90,10 @@ def run_preset(number: int) -> int:
                 sent += 1
         elif step.get("type") == "androidtv":
             success, _ = androidtv_service.send_keyevent(step["keyevent"])
+            if success:
+                sent += 1
+        elif step.get("type") == "androidtv_app":
+            success, _ = androidtv_service.launch_app(step["package"])
             if success:
                 sent += 1
         else:

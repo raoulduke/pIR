@@ -20,8 +20,8 @@
     "home": "home",
     "device": "light",
     "location": "hall",
-    "up_button": "brighten",
-    "down_button": "dim"
+    "up_button": "brightness_up",
+    "down_button": "brightness_down"
   },
   {
     "label": "Google Home",

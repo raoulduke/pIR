@@ -13,6 +13,13 @@ but the TV's connect port can change across TV reboots, so this module
 always re-runs ``adb connect`` before sending a keyevent rather than
 assuming a prior connection is still live — that call is a fast no-op if
 already connected.
+
+Confirmed 2026-08-30: a "TV unreachable" report doesn't necessarily mean
+the port drifted or the TV is unpaired — the Pi's own local adb daemon can
+get stuck (mDNS still showed the TV correctly advertising the configured
+port, `adb connect` still failed, `adb kill-server` fixed it instantly).
+_connect() below retries once through a server restart before giving up,
+so this self-heals without a manual `adb kill-server` on the Pi.
 """
 
 import subprocess
@@ -30,28 +37,38 @@ def _target() -> str | None:
     return f"{ip}:{port}"
 
 
-def send_keyevent(keycode: str) -> tuple[bool, str]:
-    """Send an Android keyevent (e.g. "KEYCODE_HOME", "KEYCODE_BACK").
+def _adb(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["adb", *args], capture_output=True, text=True, timeout=_ADB_TIMEOUT_SECONDS,
+    )
 
-    Returns (success, message), matching services.voice_service.send_command
-    so both slot into preset_service's step handling the same way.
-    """
+
+def _connect(target: str) -> bool:
+    """True once *target* is connected, self-healing a stuck local adb
+    daemon by restarting it and retrying once before giving up."""
+    connect = _adb("connect", target)
+    if "connected" in connect.stdout or "already" in connect.stdout:
+        return True
+
+    _adb("kill-server")
+    connect = _adb("connect", target)
+    return "connected" in connect.stdout or "already" in connect.stdout
+
+
+def _run_shell(*shell_args: str) -> tuple[bool, str]:
+    """Connect to the configured TV, self-healing as needed, then run
+    *shell_args* via ``adb shell``. Returns (success, message), matching
+    services.voice_service.send_command so all three slot into
+    preset_service's step handling the same way."""
     target = _target()
     if target is None:
         return False, "TV not configured"
 
     try:
-        connect = subprocess.run(
-            ["adb", "connect", target],
-            capture_output=True, text=True, timeout=_ADB_TIMEOUT_SECONDS,
-        )
-        if "connected" not in connect.stdout and "already" not in connect.stdout:
+        if not _connect(target):
             return False, "TV unreachable"
 
-        result = subprocess.run(
-            ["adb", "-s", target, "shell", "input", "keyevent", keycode],
-            capture_output=True, text=True, timeout=_ADB_TIMEOUT_SECONDS,
-        )
+        result = _adb("-s", target, "shell", *shell_args)
         if result.returncode != 0:
             return False, (result.stderr.strip()[:16] or "adb error")
         return True, "Sent"
@@ -62,3 +79,15 @@ def send_keyevent(keycode: str) -> tuple[bool, str]:
         return False, "adb missing"
     except Exception as e:
         return False, str(e)[:16]
+
+
+def send_keyevent(keycode: str) -> tuple[bool, str]:
+    """Send an Android keyevent (e.g. "KEYCODE_HOME", "KEYCODE_BACK")."""
+    return _run_shell("input", "keyevent", keycode)
+
+
+def launch_app(package: str) -> tuple[bool, str]:
+    """Launch an app by package name (e.g. "com.google.android.youtube.tv")
+    via ``monkey``'s launcher-intent trick — there's no keyevent for
+    "open app X", so this goes through the same _run_shell as a keyevent."""
+    return _run_shell("monkey", "-p", package, "-c", "android.intent.category.LAUNCHER", "1")

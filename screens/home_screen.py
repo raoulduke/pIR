@@ -5,6 +5,7 @@ from hardware.lcd import LCD
 from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service
 from screens.widgets.selector import select_from_list
+from screens.widgets.format import format_name
 from app.state import AppState
 
 
@@ -32,7 +33,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     state.active_device = None
     state.active_location = None
 
-    lcd.write("Active Home:", choice[:16])
+    lcd.write("Active Home:", format_name(choice)[:16])
     time.sleep(1.5)
 
     return None

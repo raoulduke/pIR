@@ -18,8 +18,12 @@ It supersedes that plan wherever the two disagree.
 - Every other device gets a lightweight function cycle (Left/Right to pick
   a function, Up/Down/Enter to fire it) derived from signals you've already
   learned — no new per-device config to author.
-- Keep the 4 Preset Device pairs and 4 Preset Function buttons exactly as
-  they are today — untouched, still global, still simple.
+- Keep the 4 Preset Device pairs exactly as they are today — untouched,
+  still global, still simple.
+- Preset Function 1-4 buttons stay global hotkeys, but now read the active
+  device: each slot fires that device's override if one is configured
+  (services/preset_service.py's `by_device`), else its usual global macro.
+  Superseded 2026-08-30 — see below.
 - Move the long-tail (full device browsing, Learn, future Settings) behind
   a dedicated `Menu` key instead of a long-press gesture, which turned out
   to be fundamentally incompatible with instant D-pad passthrough (see
@@ -34,7 +38,7 @@ It supersedes that plan wherever the two disagree.
 | `< Device` | Unchanged — cycle active device backward |
 | `Mute` | **Becomes `Device ⟩`** — cycle active device forward (restores the original working pair) |
 | Preset Device 1–4 Up/Down (8 keys) | **Unchanged** — same global hotkeys as today, do not affect the active device |
-| Preset Function 1–4 (4 keys) | **Unchanged** — same global hotkeys as today |
+| Preset Function 1–4 (4 keys) | Global hotkeys as today, but each now reads the active device — see "Superseded 2026-08-30" below |
 | `Learn` | **Becomes `Menu`** — opens the escape-hatch menu (Learn moves inside it) |
 
 Net: no new physical keys needed, no keys lost. `Mute` and `Learn` are
@@ -216,3 +220,19 @@ back up to `main.py`.
       equivalent) in `config/keypad_map.json`.
 - [ ] Assign `google_tv`'s `mute` signal to a Preset Function slot
       whenever convenient (not blocking).
+
+## Superseded 2026-08-30: Preset Function 1-4 now device-aware
+
+This plan's "Preset Function 1-4 stay global, untouched, device-independent"
+decision (Goals, and the button-mapping table above) no longer holds.
+
+`app/quick_actions.py`'s `_handle_preset()` now passes the active device
+(`state.active_device`/`state.active_location`) into
+`services/preset_service.py`, which checks a `by_device` block in
+`config/keypad_presets.json` for a per-device override of that slot before
+falling back to the slot's global default. The keys still fire from any
+screen (unaffected by this change), and pressing one still never changes
+the active device — only the currently-active device's own override can
+ever be *read*, per the existing "Preset Device and Preset Function
+presses never change the active device" rule below, which stands
+unchanged.

@@ -108,8 +108,14 @@ def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
 
 
 def _handle_preset(number: int) -> None:
+    """Preset Function N — runs the active device's override for slot N if
+    it has one (see services/preset_service.py), else the global default.
+    Active device is read-only here; presses never change it."""
+    device = _state.active_device or ""
+    location = _state.active_location or ""
+
     lcd.write(f"Preset {number}", "Running...")
-    sent = preset_service.run_preset(number)
+    sent = preset_service.run_preset(number, device, location)
     lcd.write(f"Preset {number}", f"{sent} sent" if sent else "Not configured")
     time.sleep(1)
 

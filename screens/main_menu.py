@@ -1,25 +1,29 @@
-"""Main menu screen.
+"""Escape-hatch menu — reached via the physical Menu key from anywhere
+(see app/quick_actions.py._handle_menu), not part of the normal boot flow
+(that's screens/active_device_screen.py — see
+docs/active-device-control-plan.md).
 
-Returns one of: MENU_SEND, MENU_COMMAND, MENU_HOME, KEY_QUIT, or None (when
-the outer loop should keep running). Selecting the "Quit" option also
-returns KEY_QUIT. The last option, IP Address, is display-only — a fallback
-for finding the device's IP when nothing else (router, HA, etc.) is
-available — and Enter on it is a no-op.
-
-Note: there's no "Receive"/Learn option here — the physical Learn button
-(app/quick_actions.py) already opens screens/receive_screen.py from
-anywhere, so a menu entry for it would be redundant.
+Returns one of: MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME,
+KEY_QUIT, or None (pressing Left backs out to Active Device Control
+without choosing anything). Selecting "Quit" also returns KEY_QUIT.
+MENU_SETTINGS and MENU_IP are handled inline here rather than returned —
+Settings has no real screen yet (placeholder message), and IP is
+display-only.
 """
 
-from app.constants import MENU_SEND, MENU_COMMAND, MENU_HOME, MENU_QUIT, MENU_IP
+import time
+from app.constants import (
+    MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_SETTINGS,
+    MENU_QUIT, MENU_IP,
+)
 from app.state import AppState
 from hardware.lcd import LCD
-from hardware.input import read_key, KEY_UP, KEY_DOWN, KEY_ENTER, KEY_QUIT
+from hardware.input import read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_ENTER, KEY_QUIT
 from hardware.network import get_ip_address
 from screens.widgets.format import format_name
 
 
-_OPTIONS = [MENU_SEND, MENU_COMMAND, MENU_HOME, MENU_QUIT, MENU_IP]
+_OPTIONS = [MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_SETTINGS, MENU_QUIT, MENU_IP]
 
 
 def _line2(option: str, state: AppState) -> str:
@@ -34,7 +38,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     index = 0
 
     while state.running:
-        lcd.write("Select Mode", _line2(_OPTIONS[index], state))
+        lcd.write("Menu", _line2(_OPTIONS[index], state))
         key = read_key()
 
         if key is None:
@@ -42,6 +46,8 @@ def show(lcd: LCD, state: AppState) -> str | None:
         if key == KEY_QUIT:
             lcd.clear()
             return KEY_QUIT
+        if key == KEY_LEFT:
+            return None
         if key == KEY_UP:
             index = (index - 1) % len(_OPTIONS)
         if key == KEY_DOWN:
@@ -52,6 +58,10 @@ def show(lcd: LCD, state: AppState) -> str | None:
                 lcd.clear()
                 return KEY_QUIT
             if option == MENU_IP:
+                continue
+            if option == MENU_SETTINGS:
+                lcd.write("Settings", "Coming soon")
+                time.sleep(1)
                 continue
             return option
 

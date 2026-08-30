@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Pi Home Control — entry point.
 
-Startup → main menu loop → dispatch to screens → shutdown.
+Startup → Active Device Control (main loop) → shutdown. Everything else
+(full device list, Learn, voice command, Home switcher, Settings) is
+reached via the physical Menu key from anywhere — see
+docs/active-device-control-plan.md.
 """
 
 import argparse
@@ -14,14 +17,21 @@ HELP_DESCRIPTION = """\
 Pi Home Control — DIY IR remote control and home automation device.
 
 Runs headless on a Raspberry Pi Zero 2 W, battery-powered. Boots directly
-into the IR send screen (the most-used screen, no menu detour) and handles
-IR transmit/receive, LCD status display, physical keypad/button input, and
-Home Assistant integration (including voice commands).
+into Active Device Control (no menu detour) — D-pad passthrough for the
+active device (google_tv by default) or a cycled function list for any
+other device — and handles IR transmit/receive, LCD status display,
+physical keypad/button input, and Home Assistant integration (including
+voice commands).
 """
 
 HELP_EPILOG = """\
 what it does:
-  - Sends IR signals from saved presets (per-"home", e.g. TV/AC/light/receiver)
+  - Controls the active device directly: raw D-pad passthrough for
+    google_tv, or Left/Right-cycled functions (Up/Down/Enter to fire) for
+    everything else — derived from saved signals (per-"home", e.g.
+    TV/AC/light/receiver), no separate config to author
+  - Full device list, Learn (IR capture), voice command, and Home switcher
+    all live behind the physical Menu key, reachable from any screen
   - Receives and learns new IR signals via the VS1838 IR receiver
   - Shows status/menus on a 16x2 I2C LCD
   - Reads input from a 12-wire keypad matrix (evdev)
@@ -74,14 +84,10 @@ _parse_args()
 print(f"[BOOT] PID={os.getpid()}")
 
 from app.startup import initialize
-from app.constants import MENU_SEND, MENU_COMMAND, MENU_HOME
 from app import quick_actions
 from hardware.lcd import lcd
-from hardware.input import KEY_QUIT, set_quick_action_handler, close as close_input
-import screens.main_menu as main_menu
-import screens.send_screen as send_screen
-import screens.command_screen as command_screen
-import screens.home_screen as home_screen
+from hardware.input import set_quick_action_handler, close as close_input
+import screens.active_device_screen as active_device_screen
 
 
 def main() -> None:
@@ -91,6 +97,7 @@ def main() -> None:
     if state is None:
         sys.exit(0)
 
+    quick_actions.init(state)
     set_quick_action_handler(quick_actions.handle)
 
     def _handle_signal(signum, frame):
@@ -106,38 +113,13 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    # Boot straight into Send (the most-used screen) — no menu detour on
-    # startup. Every screen after this first one is reached through the
-    # menu as usual.
-    choice = MENU_SEND
-
     try:
-        while state.running:
-            if choice is None:
-                choice = main_menu.show(lcd, state)
-
-            if choice is None:
-                continue
-
-            if choice == KEY_QUIT:
-                break
-
-            if choice == MENU_SEND:
-                result = send_screen.show(lcd)
-
-            elif choice == MENU_COMMAND:
-                result = command_screen.show(lcd)
-
-            elif choice == MENU_HOME:
-                result = home_screen.show(lcd, state)
-
-            else:
-                result = None
-
-            choice = None  # dispatched; show the menu again next time around
-
-            if result == KEY_QUIT:
-                break
+        # Boot straight into Active Device Control (the most-used screen)
+        # — no menu detour on startup. It owns the main loop until
+        # state.running goes False; everything else (Full Device List,
+        # Learn, Command, Home, Settings) is reached via the Menu key
+        # (app/quick_actions.py), not through this loop.
+        active_device_screen.show(lcd, state)
 
         lcd.write("Program stopped")
 

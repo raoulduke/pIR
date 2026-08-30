@@ -26,6 +26,12 @@ def show(lcd: LCD, state: AppState) -> str | None:
     home_service.set_active_home(choice)
     state.active_home = choice
 
+    # Reset Active Device Control's active device — it re-resolves to the
+    # new home's default (google_tv, or its first device) next time it
+    # runs. See docs/active-device-control-plan.md.
+    state.active_device = None
+    state.active_location = None
+
     lcd.write("Active Home:", choice[:16])
     time.sleep(1.5)
 

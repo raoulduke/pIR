@@ -22,12 +22,19 @@ STATEMENT_SENDING = "Sending..."
 STATEMENT_SENT = "Done!"
 STATEMENT_FAILED = "Failed!"
 
-# Menu options
-MENU_SEND = "Send"
+# Menu options (screens/main_menu.py — the escape-hatch reached via the
+# physical Menu key; see docs/active-device-control-plan.md)
+MENU_DEVICES = "Device List"
+MENU_LEARN = "Learn"
 MENU_COMMAND = "Command"
 MENU_HOME = "Home"
+MENU_SETTINGS = "Settings"
 MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
+
+# Active Device Control (screens/active_device_screen.py) — the device
+# that gets raw D-pad passthrough instead of a cycled function list.
+DEFAULT_ACTIVE_DEVICE = "google_tv"
 
 # Misc
 LABEL_ENTER_LOCATION = "Enter location"
@@ -42,6 +49,10 @@ LIRC_RX_DEVICE = "/dev/lirc1"
 
 # Signal capture
 SIGNAL_TAIL_CAPTURE_SECONDS = 0.5
+# Give up and return "" if no real frame (see hardware/ir_receiver.py's
+# noise filter) shows up at all within this long — almost certainly means
+# no button was actually pressed, not that one is still coming.
+SIGNAL_WAIT_TIMEOUT_SECONDS = 15
 MIN_SIGNAL_LENGTH = 20
 
 # File ownership

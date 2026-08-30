@@ -9,6 +9,13 @@ class AppState:
         self.running: bool = True
         self.active_home: str | None = None
 
+        # Active Device Control's current device (screens/active_device_screen.py).
+        # None until the first frame resolves a default; deliberately not
+        # persisted across restarts or home switches — both always
+        # re-resolve to the default (see docs/active-device-control-plan.md).
+        self.active_device: str | None = None
+        self.active_location: str | None = None
+
         self.input_available: bool = False
 
         self.ir_tx_available: bool = False

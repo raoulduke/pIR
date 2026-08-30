@@ -22,9 +22,10 @@ from app.constants import (
     LABEL_OVERWRITE, MIN_SIGNAL_LENGTH,
 )
 from app.exceptions import HardwareError
+from app.state import AppState
 
 
-def show(lcd: LCD) -> str | None:
+def show(lcd: LCD, state: AppState) -> str | None:
     home = home_service.get_active_home()
 
     # --- Collect device / location / button via back-navigable steps ---
@@ -99,6 +100,10 @@ def show(lcd: LCD) -> str | None:
         save_signal(data, home, device, button, location)
         lcd.write(STATEMENT_SAVED, format_name(button)[:16])
         time.sleep(2)
+        # Make the just-learned device active so it can be tested right
+        # away with Up/Down/Enter on Active Device Control.
+        state.active_device = device
+        state.active_location = location
     except Exception as e:
         lcd.write(STATEMENT_SAVE_FAILED, str(e)[:16])
         time.sleep(2)

@@ -53,16 +53,23 @@ KEY_PRESET_3      = "PRESET_3"
 KEY_PRESET_4      = "PRESET_4"
 KEY_LEARN         = "LEARN"
 KEY_TV_MUTE       = "TV_MUTE"
+KEY_MENU          = "MENU"
 
 QUICK_ACTION_KEYS = frozenset({
     KEY_DEVICE_1_UP, KEY_DEVICE_1_DOWN, KEY_DEVICE_2_UP, KEY_DEVICE_2_DOWN,
     KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
-    KEY_LEARN, KEY_TV_MUTE,
+    KEY_DEVICE_PREV, KEY_DEVICE_NEXT, KEY_MENU,
 })
-# KEY_DEVICE_PREV ("< Device") is deliberately NOT a quick-action key —
-# it's Send-screen-scoped (see send_screen.py), not global. KEY_DEVICE_NEXT
-# has no physical key bound to it currently (see send_screen.py).
+# KEY_DEVICE_PREV/KEY_DEVICE_NEXT ("< Device" / "Device >") cycle
+# screens.active_device_screen's active device — global, like everything
+# else above, per docs/active-device-control-plan.md. KEY_MENU opens the
+# escape-hatch menu (screens/main_menu.py) from anywhere.
+#
+# KEY_LEARN and KEY_TV_MUTE are no longer bound to physical keys (Learn
+# moved into the Menu; Mute is deferred — see the plan doc) and so are no
+# longer quick actions, but the constants stay defined since
+# hardware/keypad.py's label aliases still recognize them.
 
 
 class InputReader:

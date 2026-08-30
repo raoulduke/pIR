@@ -1,27 +1,24 @@
-"""Send screen.
+"""Send screen — the "Device List" entry in the escape-hatch Menu.
 
 Navigates Device → [Location] → Button, then delegates the actual
 transmission to ``hardware.ir_transmitter`` via ``services.signal_service``.
+Selecting a device (and its location, once picked, for a device that has
+one) makes it the active device for screens.active_device_screen — see
+docs/active-device-control-plan.md.
 """
 
 import time
 from hardware.lcd import LCD
-from hardware.input import KEY_QUIT, KEY_BACK, KEY_DEVICE_PREV, KEY_DEVICE_NEXT
+from hardware.input import KEY_QUIT, KEY_BACK
 from hardware import ir_transmitter
 from services import signal_service, home_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.format import format_name
+from app.state import AppState
 from app.exceptions import HardwareError
 
-# "< Device" cycles to the prev/next device from the Location or Button
-# level, without backing out to the top Device list first. Maps each key
-# straight to the direction signal_service.cycle_device() expects.
-# KEY_DEVICE_NEXT has no physical key bound to it currently, but the
-# cycle-forward behavior stays wired here for whenever a key is assigned.
-_CYCLE_KEYS = {KEY_DEVICE_PREV: -1, KEY_DEVICE_NEXT: 1}
 
-
-def show(lcd: LCD) -> str | None:
+def show(lcd: LCD, state: AppState) -> str | None:
     home = home_service.get_active_home()
     home_dir = signal_service.home_dir(home)
 
@@ -53,21 +50,20 @@ def show(lcd: LCD) -> str | None:
                 used_location_prompt = False
             else:
                 locations = signal_service.list_locations(home, device)
-                location = select_from_list(
-                    lcd, format_name(device), locations, extra_keys=_CYCLE_KEYS
-                )
+                location = select_from_list(lcd, format_name(device), locations)
                 if location == KEY_BACK:
                     break
                 if location == KEY_QUIT:
                     return KEY_QUIT
-                if location in _CYCLE_KEYS:
-                    device = signal_service.cycle_device(home, device, _CYCLE_KEYS[location])
-                    continue  # re-run device-entry resolution for the new device
                 buttons_location = location
                 used_location_prompt = True
 
+            # Full leaf resolved (device + location, or device alone when
+            # it has none) — this becomes the active device.
+            state.active_device = device
+            state.active_location = buttons_location
+
             # --- Button selection ---
-            switched_device = False
             button_index = 0
             while True:
                 buttons = signal_service.list_buttons(home, device, buttons_location)
@@ -80,17 +76,12 @@ def show(lcd: LCD) -> str | None:
                     lcd,
                     format_name(f"{device} / {buttons_location}" if buttons_location else device),
                     buttons,
-                    extra_keys=_CYCLE_KEYS,
                     start_index=button_index,
                 )
                 if button == KEY_BACK:
                     break
                 if button == KEY_QUIT:
                     return KEY_QUIT
-                if button in _CYCLE_KEYS:
-                    device = signal_service.cycle_device(home, device, _CYCLE_KEYS[button])
-                    switched_device = True
-                    break
 
                 # Reopen the list on this same button next time around, so
                 # repeating a signal is just pressing ENTER again.
@@ -101,8 +92,6 @@ def show(lcd: LCD) -> str | None:
                 # Loop back to the button list — pressing the same button
                 # again is how the user repeats the signal.
 
-            if switched_device:
-                continue  # re-run device-entry resolution for the new device
             if not used_location_prompt:
                 break
 

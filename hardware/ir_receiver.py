@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from app.constants import (
     LIRC_RX_DEVICE,
     SIGNAL_TAIL_CAPTURE_SECONDS,
+    SIGNAL_WAIT_TIMEOUT_SECONDS,
     STATEMENT_RECEIVING,
     STATEMENT_SIGNAL_DETECTED,
     STATEMENT_CAPTURED,
@@ -24,6 +25,27 @@ from app.exceptions import HardwareError
 
 if TYPE_CHECKING:
     from hardware.lcd import LCD
+
+# The receiver is locked to NEC-only decoding (see ir-nec.service), and
+# every NEC frame — the main burst and every repeat — starts with a lead-in
+# pulse around 8500-9000us, dramatically longer than any real data pulse
+# (NEC's own unit pulses top out around 600us). Electrical interference
+# observed on this circuit tops out well under 1ms per pulse and never
+# produces anything close to a real lead-in. Requiring a line's first pulse
+# to clear this threshold before treating it as a signal — rather than
+# noise — filters that interference out without needing to know its exact
+# source. If a non-NEC protocol is ever supported, this needs revisiting.
+_MIN_LEAD_PULSE_MICROSECONDS = 2000
+
+
+def _looks_like_real_frame(line: str) -> bool:
+    token = line.split(maxsplit=1)[:1]
+    if not token or not token[0].startswith("+"):
+        return False
+    try:
+        return int(token[0][1:]) >= _MIN_LEAD_PULSE_MICROSECONDS
+    except ValueError:
+        return False
 
 
 def capture(lcd: "LCD") -> str:
@@ -53,6 +75,7 @@ def capture(lcd: "LCD") -> str:
             captured = False
             last_data_time: float | None = None
             pulse_count = 0
+            start_time = time.monotonic()
 
             try:
                 while True:
@@ -62,6 +85,17 @@ def capture(lcd: "LCD") -> str:
                         line = proc.stdout.readline()
                         if not line:
                             break
+
+                        if not _looks_like_real_frame(line):
+                            # Interference, not a real button press — ignore
+                            # it entirely: don't save it, don't count it,
+                            # and don't let it reset the tail timer below
+                            # (which would otherwise stop a real capture
+                            # from ever reaching "quiet long enough to end").
+                            # The overall timeout just below is what keeps
+                            # this from waiting forever if it's noise the
+                            # whole way through with no real press at all.
+                            continue
 
                         tmp.write(line)
                         tmp.flush()
@@ -85,6 +119,14 @@ def capture(lcd: "LCD") -> str:
 
                     if captured and (time.monotonic() - last_data_time) > SIGNAL_TAIL_CAPTURE_SECONDS:
                         lcd.write(STATEMENT_CAPTURED, f"{pulse_count} pulses")
+                        break
+
+                    # Nothing real yet after a while — likely just noise the
+                    # whole time with no actual button press. Give up rather
+                    # than wait forever; the caller's existing "no signal,
+                    # try again" retry handles this the same as a too-short
+                    # capture.
+                    if not captured and (time.monotonic() - start_time) > SIGNAL_WAIT_TIMEOUT_SECONDS:
                         break
 
             finally:

@@ -90,6 +90,8 @@ The `vc4-fkms-v3d`/`vc4-kms-v3d` display driver overlays are **not** loaded — 
 USB gadget recovery access also requires:
 - `modules-load=dwc2,g_ether` appended to `cmdline.txt` after `rootwait`
 - Connect via the Pi's data-capable micro-USB port (separate from the PWR IN port the PowerBoost 500C feeds) to get an Ethernet-over-USB interface and SSH in when Wi-Fi is unavailable.
+- `systemd/usb0-gadget.service` (enabled) gives the Pi's `usb0` a static `10.55.0.1/24` the moment the interface exists — even with nothing plugged in — so it's always ready, not dependent on DHCP negotiating anything. Confirmed 2026-08-30: `dwc2` correctly binds `g_ether` as the gadget driver on this hardware (the `dtoverlay=dwc2,dr_mode=host` line in `boot/config.txt` is under `[cm5]` and never applies to this Pi Zero 2 W — inert, not a conflict).
+- No DHCP server runs on `usb0` (deliberately — a persistent dnsmasq daemon isn't worth the always-on battery/boot-speed cost for a path used only during rare Wi-Fi outages). Set a matching static IP on the connecting computer's end when using this path, e.g. `10.55.0.2/24`, then `ssh matt@10.55.0.1`.
 
 ## Key Engineering Decisions
 

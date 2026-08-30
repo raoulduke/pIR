@@ -13,8 +13,8 @@ display-only.
 
 import time
 from app.constants import (
-    MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_SETTINGS,
-    MENU_QUIT, MENU_IP,
+    MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
+    MENU_SETTINGS, MENU_QUIT, MENU_IP,
 )
 from app.state import AppState
 from hardware.lcd import LCD
@@ -23,7 +23,7 @@ from hardware.network import get_ip_address
 from screens.widgets.format import format_name
 
 
-_OPTIONS = [MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_SETTINGS, MENU_QUIT, MENU_IP]
+_OPTIONS = [MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_SETTINGS, MENU_QUIT, MENU_IP]
 
 
 def _line2(option: str, state: AppState) -> str:

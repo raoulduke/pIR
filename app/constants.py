@@ -28,9 +28,18 @@ MENU_DEVICES = "Device List"
 MENU_LEARN = "Learn"
 MENU_COMMAND = "Command"
 MENU_HOME = "Home"
+MENU_NETWORK = "Network"
 MENU_SETTINGS = "Settings"
 MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
+
+# Wi-Fi (screens/network_screen.py, services/wifi_service.py) — wraps the
+# wpa_supplicant/dhcpcd stack already managing Wi-Fi on the Pi (confirmed:
+# no NetworkManager present) via wpa_cli.
+WIFI_INTERFACE = "wlan0"
+WIFI_SCAN_WAIT_SECONDS = 8      # time to let a `wpa_cli scan` finish before reading results
+WIFI_CONNECT_TIMEOUT_SECONDS = 15  # how long to wait for dhcpcd to get an IP before giving up
+WIFI_RESCAN_INTERVAL_SECONDS = 10  # re-scan while sitting on the network list, not just on entry
 
 # Active Device Control (screens/active_device_screen.py) — the device
 # that gets raw D-pad passthrough instead of a cycled function list.
@@ -84,3 +93,10 @@ PRESET_DEFAULT_DELAY_SECONDS = 0.3
 KEYPAD_SCAN_DELAY_SECONDS = 0.0005  # settle time after driving a pin low
 KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
 KEYPAD_POLL_INTERVAL_SECONDS = 0.05 # gap between sweeps when idle
+
+# Auto-repeat while Up/Down is held (see hardware/keypad.py's
+# KeypadScanner._repeat_while_held) — scrolling long lists or the
+# character picker (screens/widgets/char_input.py) one press at a time
+# is tedious otherwise.
+KEYPAD_REPEAT_DELAY_SECONDS = 0.4     # hold time before repeat kicks in
+KEYPAD_REPEAT_INTERVAL_SECONDS = 0.1  # pace once repeating

@@ -142,7 +142,8 @@ def _handle_menu() -> None:
     import screens.command_screen as command_screen
     import screens.home_screen as home_screen
     import screens.receive_screen as receive_screen
-    from app.constants import MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME
+    import screens.network_screen as network_screen
+    from app.constants import MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_NETWORK
 
     while _state.running:
         choice = main_menu.show(lcd, _state)
@@ -161,6 +162,8 @@ def _handle_menu() -> None:
             result = command_screen.show(lcd)
         elif choice == MENU_HOME:
             result = home_screen.show(lcd, _state)
+        elif choice == MENU_NETWORK:
+            result = network_screen.show(lcd)
         else:
             result = None
 

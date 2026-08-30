@@ -37,6 +37,8 @@ from app.constants import (
     KEYPAD_SCAN_DELAY_SECONDS,
     KEYPAD_DEBOUNCE_SCANS,
     KEYPAD_POLL_INTERVAL_SECONDS,
+    KEYPAD_REPEAT_DELAY_SECONDS,
+    KEYPAD_REPEAT_INTERVAL_SECONDS,
 )
 from app.exceptions import HardwareError
 from hardware.input import (
@@ -69,6 +71,14 @@ _LABEL_ALIASES = {
     "PRESET FUNCTION 1": KEY_PRESET_1, "PRESET FUNCTION 2": KEY_PRESET_2,
     "PRESET FUNCTION 3": KEY_PRESET_3, "PRESET FUNCTION 4": KEY_PRESET_4,
 }
+
+# Keys that auto-repeat while held (see KeypadScanner._repeat_while_held).
+# Deliberately just Up/Down: every repeat does the same single action
+# regardless of timing (scroll a list, cycle a character), unlike Enter or
+# the preset/menu quick actions, where an accidental repeat would re-fire
+# a one-shot action (an IR signal, a preset macro) rather than just moving
+# a cursor.
+_REPEATABLE_KEYS = {KEY_UP, KEY_DOWN}
 
 
 def setup_pins() -> None:
@@ -119,11 +129,12 @@ def scan_once() -> str | None:
     return None
 
 
-def _read_debounced(stop_event: threading.Event, scan_fn=scan_once) -> str | None:
+def _wait_for_press(stop_event: threading.Event, scan_fn=scan_once) -> str | None:
     """Block until a press is stable for KEYPAD_DEBOUNCE_SCANS scans in a
-    row, then block again until release. Returns the id, or None if
-    stop_event was set first. *scan_fn* defaults to the general-purpose
-    scan_once(); KeypadScanner passes its own faster scan instead.
+    row, then return immediately (release not waited for here). Returns
+    None if stop_event was set first. *scan_fn* defaults to the
+    general-purpose scan_once(); KeypadScanner passes its own faster scan
+    instead.
     """
     last = None
     streak = 0
@@ -136,13 +147,28 @@ def _read_debounced(stop_event: threading.Event, scan_fn=scan_once) -> str | Non
         last = reading
 
         if streak >= KEYPAD_DEBOUNCE_SCANS:
-            # wait for release so one press doesn't repeat-fire
-            while scan_fn() is not None and not stop_event.is_set():
-                time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
             return reading
 
         time.sleep(KEYPAD_POLL_INTERVAL_SECONDS if reading is None else KEYPAD_SCAN_DELAY_SECONDS)
     return None
+
+
+def _wait_for_release(stop_event: threading.Event, scan_fn=scan_once) -> None:
+    """Block until nothing reads as pressed, so one physical press can't
+    repeat-fire (unless the caller explicitly wants repeat — see
+    KeypadScanner._repeat_while_held)."""
+    while scan_fn() is not None and not stop_event.is_set():
+        time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
+
+
+def _read_debounced(stop_event: threading.Event, scan_fn=scan_once) -> str | None:
+    """Block until a press is stable, then block again until release.
+    Returns the id, or None if stop_event was set first. Used by
+    scripts/keypad_wizard.py, which always wants one press per call."""
+    reading = _wait_for_press(stop_event, scan_fn)
+    if reading is not None:
+        _wait_for_release(stop_event, scan_fn)
+    return reading
 
 
 def _infer_partition(
@@ -281,16 +307,46 @@ class KeypadScanner:
 
         return None
 
+    def _emit(self, key: str) -> None:
+        self.events.put(key)
+        os.write(self._wake_w, b"\x00")
+
+    def _repeat_while_held(self, reading: str, key: str) -> None:
+        """Keep emitting *key* at KEYPAD_REPEAT_INTERVAL_SECONDS once held
+        past KEYPAD_REPEAT_DELAY_SECONDS, until released. Only called for
+        keys in _REPEATABLE_KEYS — Up/Down, where every repeat does the
+        same single action regardless of timing, unlike Enter (see
+        docs/active-device-control-plan.md's "Rejected: long-press Enter").
+        """
+        held_since = time.monotonic()
+        repeating = False
+        while not self._stop.is_set():
+            if self._scan() != reading:
+                return  # released (or a different combo now reads as pressed)
+            interval = KEYPAD_REPEAT_INTERVAL_SECONDS if repeating else KEYPAD_REPEAT_DELAY_SECONDS
+            if time.monotonic() - held_since >= interval:
+                self._emit(key)
+                held_since = time.monotonic()
+                repeating = True
+            time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
+
     def _run(self) -> None:
         while not self._stop.is_set():
-            reading = _read_debounced(self._stop, self._scan)
+            reading = _wait_for_press(self._stop, self._scan)
             if reading is None:
                 continue
             label = self._map.get(reading)
             if label is None:
+                _wait_for_release(self._stop, self._scan)
                 continue
-            self.events.put(resolve_label(label))
-            os.write(self._wake_w, b"\x00")
+
+            key = resolve_label(label)
+            self._emit(key)
+
+            if key in _REPEATABLE_KEYS:
+                self._repeat_while_held(reading, key)
+            else:
+                _wait_for_release(self._stop, self._scan)
 
     def pop(self) -> str | None:
         """Drain one wake byte and return the corresponding key, if any."""

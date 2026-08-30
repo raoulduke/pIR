@@ -199,9 +199,15 @@ class InputReader:
 
         return None
 
-    def read_key(self) -> str:
+    def read_key(self, timeout: float | None = None) -> str | None:
+        """Block for a key, or up to *timeout* seconds and return None if
+        none arrives (e.g. screens/network_screen.py's periodic rescan).
+        Default (None) blocks forever, unchanged from before this param
+        existed."""
         import time
         from hardware.lcd import lcd
+
+        deadline = None if timeout is None else time.monotonic() + timeout
 
         while True:
             if not self.devices and self.keypad is None and self.stdin_fd is None:
@@ -215,7 +221,11 @@ class InputReader:
             if self.keypad is not None:
                 read_fds.append(self.keypad.wake_fd)
 
-            r, _, _ = select(read_fds, [], [])
+            select_timeout = None if deadline is None else max(deadline - time.monotonic(), 0)
+            r, _, _ = select(read_fds, [], [], select_timeout)
+
+            if not r:
+                return None  # only reachable with a timeout set
 
             for fd in r:
                 if fd == self.stdin_fd:
@@ -254,9 +264,19 @@ def set_quick_action_handler(handler) -> None:
     _quick_handler = handler
 
 
-def read_key() -> str:
+def read_key(timeout: float | None = None) -> str | None:
+    """*timeout* (seconds): return None if no key arrives in time, instead
+    of blocking forever. A quick action key doesn't consume the caller's
+    timeout budget — it's handled here and waiting resumes for what's left
+    of the original timeout."""
+    import time
+    deadline = None if timeout is None else time.monotonic() + timeout
+
     while True:
-        key = _get_reader().read_key()
+        remaining = None if deadline is None else max(deadline - time.monotonic(), 0)
+        key = _get_reader().read_key(remaining)
+        if key is None:
+            return None
         if _quick_handler is not None and key in QUICK_ACTION_KEYS:
             _quick_handler(key)
             continue

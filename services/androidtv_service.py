@@ -20,13 +20,26 @@ get stuck (mDNS still showed the TV correctly advertising the configured
 port, `adb connect` still failed, `adb kill-server` fixed it instantly).
 _connect() below retries once through a server restart before giving up,
 so this self-heals without a manual `adb kill-server` on the Pi.
+
+Confirmed 2026-08-30: main.py always runs as root (sudo, for GPIO), but
+the one-time `adb pair` above is normally run by hand as `matt` — adb's
+identity is a keypair under `$HOME/.android/adbkey`, so root ends up
+auto-generating and presenting its own never-paired key, and every
+androidtv step fails as "TV unreachable" regardless of the TV actually
+being reachable (confirmed via mismatched adbkey.pub fingerprints between
+/root/.android and /home/matt/.android — only the latter had
+adb_known_hosts.pb from the original pairing). Forcing HOME to matt's for
+these subprocess calls makes the trusted identity independent of which
+Unix user actually runs the app.
 """
 
+import os
 import subprocess
 
 from services import config_service
 
 _ADB_TIMEOUT_SECONDS = 5
+_ADB_HOME = "/home/matt"  # see note above — keeps adb's identity stable regardless of which user runs main.py
 
 
 def _target() -> str | None:
@@ -38,8 +51,9 @@ def _target() -> str | None:
 
 
 def _adb(*args: str) -> subprocess.CompletedProcess:
+    env = {**os.environ, "HOME": _ADB_HOME}
     return subprocess.run(
-        ["adb", *args], capture_output=True, text=True, timeout=_ADB_TIMEOUT_SECONDS,
+        ["adb", *args], capture_output=True, text=True, timeout=_ADB_TIMEOUT_SECONDS, env=env,
     )
 
 

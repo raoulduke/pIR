@@ -27,6 +27,15 @@ def list_homes() -> list[str]:
     return sorted(d.name for d in _BASE.iterdir() if d.is_dir())
 
 
+def create_home(home: str) -> None:
+    """Create an empty home directory and fix ownership so it's accessible
+    as *matt* — same pattern as save_signal for files written while running
+    as root."""
+    d = home_dir(home)
+    d.mkdir(parents=True, exist_ok=True)
+    _chown_to_file_owner(d)
+
+
 def list_devices(home: str) -> list[str]:
     d = home_dir(home)
     if not d.is_dir():

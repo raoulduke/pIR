@@ -23,7 +23,6 @@ from hardware.input import (
 from services import (
     device_slot_service, preset_service, signal_service, config_service, voice_service, home_service,
 )
-from screens.widgets.format import format_name
 from app.exceptions import HardwareError
 from app.state import AppState
 
@@ -115,8 +114,14 @@ def _handle_preset(number: int) -> None:
     location = _state.active_location or ""
 
     lcd.write(f"Preset {number}", "Running...")
-    sent = preset_service.run_preset(number, device, location)
-    lcd.write(f"Preset {number}", f"{sent} sent" if sent else "Not configured")
+    sent, total = preset_service.run_preset(number, device, location)
+    if total == 0:
+        message = "Not configured"
+    elif sent == total:
+        message = f"{sent} sent"
+    else:
+        message = f"{sent}/{total} sent"
+    lcd.write(f"Preset {number}", message)
     time.sleep(1)
 
 
@@ -133,9 +138,12 @@ def _handle_device_cycle(key: str) -> None:
     device, location = signal_service.cycle_leaf_device(home, current, direction)
     _state.active_device, _state.active_location = device, location
 
-    label = format_name(f"{device} / {location}" if location else device)
-    lcd.write(label, "Active device")
-    time.sleep(0.8)
+    # Show the real, already-interactive screen for the new device right
+    # away — no separate "Active device" confirmation banner, which used a
+    # fixed sleep that only delayed the next real button press without
+    # adding anything the screen itself doesn't already make obvious.
+    import screens.active_device_screen as active_device_screen
+    active_device_screen.render_after_cycle(lcd, _state)
 
 
 def _handle_menu() -> None:
@@ -143,13 +151,24 @@ def _handle_menu() -> None:
     to whichever screen is chosen directly, since a quick action doesn't
     feed back into an outer dispatch loop (there isn't one anymore — see
     screens/active_device_screen.py, which owns the app's main loop)."""
+    # This can fire while active_device_screen.py has google_tv's D-pad
+    # Left/Right hold-to-scroll turned on (it re-asserts that per loop
+    # iteration, but this quick action runs from inside its blocked
+    # read_key() call, mid-iteration) — clear it (and its widened repeat
+    # interval) so e.g. holding Left in a menu screen's list doesn't
+    # rapid-fire "Back" or, worse, rapid-delete characters in the D-pad
+    # text entry widget at the wrong pace. active_device_screen.py
+    # reasserts the right state again on its own next loop pass regardless.
+    from hardware import input as input_hw
+    input_hw.set_repeatable_keys(set())
+    input_hw.set_repeat_interval(None)
+
     import screens.main_menu as main_menu
-    import screens.send_screen as send_screen
     import screens.command_screen as command_screen
     import screens.home_screen as home_screen
     import screens.receive_screen as receive_screen
     import screens.network_screen as network_screen
-    from app.constants import MENU_DEVICES, MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_NETWORK
+    from app.constants import MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_NETWORK
 
     while _state.running:
         choice = main_menu.show(lcd, _state)
@@ -160,9 +179,7 @@ def _handle_menu() -> None:
             _state.running = False
             return
 
-        if choice == MENU_DEVICES:
-            result = send_screen.show(lcd, _state)
-        elif choice == MENU_LEARN:
+        if choice == MENU_LEARN:
             result = receive_screen.show(lcd, _state)
         elif choice == MENU_COMMAND:
             result = command_screen.show(lcd)

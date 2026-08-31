@@ -4,8 +4,9 @@ config/keypad_devices.json is a flat list of configured devices. The keypad
 has 4 physical up/down pairs (device 1-4), each bound by position to one
 entry in this list — device_slot_offset (see services/config_service.py)
 is the index of the first entry currently occupying slot 1. It's fixed at
-0 today; "< Device" is Send-screen-scoped now (see screens/send_screen.py),
-not a window shift over this list.
+0 today; "< Device/Device >" cycles screens.active_device_screen's active
+device globally (see app/quick_actions.py), not a window shift over this
+list.
 
 Each entry is an IR slot by default:
   {

@@ -20,6 +20,15 @@
     },
     "receiver": {
       "4": [{"home": "home", "device": "google_tv", "location": "", "button": "mute"}]
+    },
+    "google_home": {
+      "1": [
+        {"type": "voice", "command": "Rust"},
+        {"home": "home", "device": "light", "location": "hall", "button": "off"}
+      ],
+      "2": [{"type": "voice", "command": "Rust lamp"}],
+      "3": [{"type": "voice", "command": "Toggle ceiling"}],
+      "4": [{"type": "voice", "command": "Toggle lamp"}]
     }
   }
 }

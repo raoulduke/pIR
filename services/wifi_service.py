@@ -43,6 +43,24 @@ def _split_terse(line: str) -> list[str]:
     return re.split(r"(?<!\\):", line)
 
 
+def is_ready() -> bool:
+    """True once NetworkManager itself is up and answering — distinguishes
+    "nothing in range yet" from "the Wi-Fi stack itself isn't ready yet".
+
+    pihome.service deliberately doesn't wait on NetworkManager at boot (see
+    CLAUDE.md's "Pi OS boot time" section — normal use needs a human to
+    navigate here first, which takes longer than NetworkManager needs to
+    come up), so a scan attempted in the first moment after boot can
+    legitimately hit a NetworkManager that isn't answering yet. Without
+    this, that showed as a plain "No networks" — indistinguishable from
+    actually being out of range of every AP."""
+    try:
+        result = _nmcli("-t", "-f", "RUNNING", "general", "status", timeout=_NMCLI_TIMEOUT_SECONDS)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+    return result.returncode == 0 and result.stdout.strip() == "running"
+
+
 def scan_networks() -> list[dict]:
     """Scan and return known networks, strongest signal first.
 
@@ -110,20 +128,47 @@ def connect(ssid: str, password: str = "") -> tuple[bool, str]:
     previous = _current_connection()
     _start_watchdog()
 
+    # If a connection profile for this SSID already exists, `device wifi
+    # connect` reactivates it using ITS stored secrets and silently ignores
+    # whatever password we pass here — so a wrong password against an
+    # already-known network (e.g. the Pi's own home Wi-Fi) would otherwise
+    # always "succeed". Drop the old profile first so nmcli is forced to
+    # build a fresh one from the password actually typed just now.
+    try:
+        _nmcli("connection", "delete", ssid, timeout=_NMCLI_TIMEOUT_SECONDS)
+    except Exception:
+        pass  # no existing profile (or delete failed) — fine either way
+
     args = ["device", "wifi", "connect", ssid, "ifname", WIFI_INTERFACE]
     if password:
         args += ["password", password]
 
+    result = None
     try:
-        _nmcli(*args, timeout=WIFI_CONNECT_TIMEOUT_SECONDS + 10)
+        result = _nmcli(*args, timeout=WIFI_CONNECT_TIMEOUT_SECONDS + 10)
     except Exception:
         pass  # fall through to the connectivity check/revert below regardless
 
-    deadline = time.monotonic() + WIFI_CONNECT_TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        if network.is_connected():
-            return True, "Connected"
-        time.sleep(1)
+    # nmcli already blocked until the attempt resolved one way or the other
+    # (e.g. a bad password fails the handshake almost immediately) — a
+    # nonzero exit means it's already known to have failed, so don't also
+    # burn the full poll window below waiting for something that's not
+    # coming. Only poll when nmcli reported success but the IP/DHCP side
+    # may still need a moment to catch up.
+    if result is not None and result.returncode == 0:
+        deadline = time.monotonic() + WIFI_CONNECT_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            # Both conditions matter: is_connected() alone is a bare socket
+            # check against 1.1.1.1 and stays true off the *previous* network
+            # if nmcli's attempt failed without tearing it down (e.g. wrong
+            # password) — it says nothing about which SSID wlan0 is actually on.
+            if _current_connection() == ssid and network.is_connected():
+                return True, "Connected"
+            time.sleep(1)
+    elif _current_connection() == ssid and network.is_connected():
+        # Exit code said failure, but we're actually online on the target
+        # SSID already (edge case) — trust reality over the exit code.
+        return True, "Connected"
 
     # Didn't come up for real — revert to whatever was working before.
     if previous:

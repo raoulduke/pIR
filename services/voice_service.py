@@ -1,8 +1,6 @@
 """Voice / Home Assistant command service."""
 
 import json
-import urllib.request
-import urllib.error
 from pathlib import Path
 
 from services import config_service
@@ -31,6 +29,14 @@ def send_command(text: str) -> tuple[bool, str]:
 
     Returns ``(success, message)``.
     """
+    # Deferred: urllib.request pulls in http.client/email.parser/etc — real
+    # cost at import time (measured ~125ms on this hardware), worth paying
+    # only when a voice/HA command is actually sent, not on every boot just
+    # because this module is loaded (see app/quick_actions.py's eager
+    # services import).
+    import urllib.request
+    import urllib.error
+
     ha_url = config_service.get_ha_url()
     sdk_path = config_service.get_google_sdk_path()
     endpoint = f"{ha_url}{sdk_path}"

@@ -211,7 +211,16 @@ class InputReader:
 
         while True:
             if not self.devices and self.keypad is None and self.stdin_fd is None:
-                lcd.write("Input unavailable", "Exiting.")
+                # This is the one true "no input at all" check now (see
+                # app/startup.py — a separate proactive check here used to
+                # gate boot on the same condition, but only ever counted
+                # evdev devices, not whether the keypad itself actually
+                # came up; this one's the real thing either way, so it was
+                # dead weight worth cutting). Show the IP so there's still
+                # a way to reach the device (SSH) with zero physical input.
+                from hardware import network
+                ip = network.get_ip_address()
+                lcd.write("No input device", ip[:16] if ip else "WiFi not conn.")
                 time.sleep(5)
                 raise SystemExit(0)
 
@@ -250,6 +259,28 @@ def _get_reader() -> InputReader:
     if _reader is None:
         _reader = InputReader()
     return _reader
+
+
+def set_repeatable_keys(extra: set[str]) -> None:
+    """Forward to the physical keypad's scanner (see hardware/keypad.py's
+    KeypadScanner.set_repeatable_keys), if one is actually present — a
+    no-op otherwise (dev on WSL2, SSH-only input, or a keypad-map error at
+    startup), same fallback style as everything else that touches
+    self.keypad. Up/Down always repeat regardless; *extra* adds more keys
+    on top for as long as the caller keeps re-asserting it — see
+    screens/active_device_screen.py for the Google TV D-pad use."""
+    reader = _get_reader()
+    if reader.keypad is not None:
+        reader.keypad.set_repeatable_keys(extra)
+
+
+def set_repeat_interval(seconds: float | None) -> None:
+    """Forward to the physical keypad's scanner (see hardware/keypad.py's
+    KeypadScanner.set_repeat_interval), if one is present — a no-op
+    otherwise. Pass None to restore the default pace."""
+    reader = _get_reader()
+    if reader.keypad is not None:
+        reader.keypad.set_repeat_interval(seconds)
 
 
 def set_quick_action_handler(handler) -> None:

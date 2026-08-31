@@ -58,7 +58,7 @@ services/     # Home Assistant integration, voice commands, etc.
 config/       # configuration
 ```
 
-Boot launches directly into the `send_screen` (the most frequently used screen).
+Boot launches directly into `active_device_screen` (the most frequently used screen).
 
 ## Setup
 

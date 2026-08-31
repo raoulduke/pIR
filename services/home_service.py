@@ -22,3 +22,7 @@ def verify_active_home() -> str:
 
 def list_homes() -> list[str]:
     return signal_service.list_homes()
+
+
+def create_home(name: str) -> None:
+    signal_service.create_home(name)

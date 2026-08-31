@@ -7,6 +7,7 @@ PROMPT_DEVICE = "Device:"
 PROMPT_LOCATION = "Location:"
 PROMPT_BUTTON = "Button:"
 PROMPT_COMMAND = "Command:"
+PROMPT_HOME_NAME = "Home name:"
 
 # Status statements
 STATEMENT_NO_SIGNAL = "No signal!"
@@ -24,22 +25,25 @@ STATEMENT_FAILED = "Failed!"
 
 # Menu options (screens/main_menu.py — the escape-hatch reached via the
 # physical Menu key; see docs/active-device-control-plan.md)
-MENU_DEVICES = "Device List"
 MENU_LEARN = "Learn"
 MENU_COMMAND = "Command"
 MENU_HOME = "Home"
-MENU_NETWORK = "Network"
-MENU_SETTINGS = "Settings"
+MENU_NETWORK = "WiFi"
 MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
 
-# Wi-Fi (screens/network_screen.py, services/wifi_service.py) — wraps the
-# wpa_supplicant/dhcpcd stack already managing Wi-Fi on the Pi (confirmed:
-# no NetworkManager present) via wpa_cli.
+# How often screens/main_menu.py re-checks wifi_service.is_ready() while the
+# WiFi entry is the highlighted one, so "WiFi loading..." clears back to
+# "WiFi" (and the entry re-enables) on its own once NetworkManager comes up
+# — without this, nothing would redraw the menu until the next keypress.
+MENU_WIFI_POLL_INTERVAL_SECONDS = 2
+
+# Wi-Fi (screens/network_screen.py, services/wifi_service.py) — wraps
+# NetworkManager (nmcli), which actively manages wlan0 on this Pi.
 WIFI_INTERFACE = "wlan0"
-WIFI_SCAN_WAIT_SECONDS = 8      # time to let a `wpa_cli scan` finish before reading results
 WIFI_CONNECT_TIMEOUT_SECONDS = 15  # how long to wait for dhcpcd to get an IP before giving up
 WIFI_RESCAN_INTERVAL_SECONDS = 10  # re-scan while sitting on the network list, not just on entry
+WIFI_SCAN_STOP_AFTER_UNCHANGED = 5  # give up auto-rescanning after this many finds nothing new
 
 # Active Device Control (screens/active_device_screen.py) — the device
 # that gets raw D-pad passthrough instead of a cycled function list.
@@ -51,6 +55,7 @@ LABEL_SINGLE_DEVICE = "Single device"
 LABEL_CANCEL = "Cancel"
 LABEL_TRY_AGAIN = "Try again"
 LABEL_OVERWRITE = "Overwrite?"
+LABEL_NEW_HOME = "+ New Home"
 
 # IR hardware
 LIRC_TX_DEVICE = "/dev/lirc0"

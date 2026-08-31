@@ -72,12 +72,16 @@ _LABEL_ALIASES = {
     "PRESET FUNCTION 3": KEY_PRESET_3, "PRESET FUNCTION 4": KEY_PRESET_4,
 }
 
-# Keys that auto-repeat while held (see KeypadScanner._repeat_while_held).
-# Deliberately just Up/Down: every repeat does the same single action
-# regardless of timing (scroll a list, cycle a character), unlike Enter or
-# the preset/menu quick actions, where an accidental repeat would re-fire
-# a one-shot action (an IR signal, a preset macro) rather than just moving
-# a cursor.
+# Keys that always auto-repeat while held (see KeypadScanner._repeat_while_held).
+# Deliberately just Up/Down by default: every repeat does the same single
+# action regardless of timing (scroll a list, cycle a character), unlike
+# Enter or the preset/menu quick actions, where an accidental repeat would
+# re-fire a one-shot action (an IR signal, a preset macro) rather than just
+# moving a cursor. A screen can layer Left/Right (or anything else) on top
+# of this baseline at runtime via KeypadScanner.set_repeatable_keys() —
+# screens/active_device_screen.py does this for Google TV's D-pad, where
+# Left/Right hold-to-scroll makes sense the same way Up/Down already does,
+# but only while that specific device is active (see its own comment).
 _REPEATABLE_KEYS = {KEY_UP, KEY_DOWN}
 
 
@@ -270,6 +274,8 @@ class KeypadScanner:
         self.events: "queue.Queue[str]" = queue.Queue()
         self._wake_r, self._wake_w = os.pipe()
         self._stop = threading.Event()
+        self._repeatable_keys = set(_REPEATABLE_KEYS)
+        self._repeat_interval = KEYPAD_REPEAT_INTERVAL_SECONDS
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -277,6 +283,31 @@ class KeypadScanner:
     def wake_fd(self) -> int:
         """Readable fd — becomes ready whenever an event is queued."""
         return self._wake_r
+
+    def set_repeatable_keys(self, extra: set[str]) -> None:
+        """Runtime override of which keys auto-repeat while held, layering
+        *extra* on top of the always-repeatable baseline (_REPEATABLE_KEYS —
+        Up/Down). Pass an empty set to fall back to just the baseline.
+        Read by the scan thread on its next key press, so this is safe to
+        call from any thread without a lock — worst case a press right at
+        the boundary uses the old set for that one press."""
+        self._repeatable_keys = set(_REPEATABLE_KEYS) | set(extra)
+
+    def set_repeat_interval(self, seconds: float | None) -> None:
+        """Runtime override of the pace once a repeatable key is held past
+        the initial KEYPAD_REPEAT_DELAY_SECONDS. Pass None to restore the
+        default (KEYPAD_REPEAT_INTERVAL_SECONDS).
+
+        The default 100ms assumes each repeated key event is cheap to act
+        on (bump an in-memory list index). An IR transmit is not cheap —
+        screens/active_device_screen.py's google_tv D-pad measured ~103ms
+        per ir-ctl send alone, already over the 100ms default before even
+        counting the consumer's own work — so events piled up in self.events
+        (an unbounded queue) during a hold and kept draining, stale, after
+        release, reading as laggy/bursty rather than a smooth scroll. That
+        screen widens the interval while google_tv is active so production
+        and consumption stay roughly matched."""
+        self._repeat_interval = KEYPAD_REPEAT_INTERVAL_SECONDS if seconds is None else seconds
 
     def _scan(self) -> str | None:
         """Fast path: pins are pre-configured once in __init__, so a sweep
@@ -314,16 +345,18 @@ class KeypadScanner:
     def _repeat_while_held(self, reading: str, key: str) -> None:
         """Keep emitting *key* at KEYPAD_REPEAT_INTERVAL_SECONDS once held
         past KEYPAD_REPEAT_DELAY_SECONDS, until released. Only called for
-        keys in _REPEATABLE_KEYS — Up/Down, where every repeat does the
-        same single action regardless of timing, unlike Enter (see
-        docs/active-device-control-plan.md's "Rejected: long-press Enter").
+        keys in self._repeatable_keys — Up/Down always, plus whatever a
+        screen has layered on top via set_repeatable_keys() — where every
+        repeat does the same single action regardless of timing, unlike
+        Enter (see docs/active-device-control-plan.md's "Rejected:
+        long-press Enter").
         """
         held_since = time.monotonic()
         repeating = False
         while not self._stop.is_set():
             if self._scan() != reading:
                 return  # released (or a different combo now reads as pressed)
-            interval = KEYPAD_REPEAT_INTERVAL_SECONDS if repeating else KEYPAD_REPEAT_DELAY_SECONDS
+            interval = self._repeat_interval if repeating else KEYPAD_REPEAT_DELAY_SECONDS
             if time.monotonic() - held_since >= interval:
                 self._emit(key)
                 held_since = time.monotonic()
@@ -343,7 +376,7 @@ class KeypadScanner:
             key = resolve_label(label)
             self._emit(key)
 
-            if key in _REPEATABLE_KEYS:
+            if key in self._repeatable_keys:
                 self._repeat_while_held(reading, key)
             else:
                 _wait_for_release(self._stop, self._scan)

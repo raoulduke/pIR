@@ -236,3 +236,84 @@ the active device — only the currently-active device's own override can
 ever be *read*, per the existing "Preset Device and Preset Function
 presses never change the active device" rule below, which stands
 unchanged.
+
+## Superseded 2026-08-30: Settings menu entry removed
+
+The "Settings" menu entry (above, and in "Explicitly deferred") was removed
+outright rather than left as a placeholder — it sat in the Menu for a while
+showing only "Coming soon" with nothing behind it, and was never followed
+up. `MENU_SETTINGS` (`app/constants.py`), its `_OPTIONS` entry and inline
+handling (`screens/main_menu.py`), and the docstring mentions in `main.py`
+and `screens/active_device_screen.py` are all gone. Reassigning presets
+from the device — the one concrete use case ever named for this screen —
+remains undone; if that gets built, it can reintroduce a menu entry then,
+scoped to what actually exists.
+
+## Superseded 2026-08-31: Full Device List removed
+
+The "Full Device List" menu entry (above) was removed outright — it turned
+out fully redundant with `< Device/Device >` (`app/quick_actions.py`),
+which cycles through `services/signal_service.py`'s `list_leaf_devices()`,
+the exact same universe of device/location leaves the picker exposed, and
+Active Device Control's per-device function screen (Left/Right cycles
+functions derived from `list_functions()`, the same signal files
+`list_buttons()` returns) reaches every signal the picker could fire, just
+through a different UI. Full Device List didn't even win on "jump directly
+to a device by name" — its own picker was just as sequential Up/Down as
+cycling is. `MENU_DEVICES` (`app/constants.py`), its `_OPTIONS` entry and
+dispatch (`app/quick_actions.py`), `screens/send_screen.py` itself, and
+`screens/widgets/selector.py`'s now-unused `extra_keys` parameter (its only
+real caller) are all gone.
+
+## Extended 2026-08-31: voice-command devices
+
+Active Device Control's per-device function screen originally only ever
+meant IR — functions derived from signal files under
+`signals/<home>/<device>/`. Added a second, parallel backend: a device
+listed in `config/voice_devices.json` gets its scrollable functions from
+there instead — an ordered list of `{"name", "commands"}` entries, all
+standalone (fired by Enter only; no up/down pairing concept for a spoken
+phrase) — fired through `services/voice_service.py` instead of an IR
+transmit. `screens/active_device_screen.py`'s `_functions_for()` picks
+whichever backend applies; everything else (Left/Right cycling, the
+`< name >` arrow framing, the device-cycle machinery) is unchanged and
+backend-agnostic.
+
+`"steps"` (originally `"commands"`, a plain list of voice phrases — see
+below) is a **list of preset-style steps**, fired in order by
+`services/preset_service.py`'s `run_steps()` — the exact same step
+engine and vocabulary (`voice`/`androidtv`/`androidtv_app`/plain-IR)
+keypad presets use, extracted out of `run_preset()` so both draw from one
+implementation instead of two. Every step is attempted regardless of an
+earlier one's failure ("don't abort the rest of the sequence"), overall
+success requiring all of them. This means a voice-device function isn't
+actually limited to voice: `google_home`'s "Rust" entry fires the voice
+command `"Rust"` *and then* the IR signal for `light/hall`'s `off` button
+— a physical light turning off right after the phrase fires. `"name"`
+doesn't have to match what any step actually does, either: "Soften
+kitchen" displays that name but its two real steps are voice commands
+`"Change kitchen north to candlelight"` then `"Turn off kitchen south"` —
+the original single matching-name command ("Soften kitchen", said aloud)
+didn't reliably trigger the underlying Google Assistant routine; sending
+the two concrete device commands directly sidesteps routine-matching
+entirely.
+
+A voice device still needs an actual (if empty) directory under
+`signals/<home>/<device>/` — a device is just a directory name to
+`list_leaf_devices()`/`cycle_leaf_device()`, so that's what makes it show
+up as a cyclable leaf via `< Device/Device >` alongside every IR device,
+with no changes needed to that machinery at all.
+
+First one added: `google_home`, 8 functions (`Rust`, `Rust lamp`, `Toggle
+ceiling`, `Toggle lamp`, `Soften kitchen`, `It's Friday`, `Toggle corner`,
+`Toggle window`) — the first four also wired as its Preset Function 1-4
+overrides (`config/keypad_presets.json`'s existing `"voice"` step type,
+already supported by `services/preset_service.py`). Preset Function 1's
+override was updated in step with "Rust"'s own steps (both fire the same
+voice command + IR-off sequence) to keep "Rust" meaning the same thing
+regardless of how it's triggered; Preset Functions 2-4 are unaffected.
+
+One display wrinkle worth knowing about: voice command names are shown
+exactly as authored, never through `format_name()` — `str.title()` mangles
+an apostrophe (`"it's".title()` → `"It'S"`), which would otherwise show up
+as a visible glitch on a name typed correctly in the config.

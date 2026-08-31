@@ -1,6 +1,14 @@
 [Unit]
 Description=Pi Home Control
-After=systemd-udevd.service ir-keymap.service ir-nec.service
+# Deliberately NOT After=ir-keymap.service/ir-nec.service (measured
+# ~248ms + ~199ms serialized on top of pihome.service's own start) — those
+# only configure the IR RECEIVER's keymap/protocol for the Learn screen,
+# which is several button-presses behind the Menu key and needs a human to
+# get there; nothing about booting straight to Active Device Control (IR
+# transmit, keypad, LCD) depends on them. They still run — just now in
+# parallel with this instead of serialized in front of it. See CLAUDE.md's
+# "Pi OS boot time" section.
+After=systemd-udevd.service
 
 [Service]
 Type=simple

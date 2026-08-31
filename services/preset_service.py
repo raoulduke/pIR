@@ -37,6 +37,12 @@ A device's override block only needs the slots it wants to change — any
 slot it doesn't define still falls through to the matching global default,
 so e.g. a device can override Preset Function 1 while 2-4 keep firing
 their usual global macros.
+
+run_steps() below is the actual step-execution engine, shared with
+services/voice_device_service.py — a voice-command device's Active Device
+Control functions (screens/active_device_screen.py) use this exact same
+step vocabulary and step-runner, not a separate one, so e.g. a step can
+mix a voice command with a follow-up IR signal.
 """
 
 import json
@@ -76,11 +82,17 @@ def get_preset(number: int, device: str = "", location: str = "") -> list[dict]:
     return data.get(slot, [])
 
 
-def run_preset(number: int, device: str = "", location: str = "") -> int:
-    """Fire every step of preset *number* in order — the active device's
-    override if it has one for this slot, else the global default.
-    Returns steps actually sent."""
-    steps = get_preset(number, device, location)
+def run_steps(steps: list[dict]) -> tuple[int, int]:
+    """Fire every step in *steps* in order — the shared voice/androidtv/
+    androidtv_app/IR step-execution engine. Returns (steps actually sent,
+    steps configured) — the caller needs the second number too, to tell
+    "nothing configured" apart from "configured but every step failed"
+    (0 sent either way).
+
+    Used by run_preset() below for keypad presets, and by
+    services/voice_device_service.py-backed Active Device Control
+    functions (screens/active_device_screen.py) — both draw from the
+    exact same step vocabulary rather than each having their own."""
     sent = 0
 
     for i, step in enumerate(steps):
@@ -112,4 +124,11 @@ def run_preset(number: int, device: str = "", location: str = "") -> int:
         if i < len(steps) - 1:
             time.sleep(step.get("delay_after", PRESET_DEFAULT_DELAY_SECONDS))
 
-    return sent
+    return sent, len(steps)
+
+
+def run_preset(number: int, device: str = "", location: str = "") -> tuple[int, int]:
+    """Fire every step of preset *number* in order — the active device's
+    override if it has one for this slot, else the global default.
+    Returns (steps actually sent, steps configured)."""
+    return run_steps(get_preset(number, device, location))

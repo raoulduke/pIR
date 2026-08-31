@@ -7,8 +7,17 @@ dtparam=i2c_arm=off
 #dtparam=i2s=on
 #dtparam=spi=on
 
-# Disable ACT (activity) LED
-dtparam=act_led_trigger=none
+# ACT (activity) LED as a running/safe-to-power-off indicator: the
+# "heartbeat" trigger's double-flash pulse while the OS is up (a single
+# brief flash on the "timer" trigger, first every 3s then every 1s, was
+# tried in between — reverted back to heartbeat, preferred over both), and
+# forced off (alongside an "OK to power off" LCD message) as the very last
+# action before poweroff actually completes (see
+# systemd/system-shutdown/shutdown-signal.sh) — LED off is the
+# deterministic signal it's safe to flip the physical battery switch,
+# independent of whether Pi Home Control's own process is still running.
+# See CLAUDE.md's "Shutdown / power-off signaling" section.
+dtparam=act_led_trigger=heartbeat
 dtparam=act_led_activelow=on
 
 # Disable PWR (power) LED

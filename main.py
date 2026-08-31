@@ -2,9 +2,8 @@
 """Pi Home Control — entry point.
 
 Startup → Active Device Control (main loop) → shutdown. Everything else
-(full device list, Learn, voice command, Home switcher, Settings) is
-reached via the physical Menu key from anywhere — see
-docs/active-device-control-plan.md.
+(Learn, voice command, Home switcher, WiFi) is reached via the physical
+Menu key from anywhere — see docs/active-device-control-plan.md.
 """
 
 import argparse
@@ -30,8 +29,8 @@ what it does:
     google_tv, or Left/Right-cycled functions (Up/Down/Enter to fire) for
     everything else — derived from saved signals (per-"home", e.g.
     TV/AC/light/receiver), no separate config to author
-  - Full device list, Learn (IR capture), voice command, and Home switcher
-    all live behind the physical Menu key, reachable from any screen
+  - Learn (IR capture), voice command, Home switcher, and WiFi all live
+    behind the physical Menu key, reachable from any screen
   - Receives and learns new IR signals via the VS1838 IR receiver
   - Shows status/menus on a 16x2 I2C LCD
   - Reads input from a 12-wire keypad matrix (evdev)
@@ -50,8 +49,9 @@ what needs to be set up / running for it to work properly:
   - A populated venv at ./.venv, built ON THE PI (armhf) — see requirements.txt
   - config/settings.json with an active home set, and (for voice/HA control)
     ha_url, google_sdk_path, and ha_token_file pointing to a valid token file
-  - At least one evdev input device available (keypad); startup aborts to
-    the LCD with an error if none is found
+  - At least one input source available (GPIO keypad, a USB/evdev device,
+    or an SSH session); the app exits to the LCD with an error the first
+    time it actually needs a key and finds none, rather than at boot
   - IR receiver/transmitter and LCD wired per the pin table in README.md
   - /boot/firmware/config.txt configured per boot/config.txt (software I2C
     on GPIO23/24, i2c_arm=off to free GPIO3 for gpio-shutdown, gpu_mem=16)
@@ -116,9 +116,9 @@ def main() -> None:
     try:
         # Boot straight into Active Device Control (the most-used screen)
         # — no menu detour on startup. It owns the main loop until
-        # state.running goes False; everything else (Full Device List,
-        # Learn, Command, Home, Settings) is reached via the Menu key
-        # (app/quick_actions.py), not through this loop.
+        # state.running goes False; everything else (Learn, Command, Home)
+        # is reached via the Menu key (app/quick_actions.py), not through
+        # this loop.
         active_device_screen.show(lcd, state)
 
         lcd.write("Program stopped")

@@ -8,7 +8,33 @@ Description=Pi Home Control
 # transmit, keypad, LCD) depends on them. They still run — just now in
 # parallel with this instead of serialized in front of it. See CLAUDE.md's
 # "Pi OS boot time" section.
+#
+# DefaultDependencies=no (2026-08-31): normal services implicitly wait for
+# sysinit.target/basic.target, which pulled in the *entire* local-fs.target
+# chain — including boot-firmware.mount and its fsck, ~1.4s+ this service
+# has no actual need for (its code/venv live on the already-mounted root
+# fs; it never touches /boot/firmware). Measured ~8s of pure wait gated on
+# that chain before this service was even allowed to start. GPIO/I2C device
+# readiness (the thing that actually matters) comes from systemd-udevd,
+# explicitly ordered below, and finishes well before that chain does.
+#
+# DefaultDependencies=no also drops the automatic Conflicts=/Before=
+# shutdown.target every normal service gets — that's what guarantees a
+# clean, ordered SIGTERM on shutdown instead of an abrupt kill whenever
+# teardown happens to reach this unit. Re-added explicitly below so the
+# shutdown-signaling design (see CLAUDE.md's "Shutdown / power-off
+# signaling") keeps working exactly as before — only the boot-time wait is
+# being dropped, not shutdown ordering.
+DefaultDependencies=no
 After=systemd-udevd.service
+Conflicts=shutdown.target
+Before=shutdown.target
+# Tried pinning the CPU governor to "performance" via a Wants=/After=
+# cpufreq-performance.service pair ahead of this (2026-08-31) on the theory
+# that ondemand's ~800-900MHz during the import burst below was costing
+# real time. Measured result: consistently ~350-550ms *slower* across two
+# reboots — the extra unit's own start + job-scheduling overhead cost more
+# than any CPU-speed benefit. Reverted; that service no longer exists.
 
 [Service]
 Type=simple

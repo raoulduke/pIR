@@ -6,80 +6,9 @@ Startup → Active Device Control (main loop) → shutdown. Everything else
 Menu key from anywhere — see docs/active-device-control-plan.md.
 """
 
-import argparse
 import os
 import signal
 import sys
-import traceback
-
-HELP_DESCRIPTION = """\
-Pi Home Control — DIY IR remote control and home automation device.
-
-Runs headless on a Raspberry Pi Zero 2 W, battery-powered. Boots directly
-into Active Device Control (no menu detour) — D-pad passthrough for the
-active device (google_tv by default) or a cycled function list for any
-other device — and handles IR transmit/receive, LCD status display,
-physical keypad/button input, and Home Assistant integration (including
-voice commands).
-"""
-
-HELP_EPILOG = """\
-what it does:
-  - Controls the active device directly: raw D-pad passthrough for
-    google_tv, or Left/Right-cycled functions (Up/Down/Enter to fire) for
-    everything else — derived from saved signals (per-"home", e.g.
-    TV/AC/light/receiver), no separate config to author
-  - Learn (IR capture), voice command, Home switcher, and WiFi all live
-    behind the physical Menu key, reachable from any screen
-  - Receives and learns new IR signals via the VS1838 IR receiver
-  - Shows status/menus on a 16x2 I2C LCD
-  - Reads input from a 12-wire keypad matrix (evdev)
-  - Sends free-text voice/command strings to Home Assistant's Google
-    Assistant SDK endpoint for smart-home voice control
-  - Cleanly hands off to a physical shutdown button (GPIO3, gpio-shutdown)
-
-services it connects to:
-  - Home Assistant (ha_url / google_sdk_path in config/settings.json),
-    authenticated with a bearer token read from ha_token_file. Only used
-    when a voice/HA command is issued; IR send/receive works fully offline.
-
-what needs to be set up / running for it to work properly:
-  - Root privileges (GPIO/I2C access) — run via the venv, never bare python3:
-        sudo .venv/bin/python3 main.py
-  - A populated venv at ./.venv, built ON THE PI (armhf) — see requirements.txt
-  - config/settings.json with an active home set, and (for voice/HA control)
-    ha_url, google_sdk_path, and ha_token_file pointing to a valid token file
-  - At least one input source available (GPIO keypad, a USB/evdev device,
-    or an SSH session); the app exits to the LCD with an error the first
-    time it actually needs a key and finds none, rather than at boot
-  - IR receiver/transmitter and LCD wired per the pin table in README.md
-  - /boot/firmware/config.txt configured per boot/config.txt (software I2C
-    on GPIO23/24, i2c_arm=off to free GPIO3 for gpio-shutdown, gpu_mem=16)
-  - Wi-Fi power management disabled (needed for HA calls / IR timing)
-
-exit behavior:
-  - Clean exit or SIGTERM/SIGINT: LCD line 1 shows "Program stopped"
-  - Unhandled error: LCD line 1 shows the error, line 2 "Program stopped"
-  - The LCD is never cleared on exit, so the last status stays visible
-
-See CLAUDE.md / README.md in the project root for full hardware/software
-details.
-"""
-
-
-def _parse_args() -> None:
-    parser = argparse.ArgumentParser(
-        prog="main.py",
-        description=HELP_DESCRIPTION,
-        epilog=HELP_EPILOG,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.parse_args()
-
-
-# Handle -h/--help before any hardware-touching imports below run (importing
-# hardware.lcd, for example, immediately opens the I2C bus).
-_parse_args()
 
 print(f"[BOOT] PID={os.getpid()}")
 
@@ -132,6 +61,7 @@ def main() -> None:
 
     except Exception as e:
         print(f"[BOOT] fatal error: {e!r}")
+        import traceback
         traceback.print_exc()
         try:
             lcd.write(str(e)[:16], "Program stopped")

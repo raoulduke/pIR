@@ -55,6 +55,13 @@ disable_fw_kms_setup=1
 # Disable HDMI completely (major power saving)
 hdmi_ignore_hotplug=1
 
+# Disable the firmware's pre-kernel rainbow splash — no display is ever
+# attached. Separate from Plymouth (the userspace boot animation), which
+# is disabled by masking its systemd units instead (see
+# systemctl mask plymouth-start/plymouth-quit-wait/plymouth-quit/
+# plymouth-read-write); see CLAUDE.md's "Pi OS boot time" section.
+disable_splash=1
+
 # Disable compensation for displays with overscan
 disable_overscan=1
 

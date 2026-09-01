@@ -141,6 +141,13 @@ only for whatever's actually in `pihome.service`'s own dependency chain):
   itself rather than assuming a scan's empty result means no networks are
   in range — see `screens/network_screen.py`, which shows "Wi-Fi starting"
   instead of a misleading "No networks" when that's actually the cause.
+- **`boot/cmdline.txt` kernel params** (2026-09-01): added `quiet` (suppresses
+  verbose kernel/console log output — no cost on a headless box with no
+  display) and `raid=noautodetect` (skips MD RAID autodetection scanning —
+  no RAID is used anywhere in this setup). Both are pure removed overhead,
+  no functional tradeoff. `fastboot` (skips forced fsck) was considered and
+  rejected — it directly conflicts with the `systemd-fsck@...` decision
+  above.
 
 Applying the `pihome.service` ordering change (or any future edit to it) on
 the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service

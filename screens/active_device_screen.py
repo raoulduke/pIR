@@ -11,14 +11,41 @@ Tracks one active leaf device (state.active_device, state.active_location):
   - DEFAULT_ACTIVE_DEVICE ("google_tv") is raw D-pad passthrough — Up/Down/
     Left/Right/Enter each fire the matching signal immediately, no function
     list, no exceptions.
+  - LIGHT_MENU_DEVICE is a synthetic "Light" top-level stop, not a real
+    leaf — < Device/Device > lands here (see cycle_top_level()) instead
+    of stepping through every light device individually. Shows "Light" /
+    "Press Enter"; Enter drills into the first real light (light_leaves()
+    order) and every key besides Enter/Quit is a no-op here.
+  - A "fixed-mapping" device — one Power-like function plus at most one
+    paired action, nothing else (see _fixed_mapping_functions()) — skips
+    Left/Right cycling entirely: Enter always fires Power, Up/Down always
+    fire the paired action directly. This is detected generically by
+    function *shape*, not a device allowlist, so it covers every light
+    device (Power+Brightness) and, incidentally, any plain IR device
+    shaped the same way — receiver (just a "volume" pair, no power
+    button), tv/bedroom and ac (a "power" button plus one paired action)
+    all get this treatment with no per-device code (2026-09-02).
+    A light device specifically (any Hue/Globe light, or the
+    IR-controlled Hall Light — see _is_light_device) additionally repurposes
+    Left/Right, otherwise unused here, to cycle to the next/previous light
+    (cycle_light_leaf()) — the only way to move between individual lights,
+    since LIGHT_MENU_DEVICE (below) collapses them into one stop at the
+    top level; a non-light fixed-mapping device just leaves Left/Right
+    doing nothing, since there's nothing else to move to.
+    Colour/temp presets live on the physical Preset Function 1-4 keys
+    instead (app/quick_actions.py's _handle_preset ->
+    services.preset_service.run_preset(), config/keypad_presets.json's
+    "by_device" overrides keyed by device name) — not this screen at all,
+    so they work the same way regardless of which screen is showing.
   - Every other device shows one function at a time — Left/Right cycle
     functions, Up/Down fire a paired function's two signals, Enter fires a
     standalone one. Line 2 frames the name in < > whenever there's more
     than one function to cycle to, so it's obvious Left/Right does
     something. Functions come from services.signal_service.list_functions
-    (IR signal files) normally, or services.voice_device_service (Home
-    Assistant voice commands, all standalone) for a device configured in
-    config/voice_devices.json — see _functions_for().
+    (IR signal files) normally, or services.step_device_service (a step
+    sequence — voice/androidtv/androidtv_app/IR/hue steps, all standalone)
+    for a device configured in config/step_devices.json — see
+    _functions_for().
 """
 
 import time
@@ -28,9 +55,9 @@ from hardware import input as input_hw
 from hardware.input import (
     read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT,
 )
-from services import home_service, signal_service, voice_device_service, preset_service
+from services import home_service, signal_service, step_device_service, preset_service
 from screens.widgets.format import format_name
-from app.constants import DEFAULT_ACTIVE_DEVICE
+from app.constants import DEFAULT_ACTIVE_DEVICE, LIGHT_MENU_DEVICE
 from app.state import AppState
 from app.exceptions import HardwareError
 
@@ -57,22 +84,135 @@ _GOOGLE_TV_REPEAT_KEYS = {KEY_LEFT, KEY_RIGHT}
 _GOOGLE_TV_REPEAT_INTERVAL_SECONDS = 0.15
 
 
+def _is_light_device(device: str) -> bool:
+    """Any Hue, Globe, or IR light configured in config/step_devices.json —
+    identified by naming convention, not a separate marker: every one is
+    named "..._light" (bedroom_light, kitchen_s_light, lamp_light, etc.)
+    except the IR-controlled Hall Light, whose device name is the bare
+    "light" (matching its pre-existing signals/home/light/hall/ directory
+    — see config/step_devices.json's "light" entry)."""
+    return device.endswith("_light") or device == "light"
+
+
+def light_leaves(home: str) -> list[tuple[str, str]]:
+    """Every light leaf, in signal_service.list_leaf_devices() order —
+    what Left/Right cycles between once inside the Light category, and
+    what LIGHT_MENU_DEVICE's Enter drills into (the first one)."""
+    return [leaf for leaf in signal_service.list_leaf_devices(home) if _is_light_device(leaf[0])]
+
+
+def cycle_light_leaf(home: str, current: tuple[str, str], direction: int) -> tuple[str, str]:
+    leaves = light_leaves(home)
+    if not leaves:
+        return current
+    try:
+        index = leaves.index(current)
+    except ValueError:
+        return leaves[0]
+    return leaves[(index + direction) % len(leaves)]
+
+
+def cycle_top_level(home: str, current: tuple[str, str], direction: int) -> tuple[str, str]:
+    """< Device/Device >'s actual stepping order: every non-light leaf is
+    its own stop, and every light leaf collapses into a single
+    LIGHT_MENU_DEVICE stop (see light_leaves()/cycle_light_leaf() for
+    moving between individual lights once inside it, via Left/Right).
+
+    Being on any light device already counts as "at" that collapsed
+    stop for this purpose — so pressing < Device/Device > while on a
+    specific light (already drilled in) jumps straight to the next/prev
+    *non-light* stop, the same as pressing it from the undrilled "Light"
+    menu screen itself, never stepping through the remaining lights one
+    at a time (that's Left/Right's job, not this key's)."""
+    top_level: list[tuple[str, str]] = []
+    seen_light = False
+    for leaf in signal_service.list_leaf_devices(home):
+        if _is_light_device(leaf[0]):
+            if not seen_light:
+                top_level.append((LIGHT_MENU_DEVICE, ""))
+                seen_light = True
+        else:
+            top_level.append(leaf)
+    if not top_level:
+        return current
+
+    at_light = _is_light_device(current[0]) or current[0] == LIGHT_MENU_DEVICE
+    effective_current = (LIGHT_MENU_DEVICE, "") if at_light else current
+    try:
+        index = top_level.index(effective_current)
+    except ValueError:
+        return top_level[0]
+    return top_level[(index + direction) % len(top_level)]
+
+
+def _fixed_mapping_functions(functions: list[dict]) -> tuple[dict | None, dict | None] | None:
+    """If *functions* is simple enough for fixed-mapping treatment (Enter
+    fires the one Power-like function, Up/Down fire the one paired
+    function, no Left/Right cycling needed) — at most one Power-like
+    standalone/step function (matched by name, case-insensitively) and at
+    most one paired/step_paired function, nothing else — return
+    (power_or_None, paired_or_None). None otherwise (too complex, needs
+    normal Left/Right cycling — e.g. google_home's several standalone step
+    functions, none of them a paired action).
+
+    Covers every light device (Power+Brightness) and also, generically,
+    any plain IR device shaped the same way regardless of naming —
+    receiver (just a "volume" pair, no power button at all), tv/bedroom
+    and ac (a "power" button plus one paired action) all match this
+    without needing to be named or listed specially (2026-09-02)."""
+    paired_types = ("paired", "step_paired")
+    power = [f for f in functions if f["type"] not in paired_types and f["name"].lower() == "power"]
+    paired = [f for f in functions if f["type"] in paired_types]
+    accounted = power + paired
+    other = [f for f in functions if f not in accounted]
+    if other or len(power) > 1 or len(paired) > 1 or not accounted:
+        return None
+    return (power[0] if power else None, paired[0] if paired else None)
+
+
+def _fire_power(lcd: LCD, home: str, device: str, location: str, function: dict) -> None:
+    if function["type"] == "standalone":
+        _transmit(lcd, home, device, location, function["button"])
+    elif function["type"] == "step":
+        _run_step_function(lcd, device, location, function["steps"])
+
+
+def _fire_paired(lcd: LCD, home: str, device: str, location: str, function: dict, direction: str) -> None:
+    """*direction*: "up" or "down"."""
+    if function["type"] == "paired":
+        _transmit(lcd, home, device, location, function[direction])
+    elif function["type"] == "step_paired":
+        _run_step_function(lcd, device, location, function[f"{direction}_steps"])
+
+
+def _cycle_line2(functions: list[dict], function: dict) -> str:
+    """Line-2 text for the plain multi-function Left/Right-cycling
+    branch — the selected function's name, framed in <> when there's more
+    than one to cycle to (nothing to cycle to, so no arrows, when there's
+    just the one)."""
+    name = _display_name(function)
+    if len(functions) > 1 and len(name) <= 14:
+        return f"<{name.center(14)}>"
+    return name
+
+
 def _functions_for(home: str, device: str, location: str) -> list[dict]:
-    """Functions to cycle for this leaf — voice commands
-    (services.voice_device_service) if it's configured as a voice device,
+    """Functions to cycle for this leaf — a step sequence
+    (services.step_device_service) if it's configured as a step device,
     else the usual IR-signal-derived functions (services.signal_service)."""
-    if voice_device_service.is_voice_device(device):
-        return voice_device_service.list_functions(device)
+    if step_device_service.is_step_device(device):
+        return step_device_service.list_functions(device)
     return signal_service.list_functions(home, device, location)
 
 
 def _display_name(function: dict) -> str:
-    """Line-2 function name — voice commands are shown exactly as authored
-    (they're already human-readable phrases, not snake_case IR button
-    stems), skipping format_name(): str.title() mangles an apostrophe
-    (e.g. "it's" -> "It'S"), which would otherwise show up as a visible
-    glitch on a name typed correctly in config/voice_devices.json."""
-    return function["name"] if function["type"] == "voice" else format_name(function["name"])
+    """Line-2 function name — a step device's functions are shown exactly
+    as authored (they're already human-readable phrases, not snake_case IR
+    button stems), skipping format_name(): str.title() mangles an
+    apostrophe (e.g. "it's" -> "It'S"), which would otherwise show up as a
+    visible glitch on a name typed correctly in config/step_devices.json."""
+    step_types = ("step", "step_paired")
+    return function["name"] if function["type"] in step_types else format_name(function["name"])
 
 
 def _device_label(device: str, location: str) -> str:
@@ -112,6 +252,18 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
         lcd.write(_device_label(device, location), "Remote Control")
         return
 
+    if device == LIGHT_MENU_DEVICE:
+        input_hw.set_repeatable_keys(set())
+        input_hw.set_repeat_interval(None)
+        lcd.write("Light", "Press Enter")
+        return
+
+    if _is_light_device(device):
+        input_hw.set_repeatable_keys(set())
+        input_hw.set_repeat_interval(None)
+        lcd.write(_device_label(device, location), "Light Control")
+        return
+
     input_hw.set_repeatable_keys(set())
     input_hw.set_repeat_interval(None)
     functions = _functions_for(home, device, location)
@@ -119,11 +271,14 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
         lcd.write(_device_label(device, location), "No signals")
         return
 
-    name = _display_name(functions[0])
-    if len(functions) > 1 and len(name) <= 14:
-        line2 = f"<{name.center(14)}>"
-    else:
-        line2 = name
+    fixed = _fixed_mapping_functions(functions)
+    if fixed is not None:
+        _, paired = fixed
+        line2 = f"{format_name(paired['name'])} Control" if paired else "Power"
+        lcd.write(_device_label(device, location), line2[:16])
+        return
+
+    line2 = _cycle_line2(functions, functions[0])
     lcd.write(_device_label(device, location), line2[:16])
 
 
@@ -169,9 +324,75 @@ def show(lcd: LCD, state: AppState) -> None:
             if key == KEY_QUIT:
                 state.running = False
                 return
+            # < Device/Device > runs entirely inside the blocking read_key()
+            # call above (see hardware.input.read_key's quick-action
+            # interception) — it redraws the screen for the new device but
+            # doesn't return here, so the very next real key comes back
+            # through this same call, against the *pre*-switch device/
+            # location this iteration started with. Re-check against
+            # state before firing anything (confirmed 2026-09-01: without
+            # this, switching device then immediately pressing a button
+            # could fire against the device active before the switch).
+            if (state.active_device, state.active_location) != (device, location):
+                continue  # let the top of the loop redraw/handle the new device; this key isn't safe to apply to it sight unseen
             button = _DPAD_BUTTONS.get(key)
             if button and not _transmit(lcd, home, device, location, button):
                 dpad_needs_redraw = True  # _transmit overwrote the screen with an error
+            continue
+
+        if device == LIGHT_MENU_DEVICE:
+            input_hw.set_repeatable_keys(set())
+            input_hw.set_repeat_interval(None)
+            if leaf_changed or dpad_needs_redraw:
+                lcd.write("Light", "Press Enter")
+                dpad_needs_redraw = False
+            key = read_key()
+            if key == KEY_QUIT:
+                state.running = False
+                return
+            if (state.active_device, state.active_location) != (device, location):
+                continue
+            if key == KEY_ENTER:
+                leaves = light_leaves(home)
+                if leaves:
+                    state.active_device, state.active_location = leaves[0]
+            continue
+
+        if _is_light_device(device):
+            input_hw.set_repeatable_keys(set())
+            input_hw.set_repeat_interval(None)
+            if leaf_changed or dpad_needs_redraw:
+                lcd.write(_device_label(device, location), "Light Control")
+                dpad_needs_redraw = False
+            key = read_key()
+            if key == KEY_QUIT:
+                state.running = False
+                return
+            # Same quick-action-inside-read_key() staleness as the
+            # google_tv branch above — re-check before firing anything.
+            if (state.active_device, state.active_location) != (device, location):
+                continue
+            if key == KEY_LEFT:
+                state.active_device, state.active_location = cycle_light_leaf(home, (device, location), -1)
+                continue
+            if key == KEY_RIGHT:
+                state.active_device, state.active_location = cycle_light_leaf(home, (device, location), 1)
+                continue
+            functions = _functions_for(home, device, location)
+            power, paired = _fixed_mapping_functions(functions) or (None, None)
+            if key == KEY_ENTER and power:
+                _fire_power(lcd, home, device, location, power)
+                dpad_needs_redraw = True
+            elif key == KEY_UP and paired:
+                _fire_paired(lcd, home, device, location, paired, "up")
+                dpad_needs_redraw = True
+            elif key == KEY_DOWN and paired:
+                _fire_paired(lcd, home, device, location, paired, "down")
+                dpad_needs_redraw = True
+            # Preset Function 1-4 are intentionally not handled here —
+            # colour/temp presets are handled globally by
+            # app/quick_actions.py's Preset Function dispatch regardless
+            # of which screen is up.
             continue
 
         input_hw.set_repeatable_keys(set())
@@ -184,22 +405,69 @@ def show(lcd: LCD, state: AppState) -> None:
                 return
             continue
 
+        fixed = _fixed_mapping_functions(functions)
+        if fixed is not None:
+            power, paired = fixed
+            line2 = f"{format_name(paired['name'])} Control" if paired else "Power"
+            if leaf_changed or dpad_needs_redraw:
+                lcd.write(_device_label(device, location), line2[:16])
+                dpad_needs_redraw = False
+            key = read_key()
+            if key == KEY_QUIT:
+                state.running = False
+                return
+            if (state.active_device, state.active_location) != (device, location):
+                continue
+            if key == KEY_ENTER and power:
+                _fire_power(lcd, home, device, location, power)
+                dpad_needs_redraw = True
+            elif key == KEY_UP and paired:
+                _fire_paired(lcd, home, device, location, paired, "up")
+                dpad_needs_redraw = True
+            elif key == KEY_DOWN and paired:
+                _fire_paired(lcd, home, device, location, paired, "down")
+                dpad_needs_redraw = True
+            # Left/Right intentionally not handled — nothing to cycle to.
+            continue
+
         function_index %= len(functions)
         function = functions[function_index]
-        # Frame the name with < > when there's more than one function to
-        # make it obvious Left/Right cycles to something else — nothing to
-        # cycle to (and so no arrows) when a device only has the one.
-        name = _display_name(function)
-        if len(functions) > 1 and len(name) <= 14:
-            line2 = f"<{name.center(14)}>"
-        else:
-            line2 = name
+        line2 = _cycle_line2(functions, function)
         lcd.write(_device_label(device, location), line2[:16])
 
         key = read_key()
         if key == KEY_QUIT:
             state.running = False
             return
+
+        # < Device/Device > runs entirely inside the blocking read_key()
+        # call above (see hardware.input.read_key's quick-action
+        # interception) — it redraws the screen for the new device but
+        # doesn't return here, so the very next real key comes back
+        # through this same call, against the *pre*-switch device/
+        # location/function this iteration started with. Re-derive
+        # against state before interpreting the key, so a device switch
+        # immediately followed by Up/Down/Enter fires on the device now
+        # on screen, not the one before the switch (confirmed 2026-09-01:
+        # without this, turning one Hue light off, switching to a second,
+        # and pressing its Power function turned the *first* light back
+        # on instead of firing the second's).
+        new_device, new_location = state.active_device, state.active_location
+        if (new_device, new_location) != (device, location):
+            device, location = new_device, new_location
+            previous_leaf = (device, location)
+            if not device or device == DEFAULT_ACTIVE_DEVICE or device == LIGHT_MENU_DEVICE or _is_light_device(device):
+                continue  # different-shaped screen; let the top of the loop handle it, this key isn't safe to apply to it here
+            functions = _functions_for(home, device, location)
+            if not functions or _fixed_mapping_functions(functions) is not None:
+                continue  # ditto — a fixed-mapping device also needs its own branch, not this one's Left/Right-cycling dispatch below
+            function_index = 0
+            function = functions[0]
+
+        # The currently selected function's own Up/Down/Enter — see the
+        # fixed-mapping branch above for devices simple enough to skip
+        # Left/Right cycling entirely; this is only reached once that's
+        # been ruled out.
         if key == KEY_LEFT:
             function_index = (function_index - 1) % len(functions)
         elif key == KEY_RIGHT:
@@ -208,10 +476,14 @@ def show(lcd: LCD, state: AppState) -> None:
             _transmit(lcd, home, device, location, function["up"])
         elif key == KEY_DOWN and function["type"] == "paired":
             _transmit(lcd, home, device, location, function["down"])
+        elif key == KEY_UP and function["type"] == "step_paired":
+            _run_step_function(lcd, device, location, function["up_steps"])
+        elif key == KEY_DOWN and function["type"] == "step_paired":
+            _run_step_function(lcd, device, location, function["down_steps"])
         elif key == KEY_ENTER and function["type"] == "standalone":
             _transmit(lcd, home, device, location, function["button"])
-        elif key == KEY_ENTER and function["type"] == "voice":
-            _run_voice_function(lcd, device, location, function["steps"])
+        elif key == KEY_ENTER and function["type"] == "step":
+            _run_step_function(lcd, device, location, function["steps"])
 
 
 def _transmit(lcd: LCD, home: str, device: str, location: str, button: str) -> bool:
@@ -232,12 +504,12 @@ def _transmit(lcd: LCD, home: str, device: str, location: str, button: str) -> b
         return False
 
 
-def _run_voice_function(lcd: LCD, device: str, location: str, steps: list[dict]) -> bool:
-    """Fires a voice-device function's step sequence — the same
-    voice/androidtv/androidtv_app/IR step engine keypad presets use
+def _run_step_function(lcd: LCD, device: str, location: str, steps: list[dict]) -> bool:
+    """Fires a step device's function — the same
+    voice/androidtv/androidtv_app/IR/hue step engine keypad presets use
     (services.preset_service.run_steps()), not a separate one, so e.g. a
     voice command can be followed by an IR signal (see config/
-    voice_devices.json's "Rust" entry). Same True/False-on-error
+    step_devices.json's "Rust" entry). Same True/False-on-error
     convention as _transmit; True only if every step succeeded."""
     lcd.write(_device_label(device, location), "Sending...")
     sent, total = preset_service.run_steps(steps)

@@ -29,6 +29,38 @@
       "2": [{"type": "voice", "command": "Rust lamp"}],
       "3": [{"type": "voice", "command": "Toggle ceiling"}],
       "4": [{"type": "voice", "command": "Toggle lamp"}]
+    },
+    "bedroom_light": {
+      "1": [{"type": "hue", "ct": 454, "light_id": "3"}],
+      "2": [{"type": "hue", "ct": 370, "light_id": "3"}],
+      "3": [{"type": "hue", "ct": 153, "light_id": "3"}]
+    },
+    "kitchen_s_light": {
+      "1": [{"type": "hue", "ct": 454, "light_id": "4"}],
+      "2": [{"type": "hue", "ct": 370, "light_id": "4"}],
+      "3": [{"type": "hue", "ct": 153, "light_id": "4"}]
+    },
+    "kitchen_n_light": {
+      "1": [{"type": "hue", "ct": 454, "light_id": "5"}],
+      "2": [{"type": "hue", "ct": 370, "light_id": "5"}],
+      "3": [{"type": "hue", "ct": 153, "light_id": "5"}]
+    },
+    "lamp_light": {
+      "1": [{"type": "voice", "command": "Change lamp to candlelight"}],
+      "2": [{"type": "voice", "command": "Change lamp to warm white"}],
+      "3": [{"type": "voice", "command": "Change lamp to daylight"}],
+      "4": [{"type": "voice", "command": "Rust lamp"}]
+    },
+    "ceiling_light": {
+      "1": [{"type": "voice", "command": "Change ceiling to candlelight"}],
+      "2": [{"type": "voice", "command": "Change ceiling to warm white"}],
+      "3": [{"type": "voice", "command": "Change ceiling to daylight"}],
+      "4": [{"type": "voice", "command": "Ceiling Rust"}]
+    },
+    "corner_light": {
+      "1": [{"type": "voice", "command": "Change corner to candlelight"}],
+      "2": [{"type": "voice", "command": "Change corner to warm white"}],
+      "3": [{"type": "voice", "command": "Change corner to daylight"}]
     }
   }
 }

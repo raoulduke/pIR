@@ -50,3 +50,11 @@ def get_androidtv_ip() -> str | None:
 
 def get_androidtv_port() -> int | None:
     return _load().get("androidtv_port")
+
+
+def get_hue_bridge_ip() -> str | None:
+    return _load().get("hue_bridge_ip")
+
+
+def get_hue_username_file() -> str | None:
+    return _load().get("hue_username_file")

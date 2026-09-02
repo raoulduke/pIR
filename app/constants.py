@@ -49,6 +49,13 @@ WIFI_SCAN_STOP_AFTER_UNCHANGED = 5  # give up auto-rescanning after this many fi
 # that gets raw D-pad passthrough instead of a cycled function list.
 DEFAULT_ACTIVE_DEVICE = "google_tv"
 
+# Sentinel for the "Light" top-level menu stop in < Device/Device >
+# cycling — not a real signal_service leaf/directory, never passed to
+# anything filesystem-backed. See active_device_screen.py's
+# cycle_top_level()/light_leaves() and its LIGHT_MENU_DEVICE branch in
+# show()/render_after_cycle().
+LIGHT_MENU_DEVICE = "__light_menu__"
+
 # Misc
 LABEL_ENTER_LOCATION = "Enter location"
 LABEL_SINGLE_DEVICE = "Single device"

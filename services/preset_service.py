@@ -24,6 +24,28 @@ functions with no keyevent equivalent (e.g. a YouTube shortcut button):
   {"type": "androidtv_app", "package": "com.google.android.youtube.tv",
    "delay_after": 0.3}
 
+A hue step controls a Philips Hue light over the bridge's local API
+(services/hue_service.py). "action" is "on", "off", or "toggle" (reads the
+light's current state and flips it):
+  {"type": "hue", "action": "toggle", "light_id": "3", "delay_after": 0.3}
+Any of "bri_inc"/"ct_inc" (relative change, -254..254/mireds, via the
+bridge's own clamping) or "bri"/"ct" (absolute value) instead takes
+priority over "action" if present — used for Up/Down brightness
+(bri_inc) and Preset Function colour/temp presets (ct; see
+config/keypad_presets.json's "by_device" Candlelight/Warm White/Daylight
+entries):
+  {"type": "hue", "bri_inc": 25, "light_id": "3", "delay_after": 0.3}
+  {"type": "hue", "ct": 454, "light_id": "3", "delay_after": 0.3}
+
+An ir_toggle step fires one of two IR signals depending on assumed
+on/off state, flipping it each time — for a device whose remote has no
+single toggle button, just separate on/off ones (e.g. Hall Light). No
+real state readback exists for a dumb IR light, so this is only as
+reliable as the assumption that nothing else ever changes the light's
+power (see _ir_toggle_state's own comment):
+  {"type": "ir_toggle", "home": "home", "device": "light", "location": "hall",
+   "on_button": "on", "off_button": "off", "delay_after": 0.3}
+
 Top-level "1".."4" are the global defaults — what fires when the active
 device (screens/active_device_screen.py's state.active_device/location) has
 no override for that slot. A top-level "by_device" key adds per-device
@@ -39,10 +61,10 @@ so e.g. a device can override Preset Function 1 while 2-4 keep firing
 their usual global macros.
 
 run_steps() below is the actual step-execution engine, shared with
-services/voice_device_service.py — a voice-command device's Active Device
-Control functions (screens/active_device_screen.py) use this exact same
-step vocabulary and step-runner, not a separate one, so e.g. a step can
-mix a voice command with a follow-up IR signal.
+services/step_device_service.py — a step device's Active Device Control
+functions (screens/active_device_screen.py) use this exact same step
+vocabulary and step-runner, not a separate one, so e.g. a step can mix a
+voice command with a follow-up IR signal.
 """
 
 import json
@@ -52,9 +74,19 @@ from pathlib import Path
 from app.constants import KEYPAD_PRESETS_FILE, PRESET_DEFAULT_DELAY_SECONDS
 from app.exceptions import HardwareError
 from hardware import ir_transmitter
-from services import signal_service, voice_service, androidtv_service
+from services import signal_service, voice_service, androidtv_service, hue_service
 
 _PATH = Path(__file__).parent.parent / KEYPAD_PRESETS_FILE
+
+# In-memory assumed on/off state for ir_toggle steps, keyed by (home,
+# device, location) — see run_steps()'s ir_toggle handling. Resets to the
+# "off" assumption on every app restart, and can drift from the light's
+# real state if it's ever changed another way (the light's own remote, a
+# wall switch) — there's no way to read a dumb IR light's actual state
+# back, unlike hue_service's bridge-backed lights, so this is a real
+# limitation, not just a startup quirk. Acceptable for a light with no
+# other regular control path (see Hall Light, 2026-09-02).
+_ir_toggle_state: dict[tuple[str, str, str], bool] = {}
 
 
 def _load() -> dict:
@@ -90,7 +122,7 @@ def run_steps(steps: list[dict]) -> tuple[int, int]:
     (0 sent either way).
 
     Used by run_preset() below for keypad presets, and by
-    services/voice_device_service.py-backed Active Device Control
+    services/step_device_service.py-backed Active Device Control
     functions (screens/active_device_screen.py) — both draw from the
     exact same step vocabulary rather than each having their own."""
     sent = 0
@@ -108,6 +140,56 @@ def run_steps(steps: list[dict]) -> tuple[int, int]:
             success, _ = androidtv_service.launch_app(step["package"])
             if success:
                 sent += 1
+        elif step.get("type") == "hue":
+            try:
+                light_id = step["light_id"]
+                # bri_inc/ct_inc change brightness/colour temperature by a
+                # relative amount via the bridge's own clamping (avoids a
+                # read-current-then-write race — see Up/Down brightness in
+                # screens/active_device_screen.py); bri/ct set an absolute
+                # value instead (see Preset Function colour/temp presets in
+                # config/keypad_presets.json's "by_device" — Candlelight/
+                # Warm White/Daylight/Rust). Any combination of the four
+                # may appear in one step. on=True whenever any of them is
+                # present so a press on an off light turns it on rather
+                # than silently doing nothing (Hue only applies a
+                # brightness/colour change to an off light if "on" is set
+                # in the same request).
+                light_state = {k: step[k] for k in ("bri_inc", "ct_inc", "bri", "ct") if k in step}
+                if light_state:
+                    light_state["on"] = True
+                    hue_service.set_light_state(light_id, **light_state)
+                else:
+                    action = step.get("action", "toggle")
+                    if action == "on":
+                        hue_service.turn_on(light_id)
+                    elif action == "off":
+                        hue_service.turn_off(light_id)
+                    else:
+                        current = hue_service.get_light(light_id).get("state", {}).get("on", False)
+                        hue_service.set_light_state(light_id, on=not current)
+                sent += 1
+            except (OSError, ValueError, KeyError):
+                pass
+        elif step.get("type") == "ir_toggle":
+            # Flip the assumed state and fire whichever real signal
+            # matches it — see _ir_toggle_state's own comment for the
+            # "no real state readback" caveat. Sent-count only reflects
+            # whether the chosen signal file existed/transmitted, same as
+            # the plain-IR branch below.
+            key = (step["home"], step["device"], step.get("location", ""))
+            now_on = not _ir_toggle_state.get(key, False)
+            _ir_toggle_state[key] = now_on
+            button = step["on_button"] if now_on else step["off_button"]
+            path = signal_service.signal_path(
+                step["home"], step["device"], button, step.get("location", "")
+            )
+            if path.exists():
+                try:
+                    ir_transmitter.transmit(path)
+                    sent += 1
+                except HardwareError:
+                    pass
         else:
             path = signal_service.signal_path(
                 step["home"], step["device"], step["button"], step.get("location", "")

@@ -128,21 +128,25 @@ def _handle_preset(number: int) -> None:
 def _handle_device_cycle(key: str) -> None:
     """< Device / Device > — cycle screens.active_device_screen's active
     device. Global (works from any screen), replacing the old Send-screen
-    -scoped cycle."""
+    -scoped cycle. Every light device collapses into one "Light" stop
+    here (screens.active_device_screen.cycle_top_level()) — Left/Right,
+    handled locally by active_device_screen.show() itself once a light
+    (or the Light menu) is active, is what actually moves between
+    individual lights."""
     direction = _CYCLE_DIRECTIONS[key]
     home = home_service.get_active_home()
     current = (_state.active_device, _state.active_location)
     if current[0] is None:
         current = signal_service.default_leaf_device(home)
 
-    device, location = signal_service.cycle_leaf_device(home, current, direction)
+    import screens.active_device_screen as active_device_screen
+    device, location = active_device_screen.cycle_top_level(home, current, direction)
     _state.active_device, _state.active_location = device, location
 
     # Show the real, already-interactive screen for the new device right
     # away — no separate "Active device" confirmation banner, which used a
     # fixed sleep that only delayed the next real button press without
     # adding anything the screen itself doesn't already make obvious.
-    import screens.active_device_screen as active_device_screen
     active_device_screen.render_after_cycle(lcd, _state)
 
 

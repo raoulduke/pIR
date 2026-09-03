@@ -4,13 +4,15 @@ All reads and writes to the signals/ directory live here.
 Hardware and screens never touch the filesystem directly.
 """
 
+import json
 from pathlib import Path
 import os
 import pwd
 
-from app.constants import SIGNALS_DIR, FILE_OWNER, DEFAULT_ACTIVE_DEVICE
+from app.constants import SIGNALS_DIR, FILE_OWNER, DEFAULT_ACTIVE_DEVICE, DEVICE_ORDER_FILE
 
 _BASE = Path(__file__).parent.parent / SIGNALS_DIR
+_ORDER_PATH = Path(__file__).parent.parent / DEVICE_ORDER_FILE
 
 
 def home_dir(home: str) -> Path:
@@ -36,11 +38,32 @@ def create_home(home: str) -> None:
     _chown_to_file_owner(d)
 
 
+def _device_order(home: str) -> list[str]:
+    """config/device_order.json's explicit order for *home*, or [] if the
+    file/home entry is missing — list_devices() falls back to pure
+    alphabetical either way (see there)."""
+    if not _ORDER_PATH.exists():
+        return []
+    try:
+        data = json.loads(_ORDER_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    return data.get(home, [])
+
+
 def list_devices(home: str) -> list[str]:
+    """Device directory names under *home*, in < Device/Device >'s cycle
+    order — config/device_order.json's explicit order for this home
+    first, then any device not listed there (a new one added since, or a
+    home with no config entry at all), alphabetically, appended after."""
     d = home_dir(home)
     if not d.is_dir():
         return []
-    return sorted(p.name for p in d.iterdir() if p.is_dir())
+    names = {p.name for p in d.iterdir() if p.is_dir()}
+
+    order = [name for name in _device_order(home) if name in names]
+    remaining = sorted(names - set(order))
+    return order + remaining
 
 
 def cycle_device(home: str, current_device: str, direction: int) -> str:

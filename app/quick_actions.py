@@ -19,10 +19,12 @@ from hardware.input import (
     KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
     KEY_DEVICE_PREV, KEY_DEVICE_NEXT, KEY_MENU, KEY_QUIT,
+    DeviceCycledAway,
 )
 from services import (
     device_slot_service, preset_service, signal_service, config_service, voice_service, home_service,
 )
+from app.constants import STATEMENT_SENT
 from app.exceptions import HardwareError
 from app.state import AppState
 
@@ -37,6 +39,11 @@ _CYCLE_DIRECTIONS = {KEY_DEVICE_PREV: -1, KEY_DEVICE_NEXT: 1}
 
 _state: AppState | None = None
 
+# Set for the duration of _handle_menu() (and everything it calls) so
+# _handle_device_cycle can tell it's currently nested under a Menu screen —
+# see hardware.input.DeviceCycledAway.
+_in_menu = False
+
 
 def init(state: AppState) -> None:
     """Give this module access to AppState. Call once from main.py."""
@@ -44,15 +51,30 @@ def init(state: AppState) -> None:
     _state = state
 
 
-def handle(key: str) -> None:
+def handle(key: str) -> bool:
+    """Returns True if hardware.input.read_key() should return None to its
+    caller right away instead of continuing to block for another key —
+    used by the "Preset Device N" slot buttons and Preset Function so
+    their temporary result ("Receiver"/"Volume Down", "Candlelight"/"3
+    sent", ...) doesn't linger on the LCD until some unrelated keypress
+    happens to come along; the screen it interrupted redraws itself
+    immediately instead (every screen's own read loop already redraws
+    unconditionally on a None key, except a few of
+    screens/active_device_screen.py's own — see its handling of a None
+    key there). < Device/Device > and Menu keep the previous behavior
+    (False/None) — they already redraw synchronously themselves as part
+    of switching screens, so there's nothing stale left to clear."""
     if key in _DEVICE_KEYS:
         _handle_device(key)
+        return True
     elif key in _PRESET_KEYS:
         _handle_preset(_PRESET_KEYS[key])
+        return True
     elif key in _CYCLE_DIRECTIONS:
         _handle_device_cycle(key)
     elif key == KEY_MENU:
         _handle_menu()
+    return False
 
 
 def _handle_device(key: str) -> None:
@@ -109,19 +131,30 @@ def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
 def _handle_preset(number: int) -> None:
     """Preset Function N — runs the active device's override for slot N if
     it has one (see services/preset_service.py), else the global default.
-    Active device is read-only here; presses never change it."""
+    Active device is read-only here; presses never change it.
+
+    Shows the preset's configured name (e.g. "Candlelight", "Rest")
+    instead of the generic "Preset N" — falls back to "Preset N" if the
+    entry has no name or isn't configured at all, so there's still
+    something on line 1 either way."""
     device = _state.active_device or ""
     location = _state.active_location or ""
 
-    lcd.write(f"Preset {number}", "Running...")
-    sent, total = preset_service.run_preset(number, device, location)
+    name, steps = preset_service.get_preset(number, device, location)
+    label = (name or f"Preset {number}")[:16]
+
+    lcd.write(label, "Running...")
+    sent, total, failed_step = preset_service.run_steps(steps)
     if total == 0:
         message = "Not configured"
-    elif sent == total:
-        message = f"{sent} sent"
+    elif failed_step is None:
+        message = STATEMENT_SENT
     else:
-        message = f"{sent}/{total} sent"
-    lcd.write(f"Preset {number}", message)
+        # Which step failed, not just how many — same for a single-step
+        # preset (e.g. Preset 1's default "Back" IR signal) and a
+        # multi-step one (e.g. "Rust"'s voice command + IR signal).
+        message = f"Failed: {preset_service.describe_step(failed_step)}"[:16]
+    lcd.write(label, message)
     time.sleep(1)
 
 
@@ -149,6 +182,21 @@ def _handle_device_cycle(key: str) -> None:
     # adding anything the screen itself doesn't already make obvious.
     active_device_screen.render_after_cycle(lcd, _state)
 
+    if _in_menu:
+        # Cycling devices backs out of any Menu screen immediately, on
+        # this very keypress — not just a redraw that a Menu screen sits
+        # on top of, invisible, until some unrelated key is next pressed.
+        # Deliberately left uncaught here (see DeviceCycledAway) so it
+        # unwinds all the way back to active_device_screen.show()'s own
+        # blocked read_key() call, from before the Menu key was pressed —
+        # not just out of _handle_menu — so *that* screen's very next
+        # read_key() call is a fresh one against the already-switched
+        # device, instead of the stale one it was mid-call on when Menu
+        # interrupted it (which would otherwise still need its usual
+        # "this key isn't safe to apply to it sight unseen" discard-and-
+        # redraw, costing an extra throwaway keypress on top of this one).
+        raise DeviceCycledAway()
+
 
 def _handle_menu() -> None:
     """Menu key — the escape hatch. Opens screens.main_menu and dispatches
@@ -174,26 +222,37 @@ def _handle_menu() -> None:
     import screens.network_screen as network_screen
     from app.constants import MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_NETWORK
 
-    while _state.running:
-        choice = main_menu.show(lcd, _state)
+    global _in_menu
+    _in_menu = True
+    try:
+        while _state.running:
+            choice = main_menu.show(lcd, _state)
 
-        if choice is None:
-            return
-        if choice == KEY_QUIT:
-            _state.running = False
-            return
+            if choice is None:
+                return
+            if choice == KEY_QUIT:
+                _state.running = False
+                return
 
-        if choice == MENU_LEARN:
-            result = receive_screen.show(lcd, _state)
-        elif choice == MENU_COMMAND:
-            result = command_screen.show(lcd)
-        elif choice == MENU_HOME:
-            result = home_screen.show(lcd, _state)
-        elif choice == MENU_NETWORK:
-            result = network_screen.show(lcd)
-        else:
-            result = None
+            if choice == MENU_LEARN:
+                result = receive_screen.show(lcd, _state)
+            elif choice == MENU_COMMAND:
+                result = command_screen.show(lcd)
+            elif choice == MENU_HOME:
+                result = home_screen.show(lcd, _state)
+            elif choice == MENU_NETWORK:
+                result = network_screen.show(lcd)
+            else:
+                result = None
 
-        if result == KEY_QUIT:
-            _state.running = False
-            return
+            if result == KEY_QUIT:
+                _state.running = False
+                return
+    finally:
+        # Not catching DeviceCycledAway here — it's meant to propagate
+        # further up, past this function entirely, to
+        # active_device_screen.show()'s own blocked read_key() call (see
+        # DeviceCycledAway and _handle_device_cycle). This finally only
+        # resets the "are we nested under a Menu screen" flag on the way
+        # out, however _handle_menu is exiting.
+        _in_menu = False

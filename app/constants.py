@@ -6,7 +6,7 @@
 PROMPT_DEVICE = "Device:"
 PROMPT_LOCATION = "Location:"
 PROMPT_BUTTON = "Button:"
-PROMPT_COMMAND = "Command:"
+PROMPT_SEARCH = "Search:"
 PROMPT_HOME_NAME = "Home name:"
 
 # Status statements
@@ -27,7 +27,7 @@ STATEMENT_FAILED = "Failed!"
 # physical Menu key; see docs/active-device-control-plan.md)
 MENU_LEARN = "Learn"
 MENU_COMMAND = "Command"
-MENU_HOME = "Home"
+MENU_HOME = "Change Home"
 MENU_NETWORK = "WiFi"
 MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
@@ -81,6 +81,11 @@ FILE_OWNER = "matt"
 
 # Signals directory (relative to project root)
 SIGNALS_DIR = "signals"
+
+# Explicit < Device/Device > cycle order, consumed by
+# services/signal_service.py's list_devices(). Per-home; a device not
+# listed for its home falls back to alphabetical, after every listed one.
+DEVICE_ORDER_FILE = "config/device_order.json"
 
 # Keypad matrix — BCM pin numbers in wiring-table order (wire 1 .. wire 12).
 # See CLAUDE.md Pin Wiring Table. Order matters: it is the index the wizard

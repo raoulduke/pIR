@@ -1,7 +1,12 @@
 """Keypad presets — run multiple IR commands in sequence from one button.
 
-config/keypad_presets.json maps preset number ("1".."4") to an ordered list
-of steps. An IR step:
+config/keypad_presets.json maps preset number ("1".."4") to a {"name":
+..., "steps": [...]} object — "name" is what app/quick_actions.py's
+_handle_preset shows on the LCD in place of the generic "Preset N" while
+it runs (e.g. "Candlelight", "Rest"); "steps" is the ordered list of
+actions to fire. "name" is optional (falls back to "Preset N" if missing
+or blank) but every entry should have one — an unnamed preset is hard to
+tell apart from another at a glance. An IR step:
   {"home": "home", "device": "tv", "location": "bedroom", "button": "power",
    "delay_after": 0.3}
 
@@ -102,32 +107,62 @@ def _device_key(device: str, location: str) -> str:
     return f"{device}/{location}" if location else device
 
 
-def get_preset(number: int, device: str = "", location: str = "") -> list[dict]:
+def get_preset(number: int, device: str = "", location: str = "") -> tuple[str, list[dict]]:
+    """Returns (name, steps) — the active device's override for this slot
+    if it has one, else the global default. name is "" if the entry (or
+    its "name" field) is missing."""
     data = _load()
     slot = str(number)
 
+    entry = None
     if device:
         overrides = data.get("by_device", {}).get(_device_key(device, location), {})
-        if slot in overrides:
-            return overrides[slot]
+        entry = overrides.get(slot)
+    if entry is None:
+        entry = data.get(slot, {})
 
-    return data.get(slot, [])
+    return entry.get("name", ""), entry.get("steps", [])
 
 
-def run_steps(steps: list[dict]) -> tuple[int, int]:
+def describe_step(step: dict) -> str:
+    """A short, human-readable label for one step — e.g. what run_steps()'s
+    failed-step return value actually was, for a caller to show on the
+    LCD. Not run through screens/widgets/format.py's format_name()
+    (services intentionally doesn't depend on screens) — just enough to
+    tell steps apart at a glance in ~16 characters."""
+    step_type = step.get("type")
+    if step_type == "voice":
+        return step.get("command", "Voice")
+    if step_type == "androidtv":
+        return step.get("keyevent", "").removeprefix("KEYCODE_").replace("_", " ").title()
+    if step_type == "androidtv_app":
+        return "App"
+    if step_type == "hue":
+        return "Light"
+    if step_type == "ir_toggle":
+        return step.get("device", "IR").replace("_", " ").title()
+    return step.get("button", "Signal").replace("_", " ").title()
+
+
+def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
     """Fire every step in *steps* in order — the shared voice/androidtv/
     androidtv_app/IR step-execution engine. Returns (steps actually sent,
-    steps configured) — the caller needs the second number too, to tell
-    "nothing configured" apart from "configured but every step failed"
-    (0 sent either way).
+    steps configured, the first step that failed — None if every step
+    sent, or nothing was configured). The caller needs "steps configured"
+    too, to tell "nothing configured" apart from "configured but every
+    step failed" (0 sent either way); the failed step (see describe_step()
+    above) is what actually failed, not just how many did.
 
-    Used by run_preset() below for keypad presets, and by
+    Used by app/quick_actions.py's _handle_preset (on the steps get_preset()
+    above returns for a keypad preset), and by
     services/step_device_service.py-backed Active Device Control
     functions (screens/active_device_screen.py) — both draw from the
     exact same step vocabulary rather than each having their own."""
     sent = 0
+    failed_step = None
 
     for i, step in enumerate(steps):
+        sent_before = sent
         if step.get("type") == "voice":
             success, _ = voice_service.send_command(step["command"])
             if success:
@@ -201,16 +236,14 @@ def run_steps(steps: list[dict]) -> tuple[int, int]:
                 except HardwareError:
                     pass
 
+        if sent == sent_before and failed_step is None:
+            failed_step = step
+
         # No delay needed after the last step — nothing follows it that
         # could be disrupted by firing signals too close together.
         if i < len(steps) - 1:
             time.sleep(step.get("delay_after", PRESET_DEFAULT_DELAY_SECONDS))
 
-    return sent, len(steps)
+    return sent, len(steps), failed_step
 
 
-def run_preset(number: int, device: str = "", location: str = "") -> tuple[int, int]:
-    """Fire every step of preset *number* in order — the active device's
-    override if it has one for this slot, else the global default.
-    Returns (steps actually sent, steps configured)."""
-    return run_steps(get_preset(number, device, location))

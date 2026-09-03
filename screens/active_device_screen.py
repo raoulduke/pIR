@@ -34,9 +34,10 @@ Tracks one active leaf device (state.active_device, state.active_location):
     doing nothing, since there's nothing else to move to.
     Colour/temp presets live on the physical Preset Function 1-4 keys
     instead (app/quick_actions.py's _handle_preset ->
-    services.preset_service.run_preset(), config/keypad_presets.json's
-    "by_device" overrides keyed by device name) — not this screen at all,
-    so they work the same way regardless of which screen is showing.
+    services.preset_service.get_preset()/run_steps(), config/
+    keypad_presets.json's "by_device" overrides keyed by device name) —
+    not this screen at all, so they work the same way regardless of
+    which screen is showing.
   - Every other device shows one function at a time — Left/Right cycle
     functions, Up/Down fire a paired function's two signals, Enter fires a
     standalone one. Line 2 frames the name in < > whenever there's more
@@ -54,6 +55,7 @@ from hardware import ir_transmitter
 from hardware import input as input_hw
 from hardware.input import (
     read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT,
+    DeviceCycledAway,
 )
 from services import home_service, signal_service, step_device_service, preset_service
 from screens.widgets.format import format_name
@@ -288,202 +290,238 @@ def show(lcd: LCD, state: AppState) -> None:
     dpad_needs_redraw = True  # forces the first draw on entry, same as leaf_changed would
 
     while state.running:
-        home = home_service.get_active_home()
+        try:
+            home = home_service.get_active_home()
 
-        if state.active_device is None:
-            state.active_device, state.active_location = signal_service.default_leaf_device(home)
+            if state.active_device is None:
+                state.active_device, state.active_location = signal_service.default_leaf_device(home)
 
-        device, location = state.active_device, state.active_location
-        leaf_changed = (device, location) != previous_leaf
-        if leaf_changed:
-            function_index = 0
-            previous_leaf = (device, location)
+            device, location = state.active_device, state.active_location
+            leaf_changed = (device, location) != previous_leaf
+            if leaf_changed:
+                function_index = 0
+                previous_leaf = (device, location)
 
-        if not device:
+            if not device:
+                input_hw.set_repeatable_keys(set())
+                input_hw.set_repeat_interval(None)
+                lcd.write("No signals", format_name(home)[:16])
+                if read_key() == KEY_QUIT:
+                    state.running = False
+                    return
+                continue
+
+            if device == DEFAULT_ACTIVE_DEVICE:
+                input_hw.set_repeatable_keys(_GOOGLE_TV_REPEAT_KEYS)
+                input_hw.set_repeat_interval(_GOOGLE_TV_REPEAT_INTERVAL_SECONDS)
+                # This screen's text never changes on a button press (success
+                # is silent — see _transmit), so only draw it when it actually
+                # needs to change, not on every held-key repeat: a redundant
+                # identical write here measured ~81ms on this LCD (bit-banged
+                # software I2C), which was eating into the repeat interval
+                # budget above just as much as the IR transmit itself.
+                if leaf_changed or dpad_needs_redraw:
+                    lcd.write(_device_label(device, location), "Remote Control")
+                    dpad_needs_redraw = False
+                key = read_key()
+                if key is None:
+                    # A quick action wants an immediate redraw (currently
+                    # just Preset Function — see hardware.input.read_key's
+                    # None-on-quick-action contract) rather than the usual
+                    # "keep waiting silently" — this screen's own redraw is
+                    # conditional (dpad_needs_redraw), so force it instead
+                    # of leaving the quick action's LCD output stuck up
+                    # until some unrelated real key happens to arrive.
+                    dpad_needs_redraw = True
+                    continue
+                if key == KEY_QUIT:
+                    state.running = False
+                    return
+                # < Device/Device > runs entirely inside the blocking read_key()
+                # call above (see hardware.input.read_key's quick-action
+                # interception) — it redraws the screen for the new device but
+                # doesn't return here, so the very next real key comes back
+                # through this same call, against the *pre*-switch device/
+                # location this iteration started with. Re-check against
+                # state before firing anything (confirmed 2026-09-01: without
+                # this, switching device then immediately pressing a button
+                # could fire against the device active before the switch).
+                if (state.active_device, state.active_location) != (device, location):
+                    continue  # let the top of the loop redraw/handle the new device; this key isn't safe to apply to it sight unseen
+                button = _DPAD_BUTTONS.get(key)
+                if button and not _transmit(lcd, home, device, location, button):
+                    dpad_needs_redraw = True  # _transmit overwrote the screen with an error
+                continue
+
+            if device == LIGHT_MENU_DEVICE:
+                input_hw.set_repeatable_keys(set())
+                input_hw.set_repeat_interval(None)
+                if leaf_changed or dpad_needs_redraw:
+                    lcd.write("Light", "Press Enter")
+                    dpad_needs_redraw = False
+                key = read_key()
+                if key is None:
+                    # See the google_tv branch above's identical handling.
+                    dpad_needs_redraw = True
+                    continue
+                if key == KEY_QUIT:
+                    state.running = False
+                    return
+                if (state.active_device, state.active_location) != (device, location):
+                    continue
+                if key == KEY_ENTER:
+                    leaves = light_leaves(home)
+                    if leaves:
+                        state.active_device, state.active_location = leaves[0]
+                continue
+
+            if _is_light_device(device):
+                input_hw.set_repeatable_keys(set())
+                input_hw.set_repeat_interval(None)
+                if leaf_changed or dpad_needs_redraw:
+                    lcd.write(_device_label(device, location), "Light Control")
+                    dpad_needs_redraw = False
+                key = read_key()
+                if key is None:
+                    # See the google_tv branch above's identical handling.
+                    dpad_needs_redraw = True
+                    continue
+                if key == KEY_QUIT:
+                    state.running = False
+                    return
+                # Same quick-action-inside-read_key() staleness as the
+                # google_tv branch above — re-check before firing anything.
+                if (state.active_device, state.active_location) != (device, location):
+                    continue
+                if key == KEY_LEFT:
+                    state.active_device, state.active_location = cycle_light_leaf(home, (device, location), -1)
+                    continue
+                if key == KEY_RIGHT:
+                    state.active_device, state.active_location = cycle_light_leaf(home, (device, location), 1)
+                    continue
+                functions = _functions_for(home, device, location)
+                power, paired = _fixed_mapping_functions(functions) or (None, None)
+                if key == KEY_ENTER and power:
+                    _fire_power(lcd, home, device, location, power)
+                    dpad_needs_redraw = True
+                elif key == KEY_UP and paired:
+                    _fire_paired(lcd, home, device, location, paired, "up")
+                    dpad_needs_redraw = True
+                elif key == KEY_DOWN and paired:
+                    _fire_paired(lcd, home, device, location, paired, "down")
+                    dpad_needs_redraw = True
+                # Preset Function 1-4 are intentionally not handled here —
+                # colour/temp presets are handled globally by
+                # app/quick_actions.py's Preset Function dispatch regardless
+                # of which screen is up.
+                continue
+
             input_hw.set_repeatable_keys(set())
             input_hw.set_repeat_interval(None)
-            lcd.write("No signals", format_name(home)[:16])
-            if read_key() == KEY_QUIT:
-                state.running = False
-                return
-            continue
+            functions = _functions_for(home, device, location)
+            if not functions:
+                lcd.write(_device_label(device, location), "No signals")
+                if read_key() == KEY_QUIT:
+                    state.running = False
+                    return
+                continue
 
-        if device == DEFAULT_ACTIVE_DEVICE:
-            input_hw.set_repeatable_keys(_GOOGLE_TV_REPEAT_KEYS)
-            input_hw.set_repeat_interval(_GOOGLE_TV_REPEAT_INTERVAL_SECONDS)
-            # This screen's text never changes on a button press (success
-            # is silent — see _transmit), so only draw it when it actually
-            # needs to change, not on every held-key repeat: a redundant
-            # identical write here measured ~81ms on this LCD (bit-banged
-            # software I2C), which was eating into the repeat interval
-            # budget above just as much as the IR transmit itself.
-            if leaf_changed or dpad_needs_redraw:
-                lcd.write(_device_label(device, location), "Remote Control")
-                dpad_needs_redraw = False
+            fixed = _fixed_mapping_functions(functions)
+            if fixed is not None:
+                power, paired = fixed
+                line2 = f"{format_name(paired['name'])} Control" if paired else "Power"
+                if leaf_changed or dpad_needs_redraw:
+                    lcd.write(_device_label(device, location), line2[:16])
+                    dpad_needs_redraw = False
+                key = read_key()
+                if key is None:
+                    # See the google_tv branch above's identical handling.
+                    dpad_needs_redraw = True
+                    continue
+                if key == KEY_QUIT:
+                    state.running = False
+                    return
+                if (state.active_device, state.active_location) != (device, location):
+                    continue
+                if key == KEY_ENTER and power:
+                    _fire_power(lcd, home, device, location, power)
+                    dpad_needs_redraw = True
+                elif key == KEY_UP and paired:
+                    _fire_paired(lcd, home, device, location, paired, "up")
+                    dpad_needs_redraw = True
+                elif key == KEY_DOWN and paired:
+                    _fire_paired(lcd, home, device, location, paired, "down")
+                    dpad_needs_redraw = True
+                # Left/Right intentionally not handled — nothing to cycle to.
+                continue
+
+            function_index %= len(functions)
+            function = functions[function_index]
+            line2 = _cycle_line2(functions, function)
+            lcd.write(_device_label(device, location), line2[:16])
+
             key = read_key()
             if key == KEY_QUIT:
                 state.running = False
                 return
+
             # < Device/Device > runs entirely inside the blocking read_key()
             # call above (see hardware.input.read_key's quick-action
             # interception) — it redraws the screen for the new device but
             # doesn't return here, so the very next real key comes back
             # through this same call, against the *pre*-switch device/
-            # location this iteration started with. Re-check against
-            # state before firing anything (confirmed 2026-09-01: without
-            # this, switching device then immediately pressing a button
-            # could fire against the device active before the switch).
-            if (state.active_device, state.active_location) != (device, location):
-                continue  # let the top of the loop redraw/handle the new device; this key isn't safe to apply to it sight unseen
-            button = _DPAD_BUTTONS.get(key)
-            if button and not _transmit(lcd, home, device, location, button):
-                dpad_needs_redraw = True  # _transmit overwrote the screen with an error
-            continue
+            # location/function this iteration started with. Re-derive
+            # against state before interpreting the key, so a device switch
+            # immediately followed by Up/Down/Enter fires on the device now
+            # on screen, not the one before the switch (confirmed 2026-09-01:
+            # without this, turning one Hue light off, switching to a second,
+            # and pressing its Power function turned the *first* light back
+            # on instead of firing the second's).
+            new_device, new_location = state.active_device, state.active_location
+            if (new_device, new_location) != (device, location):
+                device, location = new_device, new_location
+                previous_leaf = (device, location)
+                if not device or device == DEFAULT_ACTIVE_DEVICE or device == LIGHT_MENU_DEVICE or _is_light_device(device):
+                    continue  # different-shaped screen; let the top of the loop handle it, this key isn't safe to apply to it here
+                functions = _functions_for(home, device, location)
+                if not functions or _fixed_mapping_functions(functions) is not None:
+                    continue  # ditto — a fixed-mapping device also needs its own branch, not this one's Left/Right-cycling dispatch below
+                function_index = 0
+                function = functions[0]
 
-        if device == LIGHT_MENU_DEVICE:
-            input_hw.set_repeatable_keys(set())
-            input_hw.set_repeat_interval(None)
-            if leaf_changed or dpad_needs_redraw:
-                lcd.write("Light", "Press Enter")
-                dpad_needs_redraw = False
-            key = read_key()
-            if key == KEY_QUIT:
-                state.running = False
-                return
-            if (state.active_device, state.active_location) != (device, location):
-                continue
-            if key == KEY_ENTER:
-                leaves = light_leaves(home)
-                if leaves:
-                    state.active_device, state.active_location = leaves[0]
-            continue
-
-        if _is_light_device(device):
-            input_hw.set_repeatable_keys(set())
-            input_hw.set_repeat_interval(None)
-            if leaf_changed or dpad_needs_redraw:
-                lcd.write(_device_label(device, location), "Light Control")
-                dpad_needs_redraw = False
-            key = read_key()
-            if key == KEY_QUIT:
-                state.running = False
-                return
-            # Same quick-action-inside-read_key() staleness as the
-            # google_tv branch above — re-check before firing anything.
-            if (state.active_device, state.active_location) != (device, location):
-                continue
+            # The currently selected function's own Up/Down/Enter — see the
+            # fixed-mapping branch above for devices simple enough to skip
+            # Left/Right cycling entirely; this is only reached once that's
+            # been ruled out.
             if key == KEY_LEFT:
-                state.active_device, state.active_location = cycle_light_leaf(home, (device, location), -1)
-                continue
-            if key == KEY_RIGHT:
-                state.active_device, state.active_location = cycle_light_leaf(home, (device, location), 1)
-                continue
-            functions = _functions_for(home, device, location)
-            power, paired = _fixed_mapping_functions(functions) or (None, None)
-            if key == KEY_ENTER and power:
-                _fire_power(lcd, home, device, location, power)
-                dpad_needs_redraw = True
-            elif key == KEY_UP and paired:
-                _fire_paired(lcd, home, device, location, paired, "up")
-                dpad_needs_redraw = True
-            elif key == KEY_DOWN and paired:
-                _fire_paired(lcd, home, device, location, paired, "down")
-                dpad_needs_redraw = True
-            # Preset Function 1-4 are intentionally not handled here —
-            # colour/temp presets are handled globally by
-            # app/quick_actions.py's Preset Function dispatch regardless
-            # of which screen is up.
+                function_index = (function_index - 1) % len(functions)
+            elif key == KEY_RIGHT:
+                function_index = (function_index + 1) % len(functions)
+            elif key == KEY_UP and function["type"] == "paired":
+                _transmit(lcd, home, device, location, function["up"])
+            elif key == KEY_DOWN and function["type"] == "paired":
+                _transmit(lcd, home, device, location, function["down"])
+            elif key == KEY_UP and function["type"] == "step_paired":
+                _run_step_function(lcd, device, location, function["up_steps"])
+            elif key == KEY_DOWN and function["type"] == "step_paired":
+                _run_step_function(lcd, device, location, function["down_steps"])
+            elif key == KEY_ENTER and function["type"] == "standalone":
+                _transmit(lcd, home, device, location, function["button"])
+            elif key == KEY_ENTER and function["type"] == "step":
+                _run_step_function(lcd, device, location, function["steps"])
+        except DeviceCycledAway:
+            # < Device/Device > backed out of a Menu screen and switched
+            # the active device while this loop's own read_key() call was
+            # blocked (see hardware.input.DeviceCycledAway) — the LCD is
+            # already showing the new device (app/quick_actions.py's
+            # render_after_cycle already drew it); just loop back to the
+            # top for a genuinely fresh read_key() call against it, rather
+            # than the discard-and-redraw dance the branches below use for
+            # a device switch that happens *inside* their own read_key()
+            # call (this is the same race, but caught here instead, so the
+            # very next real keypress after backing out of a Menu actually
+            # lands on the new device instead of being thrown away too).
             continue
-
-        input_hw.set_repeatable_keys(set())
-        input_hw.set_repeat_interval(None)
-        functions = _functions_for(home, device, location)
-        if not functions:
-            lcd.write(_device_label(device, location), "No signals")
-            if read_key() == KEY_QUIT:
-                state.running = False
-                return
-            continue
-
-        fixed = _fixed_mapping_functions(functions)
-        if fixed is not None:
-            power, paired = fixed
-            line2 = f"{format_name(paired['name'])} Control" if paired else "Power"
-            if leaf_changed or dpad_needs_redraw:
-                lcd.write(_device_label(device, location), line2[:16])
-                dpad_needs_redraw = False
-            key = read_key()
-            if key == KEY_QUIT:
-                state.running = False
-                return
-            if (state.active_device, state.active_location) != (device, location):
-                continue
-            if key == KEY_ENTER and power:
-                _fire_power(lcd, home, device, location, power)
-                dpad_needs_redraw = True
-            elif key == KEY_UP and paired:
-                _fire_paired(lcd, home, device, location, paired, "up")
-                dpad_needs_redraw = True
-            elif key == KEY_DOWN and paired:
-                _fire_paired(lcd, home, device, location, paired, "down")
-                dpad_needs_redraw = True
-            # Left/Right intentionally not handled — nothing to cycle to.
-            continue
-
-        function_index %= len(functions)
-        function = functions[function_index]
-        line2 = _cycle_line2(functions, function)
-        lcd.write(_device_label(device, location), line2[:16])
-
-        key = read_key()
-        if key == KEY_QUIT:
-            state.running = False
-            return
-
-        # < Device/Device > runs entirely inside the blocking read_key()
-        # call above (see hardware.input.read_key's quick-action
-        # interception) — it redraws the screen for the new device but
-        # doesn't return here, so the very next real key comes back
-        # through this same call, against the *pre*-switch device/
-        # location/function this iteration started with. Re-derive
-        # against state before interpreting the key, so a device switch
-        # immediately followed by Up/Down/Enter fires on the device now
-        # on screen, not the one before the switch (confirmed 2026-09-01:
-        # without this, turning one Hue light off, switching to a second,
-        # and pressing its Power function turned the *first* light back
-        # on instead of firing the second's).
-        new_device, new_location = state.active_device, state.active_location
-        if (new_device, new_location) != (device, location):
-            device, location = new_device, new_location
-            previous_leaf = (device, location)
-            if not device or device == DEFAULT_ACTIVE_DEVICE or device == LIGHT_MENU_DEVICE or _is_light_device(device):
-                continue  # different-shaped screen; let the top of the loop handle it, this key isn't safe to apply to it here
-            functions = _functions_for(home, device, location)
-            if not functions or _fixed_mapping_functions(functions) is not None:
-                continue  # ditto — a fixed-mapping device also needs its own branch, not this one's Left/Right-cycling dispatch below
-            function_index = 0
-            function = functions[0]
-
-        # The currently selected function's own Up/Down/Enter — see the
-        # fixed-mapping branch above for devices simple enough to skip
-        # Left/Right cycling entirely; this is only reached once that's
-        # been ruled out.
-        if key == KEY_LEFT:
-            function_index = (function_index - 1) % len(functions)
-        elif key == KEY_RIGHT:
-            function_index = (function_index + 1) % len(functions)
-        elif key == KEY_UP and function["type"] == "paired":
-            _transmit(lcd, home, device, location, function["up"])
-        elif key == KEY_DOWN and function["type"] == "paired":
-            _transmit(lcd, home, device, location, function["down"])
-        elif key == KEY_UP and function["type"] == "step_paired":
-            _run_step_function(lcd, device, location, function["up_steps"])
-        elif key == KEY_DOWN and function["type"] == "step_paired":
-            _run_step_function(lcd, device, location, function["down_steps"])
-        elif key == KEY_ENTER and function["type"] == "standalone":
-            _transmit(lcd, home, device, location, function["button"])
-        elif key == KEY_ENTER and function["type"] == "step":
-            _run_step_function(lcd, device, location, function["steps"])
 
 
 def _transmit(lcd: LCD, home: str, device: str, location: str, button: str) -> bool:
@@ -510,11 +548,14 @@ def _run_step_function(lcd: LCD, device: str, location: str, steps: list[dict]) 
     (services.preset_service.run_steps()), not a separate one, so e.g. a
     voice command can be followed by an IR signal (see config/
     step_devices.json's "Rust" entry). Same True/False-on-error
-    convention as _transmit; True only if every step succeeded."""
+    convention as _transmit; True only if every step succeeded — on
+    failure, shows which step (services.preset_service.describe_step()),
+    not just how many."""
     lcd.write(_device_label(device, location), "Sending...")
-    sent, total = preset_service.run_steps(steps)
-    if sent < total:
-        lcd.write(_device_label(device, location), f"{sent}/{total} sent")
+    sent, total, failed_step = preset_service.run_steps(steps)
+    if failed_step is not None:
+        message = f"Failed: {preset_service.describe_step(failed_step)}"[:16]
+        lcd.write(_device_label(device, location), message)
         time.sleep(1)
         return False
     return True

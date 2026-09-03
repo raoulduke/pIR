@@ -55,6 +55,25 @@ KEY_LEARN         = "LEARN"
 KEY_TV_MUTE       = "TV_MUTE"
 KEY_MENU          = "MENU"
 
+class DeviceCycledAway(Exception):
+    """Raised by app/quick_actions.py's device-cycle handler when
+    < Device/Device > fires while a Menu screen is up, to unwind out of
+    the Menu screen (and whichever widget under it currently has
+    read_key() blocked) all the way back through *this module's own*
+    read_key() call — the one a screen originally called and is still
+    sitting inside, from before the Menu key was ever pressed — so that
+    screen's own next call to read_key() is a genuinely fresh one, for the
+    newly-active device, instead of silently continuing to block inside
+    the old call.
+
+    Deliberately NOT caught anywhere in this module — read_key() has no
+    try/except around invoking the quick-action handler, so this
+    propagates straight through to whichever screen is blocked on the
+    outermost read_key() call, which is the only place with enough
+    context to safely retry (see screens/active_device_screen.py's own
+    catch, wrapping its whole read loop)."""
+
+
 QUICK_ACTION_KEYS = frozenset({
     KEY_DEVICE_1_UP, KEY_DEVICE_1_DOWN, KEY_DEVICE_2_UP, KEY_DEVICE_2_DOWN,
     KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
@@ -290,6 +309,11 @@ def set_quick_action_handler(handler) -> None:
     the handler itself and keeps waiting instead of returning the key to its
     caller — that's what makes device/preset/learn shortcuts work no matter
     which screen currently has read_key() blocked.
+
+    *handler* returns a bool: True means read_key() should return None to
+    its own caller right away, instead of continuing to wait for a real
+    key — see app/quick_actions.py's handle() docstring for which quick
+    actions want this (currently just Preset Function) and why.
     """
     global _quick_handler
     _quick_handler = handler
@@ -309,7 +333,8 @@ def read_key(timeout: float | None = None) -> str | None:
         if key is None:
             return None
         if _quick_handler is not None and key in QUICK_ACTION_KEYS:
-            _quick_handler(key)
+            if _quick_handler(key):
+                return None
             continue
         return key
 

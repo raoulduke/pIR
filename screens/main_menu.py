@@ -26,15 +26,12 @@ from hardware.lcd import LCD
 from hardware.input import read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_ENTER, KEY_QUIT
 from hardware.network import get_ip_address
 from services import wifi_service
-from screens.widgets.format import format_name
 
 
 _OPTIONS = [MENU_LEARN, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_QUIT, MENU_IP]
 
 
-def _line2(option: str, state: AppState) -> str:
-    if option == MENU_HOME:
-        return format_name(state.active_home or "")[:16]
+def _line2(option: str) -> str:
     if option == MENU_IP:
         return get_ip_address() or "No network"
     if option == MENU_NETWORK and not wifi_service.is_ready():
@@ -47,7 +44,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
 
     while state.running:
         option = _OPTIONS[index]
-        lcd.write("Menu", _line2(option, state))
+        lcd.write("Menu", _line2(option))
 
         # Only poll while WiFi is the highlighted entry — a plain block
         # everywhere else, same as before. Without this, "WiFi loading..."

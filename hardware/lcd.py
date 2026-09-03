@@ -60,6 +60,15 @@ class LCD:
         self._lcd.cursor_pos = (0, 0)
         self._lcd.write_string(text[:16].ljust(16))
 
+    def write_line2(self, text: str = "") -> None:
+        """Overwrite just the bottom row — no clear() (that would blank
+        both rows), so line 1 survives untouched. Mirrors write_line1();
+        see there. Used by screens/active_device_screen.py's Preset
+        Function name reveal after a device switch, so the device label
+        already on line 1 doesn't need rewriting each frame."""
+        self._lcd.cursor_pos = (1, 0)
+        self._lcd.write_string(text[:16].ljust(16))
+
     def write_progress(self, line1: str, fraction: float) -> None:
         """Top row is *line1*; bottom row is a fill bar for *fraction*
         (0.0-1.0), left to right, at 5 sub-positions per cell.

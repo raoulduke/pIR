@@ -31,13 +31,30 @@ _CHARSET = (
 def read_dpad_text(lcd: LCD, prompt: str) -> str:
     """Collect a line of text using only Up/Down/Left/Right/Enter.
 
-    Returns the entered string, KEY_BACK, or KEY_QUIT. Enter submits (even
-    an empty string, unlike read_text — an empty Wi-Fi password is valid
-    for an open network). Left deletes the last committed character, or
-    backs out of the screen entirely once there's nothing left to delete.
+    Returns the entered string, KEY_BACK, or KEY_QUIT. Left deletes the
+    last committed character, or backs out of the screen entirely once
+    there's nothing left to delete.
+
+    Enter submits whatever's actually showing on screen, character the
+    cursor is sitting on included — not just the characters already
+    locked in with Right. Cycling Up/Down to a letter and pressing Enter
+    right away (no Right first) works, matching what's visibly displayed;
+    no separate, invisible "confirm" step to remember (confirmed
+    2026-09-03: without this, "tv" typed as t-Right-<cycle to v>-Enter
+    silently submitted just "t" — the display showed "tv" the whole time
+    with no visual difference between the committed "t" and the
+    never-locked-in "v").
+
+    The one exception is a slot you haven't touched Up/Down on since the
+    last commit (or since the start) — its default preview character
+    doesn't count, so pressing Right then Enter immediately doesn't
+    silently tack on an unintended "a" (_CHARSET's first character), and
+    a fresh, completely untouched call still submits "" on Enter, same as
+    before — an empty Wi-Fi password is valid for an open network.
     """
     text = ""
     candidate_index = 0
+    candidate_touched = False  # Up/Down pressed since the last commit/start?
 
     while True:
         display = (text + _CHARSET[candidate_index])[-16:]
@@ -48,16 +65,20 @@ def read_dpad_text(lcd: LCD, prompt: str) -> str:
         if key == KEY_QUIT:
             return KEY_QUIT
         if key == KEY_ENTER:
-            return text
+            return text + _CHARSET[candidate_index] if candidate_touched else text
         if key == KEY_DOWN:
             candidate_index = (candidate_index + 1) % len(_CHARSET)
+            candidate_touched = True
         elif key == KEY_UP:
             candidate_index = (candidate_index - 1) % len(_CHARSET)
+            candidate_touched = True
         elif key == KEY_RIGHT:
             text += _CHARSET[candidate_index]
             candidate_index = 0
+            candidate_touched = False
         elif key == KEY_LEFT:
             if not text:
                 return KEY_BACK
             text = text[:-1]
             candidate_index = 0
+            candidate_touched = False

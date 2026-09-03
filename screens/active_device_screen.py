@@ -85,15 +85,37 @@ _GOOGLE_TV_REPEAT_KEYS = {KEY_LEFT, KEY_RIGHT}
 # smooth scroll). 150ms leaves real margin above the measured floor.
 _GOOGLE_TV_REPEAT_INTERVAL_SECONDS = 0.15
 
+# How long each Preset Function display frame shows during the one-shot
+# reveal right after switching to a leaf — see _reveal_presets().
+#
+# BATTERY NOTE: this used to be a continuously-scrolling marquee, then a
+# continuous frame-by-frame cycle (2026-09-02) — both were reverted back
+# to a bounded one-shot reveal specifically for battery reasons, not
+# taste. Either continuous version replaced the screen's single,
+# no-timeout, indefinitely-blocking read_key() with a perpetual
+# read_key(timeout=1-3s) loop — the CPU never gets to idle while sitting
+# on a device doing nothing, waking every 1-3s just to repaint the LCD,
+# for as long as you're on that screen. CLAUDE.md's own
+# sysstat-collect.timer finding flagged a wake every 10 minutes as bad
+# for exactly this reason ("defeats idle power states all day"); this
+# would have been ~200-400x more frequent than that. A bounded reveal has
+# no ongoing cost at all — it only runs right after a device switch, then
+# falls back to the original indefinite blocking wait.
+_PRESET_REVEAL_FRAME_SECONDS = 1.3
+
 
 def _is_light_device(device: str) -> bool:
-    """Any Hue, Globe, or IR light configured in config/step_devices.json —
-    identified by naming convention, not a separate marker: every one is
-    named "..._light" (bedroom_light, kitchen_s_light, lamp_light, etc.)
-    except the IR-controlled Hall Light, whose device name is the bare
-    "light" (matching its pre-existing signals/home/light/hall/ directory
-    — see config/step_devices.json's "light" entry)."""
-    return device.endswith("_light") or device == "light"
+    """Every Hue, Globe, or IR light (bedroom/ceiling/corner/kitchen_n/
+    kitchen_s/lamp/window/hall) lives under the single "light" device now,
+    one location per room — see signals/home/light/, config/
+    step_devices.json's "light/<location>" keys, and config/
+    keypad_presets.json's "by_device" overrides, same "light/<location>"
+    scheme (2026-09-03: previously each had its own top-level device
+    named "..._light", identified purely by that naming convention;
+    consolidated into locations under "light" instead, matching the
+    IR-controlled Hall Light's pre-existing signals/home/light/hall/
+    shape rather than the other way around)."""
+    return device == "light"
 
 
 def light_leaves(home: str) -> list[tuple[str, str]]:
@@ -201,9 +223,11 @@ def _cycle_line2(functions: list[dict], function: dict) -> str:
 def _functions_for(home: str, device: str, location: str) -> list[dict]:
     """Functions to cycle for this leaf — a step sequence
     (services.step_device_service) if it's configured as a step device,
-    else the usual IR-signal-derived functions (services.signal_service)."""
-    if step_device_service.is_step_device(device):
-        return step_device_service.list_functions(device)
+    else the usual IR-signal-derived functions (services.signal_service).
+    location matters to step_device_service too now — every light shares
+    the "light" device name, distinguished only by location."""
+    if step_device_service.is_step_device(device, location):
+        return step_device_service.list_functions(device, location)
     return signal_service.list_functions(home, device, location)
 
 
@@ -225,6 +249,81 @@ def _device_label(device: str, location: str) -> str:
     one is active."""
     name = format_name(device)
     return f"{format_name(location)} {name}" if location else name
+
+
+def _preset_entries(device: str, location: str) -> list[str]:
+    """Preset Function display frames for this leaf, ready for
+    _reveal_presets() to show one at a time — "N:Name" for every
+    configured slot (see services.preset_service.get_preset()), packed as
+    many to a frame as fit in 16 characters space-separated (e.g.
+    "1:Back 2:Rest" together on one frame instead of each getting its own
+    turn when they'd both comfortably fit) rather than always one preset
+    per frame. [] if none are configured. Computed once per leaf (see
+    show()'s leaf_changed handling), not once per _reveal_presets() call —
+    services.preset_service.get_preset() re-reads config/
+    keypad_presets.json from disk every time, which would otherwise mean
+    4 fresh file reads on every single repeated keystroke while e.g.
+    holding a D-pad direction."""
+    parts = []
+    for number in range(1, 5):
+        name, _ = preset_service.get_preset(number, device, location)
+        if name:
+            parts.append(f"{number}:{name}"[:16])
+
+    frames = []
+    current = ""
+    for part in parts:
+        candidate = f"{current} {part}" if current else part
+        if len(candidate) <= 16:
+            current = candidate
+        else:
+            frames.append(current)
+            current = part
+    if current:
+        frames.append(current)
+    return frames
+
+
+def _reveal_presets(lcd: LCD, state: AppState, device: str, location: str, normal_line2: str, frames: list[str]) -> str | None:
+    """Line 2, showing this leaf's Preset Function display frames
+    (*frames* — see _preset_entries(), which packs more than one preset
+    onto a frame when they fit together) one at a time, right after
+    switching to this leaf — presets are configured per-device
+    (services.preset_service's "by_device" overrides) and change out from
+    under you silently as you cycle devices, so this is the one moment
+    it's actually relevant to see them, with no extra keypress or
+    separate lookup screen needed. Line 1 (the device label, already
+    drawn by the caller) is left alone.
+
+    Deliberately a one-shot, not a loop — see _PRESET_REVEAL_FRAME_SECONDS'
+    battery note: this only runs once, right after a device switch, then
+    falls back to a plain, indefinitely-blocking read_key() with no
+    ongoing cost, rather than repainting the LCD forever on a timer.
+
+    Each frame holds for _PRESET_REVEAL_FRAME_SECONDS. Once every frame
+    has shown (or *frames* is empty — nothing configured), restores
+    *normal_line2* and does one final, ordinary blocking read_key().
+
+    Any real key cuts a frame's hold short and *is* this call's return
+    value — same as a plain read_key() would have returned, just a little
+    later; nothing is wasted by interrupting it. Bails out (returning
+    None without touching the LCD further) the moment it notices
+    *device*/*location* is no longer what's actually active — the same
+    quick-action-inside-read_key() race every branch below already
+    re-checks for on its own read_key() call (e.g. < Device/Device >
+    firing mid-reveal)."""
+    for frame in frames:
+        if (state.active_device, state.active_location) != (device, location):
+            return None
+        lcd.write_line2(frame)
+        key = read_key(timeout=_PRESET_REVEAL_FRAME_SECONDS)
+        if key is not None:
+            return key
+
+    if (state.active_device, state.active_location) != (device, location):
+        return None
+    lcd.write_line2(normal_line2[:16])
+    return read_key()
 
 
 def render_after_cycle(lcd: LCD, state: AppState) -> None:
@@ -288,6 +387,7 @@ def show(lcd: LCD, state: AppState) -> None:
     function_index = 0
     previous_leaf = (None, None)
     dpad_needs_redraw = True  # forces the first draw on entry, same as leaf_changed would
+    preset_entries: list[str] = []  # recomputed only on a leaf change — see _preset_entries()
 
     while state.running:
         try:
@@ -301,6 +401,13 @@ def show(lcd: LCD, state: AppState) -> None:
             if leaf_changed:
                 function_index = 0
                 previous_leaf = (device, location)
+                # Only for a real leaf — LIGHT_MENU_DEVICE is a synthetic
+                # stop with no presets of its own (see _reveal_presets()).
+                preset_entries = _preset_entries(device, location) if device and device != LIGHT_MENU_DEVICE else []
+
+            # Only right after landing on a leaf — see _reveal_presets()'s
+            # battery note for why this is a one-shot, not continuous.
+            reveal_presets = leaf_changed and bool(device) and device != LIGHT_MENU_DEVICE
 
             if not device:
                 input_hw.set_repeatable_keys(set())
@@ -323,7 +430,7 @@ def show(lcd: LCD, state: AppState) -> None:
                 if leaf_changed or dpad_needs_redraw:
                     lcd.write(_device_label(device, location), "Remote Control")
                     dpad_needs_redraw = False
-                key = read_key()
+                key = _reveal_presets(lcd, state, device, location, "Remote Control", preset_entries) if reveal_presets else read_key()
                 if key is None:
                     # A quick action wants an immediate redraw (currently
                     # just Preset Function — see hardware.input.read_key's
@@ -361,7 +468,14 @@ def show(lcd: LCD, state: AppState) -> None:
                     dpad_needs_redraw = False
                 key = read_key()
                 if key is None:
-                    # See the google_tv branch above's identical handling.
+                    # A quick action (Preset, a device-slot button,
+                    # < Device/Device >) wants an immediate redraw rather
+                    # than the usual "keep waiting silently" — see
+                    # hardware.input.read_key's None-on-quick-action
+                    # contract. This screen's own redraw is conditional
+                    # (dpad_needs_redraw), so force it instead of leaving
+                    # the quick action's LCD output stuck up until some
+                    # unrelated real key happens to arrive.
                     dpad_needs_redraw = True
                     continue
                 if key == KEY_QUIT:
@@ -381,7 +495,7 @@ def show(lcd: LCD, state: AppState) -> None:
                 if leaf_changed or dpad_needs_redraw:
                     lcd.write(_device_label(device, location), "Light Control")
                     dpad_needs_redraw = False
-                key = read_key()
+                key = _reveal_presets(lcd, state, device, location, "Light Control", preset_entries) if reveal_presets else read_key()
                 if key is None:
                     # See the google_tv branch above's identical handling.
                     dpad_needs_redraw = True
@@ -433,7 +547,7 @@ def show(lcd: LCD, state: AppState) -> None:
                 if leaf_changed or dpad_needs_redraw:
                     lcd.write(_device_label(device, location), line2[:16])
                     dpad_needs_redraw = False
-                key = read_key()
+                key = _reveal_presets(lcd, state, device, location, line2, preset_entries) if reveal_presets else read_key()
                 if key is None:
                     # See the google_tv branch above's identical handling.
                     dpad_needs_redraw = True
@@ -461,6 +575,22 @@ def show(lcd: LCD, state: AppState) -> None:
             lcd.write(_device_label(device, location), line2[:16])
 
             key = read_key()
+            if key is None:
+                # A quick action (Preset, a device-slot button,
+                # < Device/Device >) wants an immediate re-check rather
+                # than the usual "keep waiting silently" — see
+                # hardware.input.read_key's None-on-quick-action contract.
+                # Bouncing straight to the top of the loop here, rather
+                # than falling into the staleness re-derivation below,
+                # matters specifically for a switch to another
+                # general-shaped device: that re-derivation updates
+                # previous_leaf in place, which would make the top's own
+                # leaf_changed check miss the switch (this branch shows
+                # which function is selected — see _cycle_line2() — on
+                # devices with several to choose from, so it keeps its
+                # own read_key() rather than _reveal_presets(); every other
+                # screen shape below uses that instead).
+                continue
             if key == KEY_QUIT:
                 state.running = False
                 return

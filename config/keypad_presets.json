@@ -1,9 +1,9 @@
 {
-  "1": {"name": "Rest", "steps": [
-    {"type": "voice", "command": "Rest"}
-  ]},
-  "2": {"name": "Back", "steps": [
+  "1": {"name": "Back", "steps": [
     {"home": "home", "device": "google_tv", "location": "", "button": "back"}
+  ]},
+  "2": {"name": "Rest", "steps": [
+    {"type": "voice", "command": "Rest"}
   ]},
   "3": {"name": "Home", "steps": [
     {"type": "androidtv", "keyevent": "KEYCODE_HOME"}
@@ -26,38 +26,38 @@
         {"type": "voice", "command": "Rust"},
         {"home": "home", "device": "light", "location": "hall", "button": "off"}
       ]},
-      "2": {"name": "Rust Lamp", "steps": [{"type": "voice", "command": "Rust lamp"}]},
+      "2": {"name": "Lamp Rust", "steps": [{"type": "voice", "command": "Change lamp light to rust"}]},
       "3": {"name": "Toggle Ceiling", "steps": [{"type": "voice", "command": "Toggle ceiling"}]},
       "4": {"name": "Toggle Lamp", "steps": [{"type": "voice", "command": "Toggle lamp"}]}
     },
-    "bedroom_light": {
+    "light/bedroom": {
       "1": {"name": "Candlelight", "steps": [{"type": "hue", "ct": 454, "light_id": "3"}]},
       "2": {"name": "Warm White", "steps": [{"type": "hue", "ct": 370, "light_id": "3"}]},
       "3": {"name": "Daylight", "steps": [{"type": "hue", "ct": 153, "light_id": "3"}]}
     },
-    "kitchen_s_light": {
+    "light/kitchen_s": {
       "1": {"name": "Candlelight", "steps": [{"type": "hue", "ct": 454, "light_id": "4"}]},
       "2": {"name": "Warm White", "steps": [{"type": "hue", "ct": 370, "light_id": "4"}]},
       "3": {"name": "Daylight", "steps": [{"type": "hue", "ct": 153, "light_id": "4"}]}
     },
-    "kitchen_n_light": {
+    "light/kitchen_n": {
       "1": {"name": "Candlelight", "steps": [{"type": "hue", "ct": 454, "light_id": "5"}]},
       "2": {"name": "Warm White", "steps": [{"type": "hue", "ct": 370, "light_id": "5"}]},
       "3": {"name": "Daylight", "steps": [{"type": "hue", "ct": 153, "light_id": "5"}]}
     },
-    "lamp_light": {
+    "light/lamp": {
       "1": {"name": "Candlelight", "steps": [{"type": "voice", "command": "Change lamp to candlelight"}]},
       "2": {"name": "Warm White", "steps": [{"type": "voice", "command": "Change lamp to warm white"}]},
       "3": {"name": "Daylight", "steps": [{"type": "voice", "command": "Change lamp to daylight"}]},
-      "4": {"name": "Rust", "steps": [{"type": "voice", "command": "Rust lamp"}]}
+      "4": {"name": "Rust", "steps": [{"type": "voice", "command": "Change lamp light to rust"}]}
     },
-    "ceiling_light": {
+    "light/ceiling": {
       "1": {"name": "Candlelight", "steps": [{"type": "voice", "command": "Change ceiling to candlelight"}]},
       "2": {"name": "Warm White", "steps": [{"type": "voice", "command": "Change ceiling to warm white"}]},
       "3": {"name": "Daylight", "steps": [{"type": "voice", "command": "Change ceiling to daylight"}]},
       "4": {"name": "Rust", "steps": [{"type": "voice", "command": "Ceiling Rust"}]}
     },
-    "corner_light": {
+    "light/corner": {
       "1": {"name": "Candlelight", "steps": [{"type": "voice", "command": "Change corner to candlelight"}]},
       "2": {"name": "Warm White", "steps": [{"type": "voice", "command": "Change corner to warm white"}]},
       "3": {"name": "Daylight", "steps": [{"type": "voice", "command": "Change corner to daylight"}]}

@@ -2,6 +2,13 @@
 
 Collects device / location / button from the user, then delegates IR capture
 to ``hardware.ir_receiver`` and persistence to ``services.signal_service``.
+
+Text entry uses screens/widgets/char_input.py's D-pad-only composer, same
+as network_screen.py's Wi-Fi password prompt and command_screen.py's
+Command entry — the bare physical keypad has no letter keys (see that
+widget's docstring), so screens/widgets/text_input.py's read_text() (raw
+characters from a USB keyboard or SSH session only) just sat there
+unresponsive to every physical keypress here.
 """
 
 import time
@@ -11,8 +18,8 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service
 from services.signal_service import signal_exists, save_signal
 from screens.widgets.selector import select_from_list
-from screens.widgets.text_input import read_text
-from screens.widgets.format import format_name
+from screens.widgets.char_input import read_dpad_text
+from screens.widgets.format import format_name, slugify
 from app.constants import (
     PROMPT_DEVICE, PROMPT_LOCATION, PROMPT_BUTTON,
     STATEMENT_NO_SIGNAL, STATEMENT_RECEIVING,
@@ -121,17 +128,24 @@ def _capture(lcd: LCD) -> str:
 
 
 def _prompt_text(lcd: LCD, prompt: str, context_line: str = "") -> str:
-    """Show an optional context line then collect text.  Loops on empty input."""
+    """Show an optional context line then collect text, slugified
+    (screens.widgets.format.slugify()) into a filesystem-safe snake_case
+    name — same as home_screen.py's device/home-name entry, so typing the
+    natural "Living Room" gets you the "living_room" directory name this
+    becomes part of the path for, without needing to know that convention
+    or type an underscore yourself. Loops on empty input (including text
+    that's *only* punctuation/whitespace, which slugify() reduces to "")."""
     if context_line:
         lcd.write(prompt, context_line[:16])
         time.sleep(0.5)
 
     while True:
-        value = read_text(lcd, prompt)
+        value = read_dpad_text(lcd, prompt)
 
         if value in (KEY_QUIT, KEY_BACK):
             return value
 
+        value = slugify(value)
         if not value:
             lcd.write(STATEMENT_INVALID_INPUT, STATEMENT_TRY_AGAIN)
             time.sleep(1)

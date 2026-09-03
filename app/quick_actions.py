@@ -54,16 +54,20 @@ def init(state: AppState) -> None:
 def handle(key: str) -> bool:
     """Returns True if hardware.input.read_key() should return None to its
     caller right away instead of continuing to block for another key —
-    used by the "Preset Device N" slot buttons and Preset Function so
-    their temporary result ("Receiver"/"Volume Down", "Candlelight"/"3
-    sent", ...) doesn't linger on the LCD until some unrelated keypress
-    happens to come along; the screen it interrupted redraws itself
-    immediately instead (every screen's own read loop already redraws
-    unconditionally on a None key, except a few of
-    screens/active_device_screen.py's own — see its handling of a None
-    key there). < Device/Device > and Menu keep the previous behavior
-    (False/None) — they already redraw synchronously themselves as part
-    of switching screens, so there's nothing stale left to clear."""
+    used by the "Preset Device N" slot buttons, Preset Function, and
+    < Device/Device > so whatever they've already drawn doesn't just sit
+    there with the interrupted screen's own read_key() call left blocked
+    indefinitely behind it, silently, until some unrelated keypress
+    happens to wake it back up. Returning True makes read_key() return
+    None to its caller right away instead — every screen's own read loop
+    already redraws unconditionally on a None key, except a few of
+    screens/active_device_screen.py's own (see its handling of a None key
+    there), which is also exactly what lets that screen notice a leaf
+    change and start its Preset-name reveal (_reveal_presets()) the
+    instant a device switch actually happens, not one extra keypress
+    later. Menu keeps the previous behavior (False/None) — it already
+    redraws synchronously as part of replacing the screen entirely, so
+    there's nothing stale left to clear."""
     if key in _DEVICE_KEYS:
         _handle_device(key)
         return True
@@ -72,6 +76,7 @@ def handle(key: str) -> bool:
         return True
     elif key in _CYCLE_DIRECTIONS:
         _handle_device_cycle(key)
+        return True
     elif key == KEY_MENU:
         _handle_menu()
     return False

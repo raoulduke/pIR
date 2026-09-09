@@ -22,11 +22,11 @@ several "Turn on X"s in a row, is the common case):
 import time
 from hardware.lcd import LCD
 from hardware.input import KEY_QUIT, KEY_BACK
-from services import voice_service
+from services import preset_service, voice_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.char_input import read_dpad_text
 from app.constants import (
-    PROMPT_DEVICE, PROMPT_SEARCH, STATEMENT_SENDING, STATEMENT_SENT, STATEMENT_FAILED,
+    PROMPT_DEVICE, PROMPT_SEARCH, STATEMENT_SENDING, STATEMENT_FAILED, ASYNC_SEND_FLASH_SECONDS,
 )
 
 # (list label, command template with one "{}" blank, fill-in prompt).
@@ -79,12 +79,21 @@ def show(lcd: LCD) -> str | None:
             continue  # back to the template list, not out of Command
 
         command = template.format(value)
+        # Non-blocking (see services/preset_service.py's
+        # run_steps_background) — send_command() is a real HTTP round-trip
+        # (up to 15s timeout), so blocking here used to leave "Sending..."
+        # up and the keypad unresponsive for however long that took. Shows
+        # "Sending..." for a brief fixed flash (ASYNC_SEND_FLASH_SECONDS —
+        # the command is already sending in the background during it, this
+        # is only so the message is actually seen before looping back to
+        # the template list would otherwise overwrite it) then loops back;
+        # a failure overwrites whatever's on screen by then, a success
+        # needs no follow-up message.
         lcd.write(STATEMENT_SENDING, command[:16])
-        success, message = voice_service.send_command(command)
 
-        if success:
-            lcd.write(STATEMENT_SENT, message[:16])
-            time.sleep(2)
-        else:
-            lcd.write(STATEMENT_FAILED, message[:16])
-            time.sleep(3)
+        def _on_result(sent, total, failed_step, command=command):
+            if failed_step is not None:
+                lcd.write(STATEMENT_FAILED, command[:16])
+
+        preset_service.run_steps_background([{"type": "voice", "command": command}], _on_result)
+        time.sleep(ASYNC_SEND_FLASH_SECONDS)

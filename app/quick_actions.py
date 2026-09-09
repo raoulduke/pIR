@@ -22,9 +22,9 @@ from hardware.input import (
     DeviceCycledAway,
 )
 from services import (
-    device_slot_service, preset_service, signal_service, config_service, voice_service, home_service,
+    device_slot_service, preset_service, signal_service, config_service, home_service,
 )
-from app.constants import STATEMENT_SENT
+from app.constants import ASYNC_SEND_FLASH_SECONDS
 from app.exceptions import HardwareError
 from app.state import AppState
 
@@ -127,10 +127,23 @@ def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
         time.sleep(1)
         return
 
+    # Non-blocking (see services/preset_service.py's run_steps_background)
+    # — voice_service.send_command() is a real HTTP round-trip (up to 15s
+    # timeout), so blocking here used to leave the keypad unresponsive for
+    # however long that took. Shows "Sending..." for a brief fixed flash
+    # (ASYNC_SEND_FLASH_SECONDS — the command is already sending in the
+    # background during it, this is only so the message is actually seen
+    # before the caller's own next redraw would otherwise overwrite it)
+    # then returns; a failure overwrites the label whenever it's actually
+    # known, a success needs no follow-up message.
     lcd.write(label, "Sending...")
-    success, message = voice_service.send_command(command)
-    lcd.write(label, message[:16] if success else f"Err: {message}"[:16])
-    time.sleep(1)
+
+    def _on_result(sent, total, failed_step):
+        if failed_step is not None:
+            lcd.write(label, f"Err: {preset_service.describe_step(failed_step)}"[:16])
+
+    preset_service.run_steps_background([{"type": "voice", "command": command}], _on_result)
+    time.sleep(ASYNC_SEND_FLASH_SECONDS)
 
 
 def _handle_preset(number: int) -> None:
@@ -148,29 +161,43 @@ def _handle_preset(number: int) -> None:
     name, steps = preset_service.get_preset(number, device, location)
     label = (name or f"Preset {number}")[:16]
 
+    if not steps:
+        lcd.write(label, "Not configured")
+        time.sleep(1)
+        return
+
+    # Non-blocking (see services/preset_service.py's run_steps_background)
+    # — a voice/hue step in here is a real network round-trip, so blocking
+    # used to leave "Running..." on screen and the keypad unresponsive for
+    # however long that took. Shows "Running..." for a brief fixed flash
+    # (ASYNC_SEND_FLASH_SECONDS — steps are already running in the
+    # background during it, this is only so the message is actually seen
+    # before the caller's own next redraw would otherwise overwrite it)
+    # then returns; a failure overwrites the label whenever it's actually
+    # known — which step failed (preset_service.describe_step()), same for
+    # a single-step preset (e.g. Preset 1's default "Back" IR signal) and a
+    # multi-step one (e.g. "Rust"'s voice command + IR signal) — a full
+    # success needs no follow-up message.
     lcd.write(label, "Running...")
-    sent, total, failed_step = preset_service.run_steps(steps)
-    if total == 0:
-        message = "Not configured"
-    elif failed_step is None:
-        message = STATEMENT_SENT
-    else:
-        # Which step failed, not just how many — same for a single-step
-        # preset (e.g. Preset 1's default "Back" IR signal) and a
-        # multi-step one (e.g. "Rust"'s voice command + IR signal).
-        message = f"Failed: {preset_service.describe_step(failed_step)}"[:16]
-    lcd.write(label, message)
-    time.sleep(1)
+
+    def _on_result(sent, total, failed_step):
+        if failed_step is not None:
+            lcd.write(label, f"Failed: {preset_service.describe_step(failed_step)}"[:16])
+
+    preset_service.run_steps_background(steps, _on_result)
+    time.sleep(ASYNC_SEND_FLASH_SECONDS)
 
 
 def _handle_device_cycle(key: str) -> None:
     """< Device / Device > — cycle screens.active_device_screen's active
     device. Global (works from any screen), replacing the old Send-screen
-    -scoped cycle. Every light device collapses into one "Light" stop
-    here (screens.active_device_screen.cycle_top_level()) — Left/Right,
-    handled locally by active_device_screen.show() itself once a light
-    (or the Light menu) is active, is what actually moves between
-    individual lights."""
+    -scoped cycle. Every light device collapses into one "Lights" stop,
+    and every tv device into one "TV" stop, here (screens.
+    active_device_screen.cycle_top_level()) — Left/Right, handled locally
+    by active_device_screen.show() itself once inside one of those groups,
+    is what actually moves between its individual leaves (Google TV, its
+    own top-level stop, isn't part of the TV group — see app.constants.
+    MENU_DEVICE_LABELS)."""
     direction = _CYCLE_DIRECTIONS[key]
     home = home_service.get_active_home()
     current = (_state.active_device, _state.active_location)

@@ -169,7 +169,15 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
 ## Development Workflow
 
 - Local development happens on WSL2 at `/mnt/c/Users/mattk/code/pi/ir/`, synced to the Pi at `/home/matt/dev/ir/`
-- SSH to the Pi (normal Wi-Fi path, not the USB recovery path above): `ssh 10.0.0.56` (bash alias `pi`, defined in WSL2's `~/.bash_aliases`). The connection can be flaky on the first attempt — retry a few times before assuming it's down.
+- SSH to the Pi (normal Wi-Fi path, not the USB recovery path above): `ssh 10.0.0.56` (bash alias `pi`, defined in WSL2's `~/.bash_aliases`). The connection can be flaky on the first attempt — retry a few times before assuming it's down. Note: a *slow*/failed-then-succeeds first attempt is the "flaky" case worth retrying past; "No route to host" on repeated attempts means the Pi is actually unreachable (off, Wi-Fi down, etc.) — don't keep retrying that past a few tries, surface it.
+- **Deploy sync + restart** (run from WSL2):
+  ```bash
+  rsync -a --exclude='.venv' --exclude='signals/' /mnt/c/Users/mattk/code/pi/ir/ 10.0.0.56:/home/matt/dev/ir/
+  ```
+  ```bash
+  ssh 10.0.0.56 "sudo systemctl restart pihome.service; sleep 2; sudo systemctl is-active pihome.service"
+  ```
+  `--exclude='.venv'` because Windows-built venvs are unusable on ARM Linux (see below); `--exclude='signals/'` because `--delete` must never reach `signals/` (see `[[scope-rsync-delete-to-code]]` — it destroyed a Learn capture once) and excluding it entirely from the sync sidesteps that risk rather than relying on remembering to omit `--delete`. `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service && sudo systemctl daemon-reload` is only needed first when `systemd/pihome.service` itself changed (see "Pi OS boot time" above) — a plain code change just needs the sync + restart above.
 - Hardware-dependent libraries (e.g. `smbus2`) will not function on WSL2 — expect import/runtime errors there for hardware-touching code paths
 - IDE: CLion, with `ir/` marked as Sources Root; `pyproject.toml` added to the project to resolve import resolution issues in CLion
 

@@ -49,12 +49,25 @@ WIFI_SCAN_STOP_AFTER_UNCHANGED = 5  # give up auto-rescanning after this many fi
 # that gets raw D-pad passthrough instead of a cycled function list.
 DEFAULT_ACTIVE_DEVICE = "google_tv"
 
-# Sentinel for the "Light" top-level menu stop in < Device/Device >
-# cycling — not a real signal_service leaf/directory, never passed to
-# anything filesystem-backed. See active_device_screen.py's
-# cycle_top_level()/light_leaves() and its LIGHT_MENU_DEVICE branch in
-# show()/render_after_cycle().
-LIGHT_MENU_DEVICE = "__light_menu__"
+# Devices whose per-location leaves collapse into a single top-level
+# < Device/Device > stop instead of appearing individually — device name
+# -> the label shown on that stop's "Press Enter" screen. Enter there
+# drills into the first leaf (screens/active_device_screen.py's
+# menu_leaves() order); Left/Right then cycles between the rest without
+# any of them ever appearing as separate top-level stops. google_tv is
+# deliberately not here — it has no location sub-dirs to collapse in the
+# first place, so it's already just one ordinary top-level leaf on its
+# own (2026-09-1x: generalized from a light-only mechanism to also cover
+# "tv"/Living Room TV+Bedroom TV).
+MENU_DEVICE_LABELS = {"light": "Lights", "tv": "TVs"}
+
+# Synthetic active_device sentinel for each collapsed stop above — not a
+# real signal_service leaf/directory, never passed to anything
+# filesystem-backed. See active_device_screen.py's cycle_top_level()/
+# menu_leaves() and the MENU_DEVICE_SENTINELS branches in show()/
+# render_after_cycle().
+MENU_DEVICE_SENTINELS = {device: f"__menu_{device}__" for device in MENU_DEVICE_LABELS}
+MENU_SENTINEL_TO_DEVICE = {sentinel: device for device, sentinel in MENU_DEVICE_SENTINELS.items()}
 
 # Misc
 LABEL_ENTER_LOCATION = "Enter location"
@@ -63,6 +76,8 @@ LABEL_CANCEL = "Cancel"
 LABEL_TRY_AGAIN = "Try again"
 LABEL_OVERWRITE = "Overwrite?"
 LABEL_NEW_HOME = "+ New Home"
+LABEL_NEW_DEVICE = "+ New Device"
+LABEL_NEW_LOCATION = "+ New Location"
 
 # IR hardware
 LIRC_TX_DEVICE = "/dev/lirc0"
@@ -103,6 +118,14 @@ KEYPAD_MAP_FILE = "config/keypad_map.json"
 KEYPAD_DEVICES_FILE = "config/keypad_devices.json"
 KEYPAD_PRESETS_FILE = "config/keypad_presets.json"
 PRESET_DEFAULT_DELAY_SECONDS = 0.3
+
+# How long "Sending..."/"Running..." stays on screen before a step-firing
+# call returns control to the keypad (services/preset_service.py's
+# run_steps_background() sends the actual voice/hue/IR steps in the
+# background regardless, so this isn't waiting on them — without it, the
+# very next screen redraw overwrites "Sending..." before it's had a chance
+# to actually be seen, effectively skipping it).
+ASYNC_SEND_FLASH_SECONDS = 0.4
 
 # Debounce / scan timing
 # Kept deliberately light: a full sweep already drives every one of the 12

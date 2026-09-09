@@ -11,11 +11,13 @@ Tracks one active leaf device (state.active_device, state.active_location):
   - DEFAULT_ACTIVE_DEVICE ("google_tv") is raw D-pad passthrough — Up/Down/
     Left/Right/Enter each fire the matching signal immediately, no function
     list, no exceptions.
-  - LIGHT_MENU_DEVICE is a synthetic "Light" top-level stop, not a real
-    leaf — < Device/Device > lands here (see cycle_top_level()) instead
-    of stepping through every light device individually. Shows "Light" /
-    "Press Enter"; Enter drills into the first real light (light_leaves()
-    order) and every key besides Enter/Quit is a no-op here.
+  - Each MENU_DEVICE_SENTINELS entry (app/constants.py's MENU_DEVICE_LABELS
+    — currently "light" -> "Lights", "tv" -> "TV") is a synthetic
+    top-level stop, not a real leaf — < Device/Device > lands here (see
+    cycle_top_level()) instead of stepping through every leaf of that
+    device individually. Shows the group's label / "Press Enter"; Enter
+    drills into the first real leaf (menu_leaves() order) and every key
+    besides Enter/Quit is a no-op here.
   - A "fixed-mapping" device — one Power-like function plus at most one
     paired action, nothing else (see _fixed_mapping_functions()) — skips
     Left/Right cycling entirely: Enter always fires Power, Up/Down always
@@ -25,13 +27,18 @@ Tracks one active leaf device (state.active_device, state.active_location):
     shaped the same way — receiver (just a "volume" pair, no power
     button), tv/bedroom and ac (a "power" button plus one paired action)
     all get this treatment with no per-device code (2026-09-02).
-    A light device specifically (any Hue/Globe light, or the
-    IR-controlled Hall Light — see _is_light_device) additionally repurposes
-    Left/Right, otherwise unused here, to cycle to the next/previous light
-    (cycle_light_leaf()) — the only way to move between individual lights,
-    since LIGHT_MENU_DEVICE (below) collapses them into one stop at the
-    top level; a non-light fixed-mapping device just leaves Left/Right
-    doing nothing, since there's nothing else to move to.
+    A device in MENU_DEVICE_LABELS specifically (light or tv) additionally
+    repurposes Left/Right, otherwise unused here, to cycle to the
+    next/previous leaf in its group (cycle_menu_leaf()) — the only way to
+    move between individual leaves, since that group's sentinel (above)
+    collapses them into one stop at the top level; a non-grouped
+    fixed-mapping device (receiver, ac) just leaves Left/Right doing
+    nothing, since there's nothing else to move to. A grouped leaf that
+    isn't itself fixed-mapping-shaped (e.g. tv/living_room's lone
+    "Picture" button, not named "power") still gets this treatment —
+    Left/Right is already spoken for by group cycling, so there's nothing
+    lost in also letting Enter fire it directly (see the MENU_DEVICE_LABELS
+    branch in show()).
     Colour/temp presets live on the physical Preset Function 1-4 keys
     instead (app/quick_actions.py's _handle_preset ->
     services.preset_service.get_preset()/run_steps(), config/
@@ -59,7 +66,10 @@ from hardware.input import (
 )
 from services import home_service, signal_service, step_device_service, preset_service, androidtv_service
 from screens.widgets.format import format_name
-from app.constants import DEFAULT_ACTIVE_DEVICE, LIGHT_MENU_DEVICE
+from app.constants import (
+    DEFAULT_ACTIVE_DEVICE, MENU_DEVICE_LABELS, MENU_DEVICE_SENTINELS, MENU_SENTINEL_TO_DEVICE,
+    ASYNC_SEND_FLASH_SECONDS,
+)
 from app.state import AppState
 from app.exceptions import HardwareError
 
@@ -103,30 +113,32 @@ _GOOGLE_TV_REPEAT_INTERVAL_SECONDS = 0.15
 # falls back to the original indefinite blocking wait.
 _PRESET_REVEAL_FRAME_SECONDS = 1.3
 
+# Line-2 caption shown on every individual leaf of a MENU_DEVICE_LABELS
+# group — deliberately generic rather than naming the leaf's actual paired
+# function (e.g. "Light Control" on every light regardless of whether its
+# paired action is Brightness; "TV Control" on both Living Room TV's lone
+# Picture button and Bedroom TV's Volume pair) — one predictable caption
+# per group instead of one that varies leaf to leaf within it.
+_MENU_CONTROL_LABEL = {"light": "Light Control", "tv": "TV Control"}
 
-def _is_light_device(device: str) -> bool:
-    """Every Hue, Globe, or IR light (bedroom/ceiling/corner/kitchen_n/
-    kitchen_s/lamp/window/hall) lives under the single "light" device now,
-    one location per room — see signals/home/light/, config/
-    step_devices.json's "light/<location>" keys, and config/
+
+def menu_leaves(home: str, device: str) -> list[tuple[str, str]]:
+    """Every leaf under *device* (a MENU_DEVICE_LABELS key — "light" or
+    "tv"), in signal_service.list_leaf_devices() order — what Left/Right
+    cycles between once inside that device's collapsed top-level stop, and
+    what its MENU_DEVICE_SENTINELS entry's Enter drills into (the
+    first one). Every Hue, Globe, or IR light (bedroom/ceiling/corner/
+    kitchen_n/kitchen_s/lamp/window/hall) lives under the single "light"
+    device this way, one location per room — see signals/home/light/,
+    config/step_devices.json's "light/<location>" keys, and config/
     keypad_presets.json's "by_device" overrides, same "light/<location>"
-    scheme (2026-09-03: previously each had its own top-level device
-    named "..._light", identified purely by that naming convention;
-    consolidated into locations under "light" instead, matching the
-    IR-controlled Hall Light's pre-existing signals/home/light/hall/
-    shape rather than the other way around)."""
-    return device == "light"
+    scheme. "tv" (Living Room TV/Bedroom TV) works the same way
+    (2026-09-1x)."""
+    return [leaf for leaf in signal_service.list_leaf_devices(home) if leaf[0] == device]
 
 
-def light_leaves(home: str) -> list[tuple[str, str]]:
-    """Every light leaf, in signal_service.list_leaf_devices() order —
-    what Left/Right cycles between once inside the Light category, and
-    what LIGHT_MENU_DEVICE's Enter drills into (the first one)."""
-    return [leaf for leaf in signal_service.list_leaf_devices(home) if _is_light_device(leaf[0])]
-
-
-def cycle_light_leaf(home: str, current: tuple[str, str], direction: int) -> tuple[str, str]:
-    leaves = light_leaves(home)
+def cycle_menu_leaf(home: str, device: str, current: tuple[str, str], direction: int) -> tuple[str, str]:
+    leaves = menu_leaves(home, device)
     if not leaves:
         return current
     try:
@@ -137,31 +149,39 @@ def cycle_light_leaf(home: str, current: tuple[str, str], direction: int) -> tup
 
 
 def cycle_top_level(home: str, current: tuple[str, str], direction: int) -> tuple[str, str]:
-    """< Device/Device >'s actual stepping order: every non-light leaf is
-    its own stop, and every light leaf collapses into a single
-    LIGHT_MENU_DEVICE stop (see light_leaves()/cycle_light_leaf() for
-    moving between individual lights once inside it, via Left/Right).
+    """< Device/Device >'s actual stepping order: every leaf whose device
+    isn't in MENU_DEVICE_LABELS is its own stop, and every leaf whose
+    device is (light, tv) collapses into a single stop — that device's
+    MENU_DEVICE_SENTINELS entry (see menu_leaves()/cycle_menu_leaf() for
+    moving between individual leaves once inside one, via Left/Right).
 
-    Being on any light device already counts as "at" that collapsed
-    stop for this purpose — so pressing < Device/Device > while on a
-    specific light (already drilled in) jumps straight to the next/prev
-    *non-light* stop, the same as pressing it from the undrilled "Light"
-    menu screen itself, never stepping through the remaining lights one
-    at a time (that's Left/Right's job, not this key's)."""
+    Being on any leaf of a grouped device already counts as "at" that
+    group's collapsed stop for this purpose — so pressing < Device/Device >
+    while on a specific leaf (already drilled in) jumps straight to the
+    next/prev stop *outside that group*, the same as pressing it from the
+    group's own undrilled menu screen itself, never stepping through the
+    rest of the group one at a time (that's Left/Right's job, not this
+    key's)."""
     top_level: list[tuple[str, str]] = []
-    seen_light = False
+    seen_devices: set[str] = set()
     for leaf in signal_service.list_leaf_devices(home):
-        if _is_light_device(leaf[0]):
-            if not seen_light:
-                top_level.append((LIGHT_MENU_DEVICE, ""))
-                seen_light = True
+        device = leaf[0]
+        if device in MENU_DEVICE_LABELS:
+            if device not in seen_devices:
+                top_level.append((MENU_DEVICE_SENTINELS[device], ""))
+                seen_devices.add(device)
         else:
             top_level.append(leaf)
     if not top_level:
         return current
 
-    at_light = _is_light_device(current[0]) or current[0] == LIGHT_MENU_DEVICE
-    effective_current = (LIGHT_MENU_DEVICE, "") if at_light else current
+    current_device = current[0]
+    if current_device in MENU_DEVICE_LABELS:
+        effective_current = (MENU_DEVICE_SENTINELS[current_device], "")
+    elif current_device in MENU_SENTINEL_TO_DEVICE:
+        effective_current = (current_device, "")
+    else:
+        effective_current = current
     try:
         index = top_level.index(effective_current)
     except ValueError:
@@ -192,6 +212,36 @@ def _fixed_mapping_functions(functions: list[dict]) -> tuple[dict | None, dict |
     if other or len(power) > 1 or len(paired) > 1 or not accounted:
         return None
     return (power[0] if power else None, paired[0] if paired else None)
+
+
+def _menu_power_paired(functions: list[dict]) -> tuple[dict | None, dict | None]:
+    """Like _fixed_mapping_functions() above, but for a MENU_DEVICE_LABELS
+    leaf (light/tv) specifically — Left/Right is already claimed by
+    cross-leaf group cycling there (see cycle_menu_leaf()), never
+    per-function cycling, so unlike _fixed_mapping_functions() there's no
+    "reject if anything else is left over" rule: a Power-named function
+    (or, failing that, the leaf's one paired action) fires on Enter/Up/
+    Down regardless of what other functions this leaf might also have —
+    those extra ones are only reachable via a Preset Function shortcut
+    instead (e.g. tv/living_room's "Picture" on Preset Function 1 — see
+    config/keypad_presets.json's "by_device" overrides; confirmed
+    2026-09-1x, after tv/living_room grew a second function alongside
+    "Picture", that _fixed_mapping_functions() itself would otherwise
+    reject the whole leaf down to no Enter action at all, since "Picture"
+    counts as an unaccounted-for "other" function to it).
+
+    Falls back to the leaf's one and only function if it has neither a
+    Power-named nor a paired function, same single-function relaxation
+    used elsewhere in this file (e.g. tv/living_room's "Picture" alone,
+    before "Power" existed)."""
+    paired_types = ("paired", "step_paired")
+    power_matches = [f for f in functions if f["type"] not in paired_types and f["name"].lower() == "power"]
+    paired_matches = [f for f in functions if f["type"] in paired_types]
+    power = power_matches[0] if power_matches else None
+    paired = paired_matches[0] if len(paired_matches) == 1 else None
+    if power is None and paired is None and len(functions) == 1:
+        power = functions[0]
+    return power, paired
 
 
 def _fire_power(lcd: LCD, home: str, device: str, location: str, function: dict) -> None:
@@ -243,42 +293,95 @@ def _display_name(function: dict) -> str:
 
 def _device_label(device: str, location: str) -> str:
     """Line-1 title for a leaf device — location first, like a person
-    would actually say it ("Bedroom TV"), not "Light / Hall" — so two
-    leaves under the same device (tv/bedroom vs. tv/living_room) don't
-    display identically with no way to tell which one is active.
+    would actually say it ("Bedroom AC"), not "AC / Bedroom" — so two
+    leaves under the same device don't display identically with no way to
+    tell which one is active.
 
-    The "light" device drops the device-name suffix entirely (2026-09-09)
-    — just "Lamp"/"Ceiling"/"Hall", not "Lamp Light"/"Hall Light": once
-    you're inside the Light menu the device type is already established
-    by context, so repeating "Light" on every individual light's label is
-    redundant rather than disambiguating, unlike e.g. "Bedroom TV" where
-    dropping "TV" would lose real information (there's no other clue
-    you're looking at a TV, not another bedroom device)."""
-    if device == "light":
-        return format_name(location) if location else "Light"
+    A MENU_DEVICE_LABELS device (light, tv) drops the device-name suffix
+    entirely (2026-09-09, extended to tv 2026-09-1x) — just "Lamp"/
+    "Ceiling"/"Hall", not "Lamp Light"/"Hall Light"; "Living Room"/
+    "Bedroom", not "Living Room TV"/"Bedroom TV": once you're inside that
+    device's collapsed menu (see MENU_DEVICE_LABELS/menu_leaves()) the
+    device type is already established by context, so repeating it on
+    every individual leaf's label is redundant rather than disambiguating
+    — unlike a non-grouped device (e.g. "Bedroom AC" if there were ever
+    more than one AC) where dropping the suffix would lose real
+    information."""
+    if device in MENU_DEVICE_LABELS:
+        return format_name(location) if location else MENU_DEVICE_LABELS[device]
     name = format_name(device)
     return f"{format_name(location)} {name}" if location else name
 
 
+def _menu_leaf_label(home: str, device: str, location: str) -> str:
+    """Line-1 title for a MENU_DEVICE_LABELS leaf (light/tv) — same as
+    _device_label(), but framed in <> when there's more than one leaf in
+    its group to Left/Right cycle to (nothing to cycle to, so no arrows,
+    when the group only has the one leaf) — same <> convention
+    _cycle_line2() already uses on line 2 for a plain multi-function
+    device's selected function name, so it reads the same way here."""
+    label = _device_label(device, location)
+    if len(menu_leaves(home, device)) > 1 and len(label) <= 14:
+        return f"<{label.center(14)}>"
+    return label
+
+
+# Hand-picked short forms for Preset Function names (2026-09-1x) — chosen
+# by hand rather than derived automatically (e.g. just the first 3
+# letters), so an odd or ambiguous truncation never sneaks in silently.
+# Keyed lowercase; _preset_entries() falls back to the older pack-and-
+# cycle-frames behavior for any name with no entry here, so adding a new
+# preset without an abbreviation degrades gracefully instead of breaking.
+_PRESET_ABBREVIATIONS = {
+    "back": "Bak",
+    "rust": "Rst",
+    "rest": "Rst",
+    "home": "Hme",
+    "mute": "Ssh",
+    "power": "Pwr",
+    "youtube": "YT",
+    "captions": "Cap",
+    "candlelight": "Cdl",
+    "warm white": "Wrm",
+    "daylight": "Day",
+    "picture": "Pic",
+}
+
+
 def _preset_entries(device: str, location: str) -> list[str]:
     """Preset Function display frames for this leaf, ready for
-    _reveal_presets() to show one at a time — "N:Name" for every
-    configured slot (see services.preset_service.get_preset()), packed as
-    many to a frame as fit in 16 characters space-separated (e.g.
-    "1:Back 2:Rest" together on one frame instead of each getting its own
-    turn when they'd both comfortably fit) rather than always one preset
-    per frame. [] if none are configured. Computed once per leaf (see
-    show()'s leaf_changed handling), not once per _reveal_presets() call —
-    services.preset_service.get_preset() re-reads config/
-    keypad_presets.json from disk every time, which would otherwise mean
-    4 fresh file reads on every single repeated keystroke while e.g.
-    holding a D-pad direction."""
-    parts = []
+    _reveal_presets() to show one at a time. [] if none are configured.
+    Computed once per leaf (see show()'s leaf_changed handling), not once
+    per _reveal_presets() call — services.preset_service.get_preset()
+    re-reads config/keypad_presets.json from disk every time, which would
+    otherwise mean 4 fresh file reads on every single repeated keystroke
+    while e.g. holding a D-pad direction.
+
+    When every configured slot's name has a _PRESET_ABBREVIATIONS entry,
+    all of them are packed onto one single frame as "<N><abbr>" with no
+    separator between slots (e.g. "1Bak2Rst3Hme4Ssh") — tight enough that
+    4 slots at their hand-picked lengths still exactly fit one 16-char
+    line, so there's nothing to cycle through; the digit before each
+    abbreviation is separator enough to read at a glance. Falls back to
+    "N:Name" pairs, space-separated and packed as many to a frame as fit
+    (e.g. "1:Back 2:Rest" together when they both fit), cycling to a next
+    frame for whatever doesn't, if *any* configured slot's name has no
+    abbreviation — a mix of abbreviated and full-name slots on the same
+    line would read worse than all of one style or the other."""
+    slots = []
     for number in range(1, 5):
         name, _ = preset_service.get_preset(number, device, location)
         if name:
-            parts.append(f"{number}:{name}"[:16])
+            slots.append((number, name))
 
+    if not slots:
+        return []
+
+    abbreviations = [_PRESET_ABBREVIATIONS.get(name.lower()) for _, name in slots]
+    if all(abbreviations):
+        return ["".join(f"{number}{abbr}" for (number, _), abbr in zip(slots, abbreviations))[:16]]
+
+    parts = [f"{number}:{name}"[:16] for number, name in slots]
     frames = []
     current = ""
     for part in parts:
@@ -384,16 +487,16 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
         lcd.write(_device_label(device, location), "Remote Control")
         return
 
-    if device == LIGHT_MENU_DEVICE:
+    if device in MENU_SENTINEL_TO_DEVICE:
         input_hw.set_repeatable_keys(set())
         input_hw.set_repeat_interval(None)
-        lcd.write("Light", "Press Enter")
+        lcd.write(MENU_DEVICE_LABELS[MENU_SENTINEL_TO_DEVICE[device]], "Press Enter")
         return
 
-    if _is_light_device(device):
+    if device in MENU_DEVICE_LABELS:
         input_hw.set_repeatable_keys(set())
         input_hw.set_repeat_interval(None)
-        lcd.write(_device_label(device, location), "Light Control")
+        lcd.write(_menu_leaf_label(home, device, location), _MENU_CONTROL_LABEL[device])
         return
 
     input_hw.set_repeatable_keys(set())
@@ -432,13 +535,14 @@ def show(lcd: LCD, state: AppState) -> None:
             if leaf_changed:
                 function_index = 0
                 previous_leaf = (device, location)
-                # Only for a real leaf — LIGHT_MENU_DEVICE is a synthetic
-                # stop with no presets of its own (see _reveal_presets()).
-                preset_entries = _preset_entries(device, location) if device and device != LIGHT_MENU_DEVICE else []
+                # Only for a real leaf — a MENU_DEVICE_SENTINELS entry is a
+                # synthetic stop with no presets of its own (see
+                # _reveal_presets()).
+                preset_entries = _preset_entries(device, location) if device and device not in MENU_SENTINEL_TO_DEVICE else []
 
             # Only right after landing on a leaf — see _reveal_presets()'s
             # battery note for why this is a one-shot, not continuous.
-            reveal_presets = leaf_changed and bool(device) and device != LIGHT_MENU_DEVICE
+            reveal_presets = leaf_changed and bool(device) and device not in MENU_SENTINEL_TO_DEVICE
 
             if not device:
                 input_hw.set_repeatable_keys(set())
@@ -500,11 +604,12 @@ def show(lcd: LCD, state: AppState) -> None:
                     dpad_needs_redraw = True  # _transmit overwrote the screen with an error
                 continue
 
-            if device == LIGHT_MENU_DEVICE:
+            if device in MENU_SENTINEL_TO_DEVICE:
+                underlying = MENU_SENTINEL_TO_DEVICE[device]
                 input_hw.set_repeatable_keys(set())
                 input_hw.set_repeat_interval(None)
                 if leaf_changed or dpad_needs_redraw:
-                    lcd.write("Light", "Press Enter")
+                    lcd.write(MENU_DEVICE_LABELS[underlying], "Press Enter")
                     dpad_needs_redraw = False
                 key = read_key()
                 if key is None:
@@ -524,18 +629,19 @@ def show(lcd: LCD, state: AppState) -> None:
                 if (state.active_device, state.active_location) != (device, location):
                     continue
                 if key == KEY_ENTER:
-                    leaves = light_leaves(home)
+                    leaves = menu_leaves(home, underlying)
                     if leaves:
                         state.active_device, state.active_location = leaves[0]
                 continue
 
-            if _is_light_device(device):
+            if device in MENU_DEVICE_LABELS:
+                control_label = _MENU_CONTROL_LABEL[device]
                 input_hw.set_repeatable_keys(set())
                 input_hw.set_repeat_interval(None)
                 if leaf_changed or dpad_needs_redraw:
-                    lcd.write(_device_label(device, location), "Light Control")
+                    lcd.write(_menu_leaf_label(home, device, location), control_label)
                     dpad_needs_redraw = False
-                key = _reveal_presets(lcd, state, device, location, "Light Control", preset_entries) if reveal_presets else read_key()
+                key = _reveal_presets(lcd, state, device, location, control_label, preset_entries) if reveal_presets else read_key()
                 if key is None:
                     # See the google_tv branch above's identical handling.
                     dpad_needs_redraw = True
@@ -548,13 +654,13 @@ def show(lcd: LCD, state: AppState) -> None:
                 if (state.active_device, state.active_location) != (device, location):
                     continue
                 if key == KEY_LEFT:
-                    state.active_device, state.active_location = cycle_light_leaf(home, (device, location), -1)
+                    state.active_device, state.active_location = cycle_menu_leaf(home, device, (device, location), -1)
                     continue
                 if key == KEY_RIGHT:
-                    state.active_device, state.active_location = cycle_light_leaf(home, (device, location), 1)
+                    state.active_device, state.active_location = cycle_menu_leaf(home, device, (device, location), 1)
                     continue
                 functions = _functions_for(home, device, location)
-                power, paired = _fixed_mapping_functions(functions) or (None, None)
+                power, paired = _menu_power_paired(functions)
                 if key == KEY_ENTER and power:
                     _fire_power(lcd, home, device, location, power)
                     dpad_needs_redraw = True
@@ -614,7 +720,16 @@ def show(lcd: LCD, state: AppState) -> None:
             line2 = _cycle_line2(functions, function)
             lcd.write(_device_label(device, location), line2[:16])
 
-            key = read_key()
+            # Same Preset Function reveal every other screen shape gets on
+            # entry (2026-09-1x: originally skipped here on the theory that
+            # a several-functions device already shows something useful on
+            # line 2 — the selected function's own name — but that just
+            # meant a device like google_home's presets were invisible
+            # until you happened to already know their names; showing them
+            # once on arrival doesn't cost anything the normal Left/Right
+            # cycling below doesn't already do afterward).
+            key = _reveal_presets(lcd, state, device, location, line2, preset_entries) \
+                if reveal_presets else read_key()
             if key is None:
                 # A quick action (Preset, a device-slot button,
                 # < Device/Device >) wants an immediate re-check rather
@@ -625,11 +740,7 @@ def show(lcd: LCD, state: AppState) -> None:
                 # matters specifically for a switch to another
                 # general-shaped device: that re-derivation updates
                 # previous_leaf in place, which would make the top's own
-                # leaf_changed check miss the switch (this branch shows
-                # which function is selected — see _cycle_line2() — on
-                # devices with several to choose from, so it keeps its
-                # own read_key() rather than _reveal_presets(); every other
-                # screen shape below uses that instead).
+                # leaf_changed check miss the switch.
                 continue
             if key == KEY_QUIT:
                 state.running = False
@@ -651,7 +762,7 @@ def show(lcd: LCD, state: AppState) -> None:
             if (new_device, new_location) != (device, location):
                 device, location = new_device, new_location
                 previous_leaf = (device, location)
-                if not device or device == DEFAULT_ACTIVE_DEVICE or device == LIGHT_MENU_DEVICE or _is_light_device(device):
+                if not device or device == DEFAULT_ACTIVE_DEVICE or device in MENU_SENTINEL_TO_DEVICE or device in MENU_DEVICE_LABELS:
                     continue  # different-shaped screen; let the top of the loop handle it, this key isn't safe to apply to it here
                 functions = _functions_for(home, device, location)
                 if not functions or _fixed_mapping_functions(functions) is not None:
@@ -712,20 +823,30 @@ def _transmit(lcd: LCD, home: str, device: str, location: str, button: str) -> b
         return False
 
 
-def _run_step_function(lcd: LCD, device: str, location: str, steps: list[dict]) -> bool:
+def _run_step_function(lcd: LCD, device: str, location: str, steps: list[dict]) -> None:
     """Fires a step device's function — the same
     voice/androidtv/androidtv_app/IR/hue step engine keypad presets use
     (services.preset_service.run_steps()), not a separate one, so e.g. a
     voice command can be followed by an IR signal (see config/
-    step_devices.json's "Rust" entry). Same True/False-on-error
-    convention as _transmit; True only if every step succeeded — on
-    failure, shows which step (services.preset_service.describe_step()),
-    not just how many."""
-    lcd.write(_device_label(device, location), "Sending...")
-    sent, total, failed_step = preset_service.run_steps(steps)
-    if failed_step is not None:
-        message = f"Failed: {preset_service.describe_step(failed_step)}"[:16]
-        lcd.write(_device_label(device, location), message)
-        time.sleep(1)
-        return False
-    return True
+    step_devices.json's "Rust" entry).
+
+    Non-blocking (services.preset_service.run_steps_background()): a
+    voice/hue step is a real network round-trip, so blocking here used to
+    leave "Sending..." on screen — and the keypad unresponsive — for
+    however long that took. Shows "Sending..." for a brief fixed flash
+    (ASYNC_SEND_FLASH_SECONDS — the steps themselves are already running
+    in the background during it, this is only so the message is visible
+    at all before the caller's own next redraw would otherwise overwrite
+    it) then returns; on failure, the label is overwritten with which
+    step failed (services.preset_service.describe_step()) whenever the
+    background call actually finishes, which may be after the screen has
+    already moved on."""
+    label = _device_label(device, location)
+    lcd.write(label, "Sending...")
+
+    def _on_result(sent, total, failed_step):
+        if failed_step is not None:
+            lcd.write(label, f"Failed: {preset_service.describe_step(failed_step)}"[:16])
+
+    preset_service.run_steps_background(steps, _on_result)
+    time.sleep(ASYNC_SEND_FLASH_SECONDS)

@@ -5,6 +5,8 @@ software I²C.  All other layers call only ``lcd.write(line1, line2)``
 and ``lcd.clear()``.
 """
 
+import threading
+
 from RPLCD.i2c import CharLCD
 
 # Custom CGRAM characters for a sub-cell-resolution progress bar: each 5px-
@@ -28,6 +30,14 @@ _BAR_FULL_CELL = chr(5)
 
 class LCD:
     def __init__(self) -> None:
+        # Guards every write below against interleaving with a background
+        # thread's write (services/preset_service.py's run_steps_background
+        # reports a failed voice/hue step from its own worker thread, after
+        # the main input loop has already moved on) — without this, two
+        # threads racing to write cursor_pos + write_string in an
+        # interleaved order could corrupt what's on screen, not just which
+        # message wins.
+        self._lock = threading.Lock()
         self._lcd = CharLCD(
             i2c_expander="PCF8574",
             address=0x27,
@@ -42,14 +52,16 @@ class LCD:
         self.clear()
 
     def clear(self) -> None:
-        self._lcd.clear()
+        with self._lock:
+            self._lcd.clear()
 
     def write(self, line1: str = "", line2: str = "") -> None:
-        self.clear()
-        self._lcd.cursor_pos = (0, 0)
-        self._lcd.write_string(line1[:16].ljust(16))
-        self._lcd.cursor_pos = (1, 0)
-        self._lcd.write_string(line2[:16].ljust(16))
+        with self._lock:
+            self._lcd.clear()
+            self._lcd.cursor_pos = (0, 0)
+            self._lcd.write_string(line1[:16].ljust(16))
+            self._lcd.cursor_pos = (1, 0)
+            self._lcd.write_string(line2[:16].ljust(16))
 
     def write_line1(self, text: str = "") -> None:
         """Overwrite just the top row — no clear() (that would blank both
@@ -57,8 +69,9 @@ class LCD:
         shouldn't interrupt something already showing on line 2, e.g.
         screens/network_screen.py's background rescan not disturbing the
         network currently highlighted."""
-        self._lcd.cursor_pos = (0, 0)
-        self._lcd.write_string(text[:16].ljust(16))
+        with self._lock:
+            self._lcd.cursor_pos = (0, 0)
+            self._lcd.write_string(text[:16].ljust(16))
 
     def write_line2(self, text: str = "") -> None:
         """Overwrite just the bottom row — no clear() (that would blank
@@ -66,8 +79,9 @@ class LCD:
         see there. Used by screens/active_device_screen.py's Preset
         Function name reveal after a device switch, so the device label
         already on line 1 doesn't need rewriting each frame."""
-        self._lcd.cursor_pos = (1, 0)
-        self._lcd.write_string(text[:16].ljust(16))
+        with self._lock:
+            self._lcd.cursor_pos = (1, 0)
+            self._lcd.write_string(text[:16].ljust(16))
 
     def write_progress(self, line1: str, fraction: float) -> None:
         """Top row is *line1*; bottom row is a fill bar for *fraction*
@@ -85,10 +99,11 @@ class LCD:
             bar += chr(partial)
         bar = bar.ljust(16)
 
-        self._lcd.cursor_pos = (0, 0)
-        self._lcd.write_string(line1[:16].ljust(16))
-        self._lcd.cursor_pos = (1, 0)
-        self._lcd.write_string(bar)
+        with self._lock:
+            self._lcd.cursor_pos = (0, 0)
+            self._lcd.write_string(line1[:16].ljust(16))
+            self._lcd.cursor_pos = (1, 0)
+            self._lcd.write_string(bar)
 
 
 # Module-level singleton — imported by screens and startup alike.

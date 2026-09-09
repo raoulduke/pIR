@@ -55,6 +55,22 @@ power (see _ir_toggle_state's own comment):
   {"type": "ir_toggle", "home": "home", "device": "light", "location": "hall",
    "on_button": "on", "off_button": "off", "delay_after": 0.3}
 
+A voice_toggle step is the same idea for a Google Home device with no
+Hue-style state readback: a bare "Toggle X" phrase is NOT one of the
+phrasings Google Assistant is confirmed to act on (see
+screens/command_screen.py's _TEMPLATES — only "Turn on {}"/"Turn off {}"/
+"Dim {}"/"Brighten {}" are confirmed), and a Home app Routine can't
+read a device's current state either, so a single "Toggle X" command can
+only ever perform whatever fixed action it was authored with — it can
+turn a light off reliably but then never turn it back on. This tracks
+assumed on/off state locally instead (same caveat as ir_toggle: no real
+readback, resets on restart, drifts if the light is ever changed another
+way) and alternates between the two confirmed phrasings:
+  {"type": "voice_toggle", "key": "lamp", "on_command": "Turn on lamp",
+   "off_command": "Turn off lamp", "delay_after": 0.3}
+"key" only needs to be unique among voice_toggle steps — it's the state
+lookup, unrelated to the command text.
+
 Top-level "1".."4" are the global defaults — what fires when the active
 device (screens/active_device_screen.py's state.active_device/location) has
 no override for that slot. A top-level "by_device" key adds per-device
@@ -74,9 +90,27 @@ services/step_device_service.py — a step device's Active Device Control
 functions (screens/active_device_screen.py) use this exact same step
 vocabulary and step-runner, not a separate one, so e.g. a step can mix a
 voice command with a follow-up IR signal.
+
+run_steps_background() runs the same engine on a single dedicated
+background thread (mirrors services/androidtv_service.py's single-loop-
+thread bridge) instead of the caller blocking on it — a voice or hue step
+is a real HTTP round-trip (voice_service.send_command()'s timeout is up
+to 15s), and every caller used to leave the LCD stuck on "Sending..."/
+"Running..." and the keypad unresponsive for that whole time. Every call
+site now shows its own "Sending..."/"Running..." then returns right away;
+on_result(sent, total, failed_step), if given, runs on the background
+thread once the steps actually finish — used only to write a failure to
+the LCD after the fact (a success needs no follow-up message, the caller
+has already moved on to whatever's next), so it may land on top of
+whatever screen/message is showing by then. One worker thread, not one
+per call, so two quick button presses run their steps one after another
+rather than racing each other through _ir_toggle_state/_voice_toggle_state
+above.
 """
 
 import json
+import queue
+import threading
 import time
 from pathlib import Path
 
@@ -96,6 +130,11 @@ _PATH = Path(__file__).parent.parent / KEYPAD_PRESETS_FILE
 # limitation, not just a startup quirk. Acceptable for a light with no
 # other regular control path (see Hall Light, 2026-09-02).
 _ir_toggle_state: dict[tuple[str, str, str], bool] = {}
+
+# Same idea as _ir_toggle_state above, for voice_toggle steps — see that
+# step type's docstring for why a bare "Toggle X" voice command can't be
+# trusted to actually toggle a Google Home device.
+_voice_toggle_state: dict[str, bool] = {}
 
 
 def _load() -> dict:
@@ -145,6 +184,8 @@ def describe_step(step: dict) -> str:
         return "Light"
     if step_type == "ir_toggle":
         return step.get("device", "IR").replace("_", " ").title()
+    if step_type == "voice_toggle":
+        return step.get("key", "Voice").replace("_", " ").title()
     return step.get("button", "Signal").replace("_", " ").title()
 
 
@@ -229,6 +270,17 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                     sent += 1
                 except HardwareError:
                     pass
+        elif step.get("type") == "voice_toggle":
+            # Same "no real state readback" caveat as ir_toggle — see
+            # this step type's docstring for why a bare "Toggle X" voice
+            # command can't be trusted to actually flip the device.
+            key = step["key"]
+            now_on = not _voice_toggle_state.get(key, False)
+            _voice_toggle_state[key] = now_on
+            command = step["on_command"] if now_on else step["off_command"]
+            success, _ = voice_service.send_command(command)
+            if success:
+                sent += 1
         else:
             path = signal_service.signal_path(
                 step["home"], step["device"], step["button"], step.get("location", "")
@@ -249,5 +301,38 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
             time.sleep(step.get("delay_after", PRESET_DEFAULT_DELAY_SECONDS))
 
     return sent, len(steps), failed_step
+
+
+# (steps, on_result) pairs waiting to run — see run_steps_background()
+# below. Unbounded: nothing here is fast enough to queue up faster than a
+# human can press keypad buttons.
+_task_queue: "queue.Queue[tuple[list[dict], object]]" = queue.Queue()
+_worker_started = False
+_worker_start_lock = threading.Lock()
+
+
+def _worker_loop() -> None:
+    while True:
+        steps, on_result = _task_queue.get()
+        result = run_steps(steps)
+        if on_result:
+            on_result(*result)
+
+
+def _ensure_worker() -> None:
+    global _worker_started
+    with _worker_start_lock:
+        if not _worker_started:
+            threading.Thread(target=_worker_loop, name="preset-steps", daemon=True).start()
+            _worker_started = True
+
+
+def run_steps_background(steps: list[dict], on_result=None) -> None:
+    """Queue *steps* for the background worker and return immediately —
+    see this module's docstring for why. on_result, if given, is called
+    as on_result(sent, total, failed_step) from the worker thread once
+    these steps finish running."""
+    _ensure_worker()
+    _task_queue.put((steps, on_result))
 
 

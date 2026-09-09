@@ -22,15 +22,6 @@
       "1": {"name": "Power", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_POWER"}]},
       "4": {"name": "Mute", "steps": [{"home": "home", "device": "google_tv", "location": "", "button": "mute"}]}
     },
-    "google_home": {
-      "1": {"name": "Rust", "steps": [
-        {"type": "voice", "command": "Rust"},
-        {"home": "home", "device": "light", "location": "hall", "button": "off"}
-      ]},
-      "2": {"name": "Lamp Rust", "steps": [{"type": "voice", "command": "Change lamp light to rust"}]},
-      "3": {"name": "Toggle Ceiling", "steps": [{"type": "voice", "command": "Toggle ceiling"}]},
-      "4": {"name": "Toggle Lamp", "steps": [{"type": "voice", "command": "Toggle lamp"}]}
-    },
     "light/bedroom": {
       "1": {"name": "Candlelight", "steps": [{"type": "hue", "ct": 454, "light_id": "3"}]},
       "2": {"name": "Warm White", "steps": [{"type": "hue", "ct": 370, "light_id": "3"}]},
@@ -62,6 +53,11 @@
       "1": {"name": "Candlelight", "steps": [{"type": "voice", "command": "Change corner to candlelight"}]},
       "2": {"name": "Warm White", "steps": [{"type": "voice", "command": "Change corner to warm white"}]},
       "3": {"name": "Daylight", "steps": [{"type": "voice", "command": "Change corner to daylight"}]}
+    },
+    "tv/living_room": {
+      "1": {"name": "Picture", "steps": [
+        {"home": "home", "device": "tv", "location": "living_room", "button": "picture"}
+      ]}
     }
   }
 }

@@ -82,9 +82,12 @@ FILE_OWNER = "matt"
 # Signals directory (relative to project root)
 SIGNALS_DIR = "signals"
 
-# Explicit < Device/Device > cycle order, consumed by
-# services/signal_service.py's list_devices(). Per-home; a device not
-# listed for its home falls back to alphabetical, after every listed one.
+# Explicit ordering, consumed by services/signal_service.py's
+# list_devices() (< Device/Device > cycle order, keyed by home — e.g.
+# "home") and list_locations() (Left/Right cycle order within one device,
+# keyed by "<home>/<device>" — e.g. "home/light"). Either way, anything
+# not listed for its key falls back to alphabetical, after every listed
+# one.
 DEVICE_ORDER_FILE = "config/device_order.json"
 
 # Keypad matrix — BCM pin numbers in wiring-table order (wire 1 .. wire 12).
@@ -109,7 +112,17 @@ PRESET_DEFAULT_DELAY_SECONDS = 0.3
 # I2C (GPIO23/24) — seen as garbled LCD output / crashes during testing.
 KEYPAD_SCAN_DELAY_SECONDS = 0.0005  # settle time after driving a pin low
 KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
-KEYPAD_POLL_INTERVAL_SECONDS = 0.05 # gap between sweeps when idle
+# gap between sweeps when idle — this is also the minimum press-and-release
+# duration guaranteed to be caught at all: a press shorter than this can
+# land entirely between two idle sweeps and never get sampled once, not
+# just debounced away (confirmed 2026-09-09: missed presses were random
+# across buttons and reduced by holding longer, both pointing at this gap
+# rather than any one button's hardware). Lowered from 0.05 — the settle
+# time above is unchanged and already small, so this keeps the specific
+# "long per-pin settle" half of the historical I2C-disruption combination
+# out of the picture; re-check for LCD garbling if this ever needs to move
+# further.
+KEYPAD_POLL_INTERVAL_SECONDS = 0.01
 
 # Auto-repeat while Up/Down is held (see hardware/keypad.py's
 # KeypadScanner._repeat_while_held) — scrolling long lists or the

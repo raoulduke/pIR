@@ -77,7 +77,7 @@ config/
 
 - venv lives inside the project at `ir/.venv`
 - Correct invocation: `sudo .venv/bin/python3 main.py` — **never** `sudo python3 main.py` (bypasses the venv)
-- Confirmed third-party dependencies: `evdev`, `RPi.GPIO`, `RPLCD`, `smbus2`, `pigpio`
+- Confirmed third-party dependencies: `evdev`, `RPi.GPIO`, `RPLCD`, `smbus2`, `pigpio`, `androidtvremote2` (pulls in `cryptography`, `protobuf`, `aiofiles`, `cffi`, `pycparser`)
 - `requirements.txt` must be generated from the Pi (the authoritative environment), not from WSL2
 - Windows-built venvs are unusable on ARM Linux — never sync `.venv/` to the Pi; it's excluded from sync
 
@@ -164,6 +164,7 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
 - The backpack's own PCF8574-driven backlight switch has not been ruled out as a cheaper alternative to the GPIO12 transistor — needs physically inspecting the board for a backlight jumper before deciding.
 - **Wi-Fi power management disabled** — introduces 100–500ms wake latency that disrupts IR timing and LCD responsiveness. Disable via systemd service (most reliable method on Kali).
 - **`pigpio`, `asyncio`, and `gpu_mem=16`** are the highest-impact performance changes for this build.
+- **Android TV Remote protocol v2 over adb** for Google TV control (decided 2026-09-09) — see "Google TV / Android TV Remote Control" below.
 
 ## Development Workflow
 
@@ -197,6 +198,61 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
    ```bash
    sudo .venv/bin/python3 main.py
    ```
+
+## Google TV / Android TV Remote Control (2026-09-09)
+
+`services/androidtv_service.py` controls Google TV functions IR can't
+reach (Home, true Back distinct from Menu, app launching) over the
+**Android TV Remote protocol v2** (`androidtvremote2` library) — the same
+protocol the Google Home app and physical Android TV remotes use.
+Replaced an earlier adb/Wireless-debugging implementation, which had
+caused two separate outages in one week: the TV's pairing trust being
+reset (needing `adb pair` redone from a fresh code) and the connect port
+drifting on every Wireless-debugging toggle/TV reboot (needing a live
+port rescan to find). Neither failure mode is inherent to remote
+control — they're specific to adb being a debugging protocol repurposed
+for this job. The new protocol needs no Developer Options/Wireless
+debugging at all; pairing is a one-time self-signed-cert exchange
+(`scripts/pair_androidtv.py`), independent of any TV debugging setting.
+
+It's also meaningfully faster: adb paid two subprocess spawns (connect +
+shell) per keypress, real overhead on a Pi Zero 2 W. A keypress on an
+already-open Android TV Remote connection is a single non-blocking socket
+write — measured ~2-3ms of call overhead against the actual TV in PoC
+testing, versus adb's measured hundreds of ms to multiple seconds.
+
+**Connect-on-demand, not held open 24/7** — the device pings an open
+connection every ~5s to keep it alive, so holding one open at all times
+would mean a permanent wake-every-5s tax, in tension with this project's
+battery priorities. Instead a connection opens on first use after being
+idle and closes after 30s of no further activity
+(`_IDLE_DISCONNECT_SECONDS` in `androidtv_service.py`), bounding the cost
+to actual use (plus a short tail) rather than running all day regardless
+of whether anyone's touching the remote. "Activity" includes plain D-pad/
+Back presses on the Google TV screen, not just this module's own calls —
+`keepalive()` lets `screens/active_device_screen.py` push the idle timer
+back out on any key press while that screen is active, deliberately
+scoped to that screen only (not any keypress app-wide) so browsing
+Wi-Fi/Menu/Lights elsewhere still lets the TV connection drop normally.
+
+The library is asyncio-only; the rest of the app is fully synchronous.
+Bridged via a single dedicated event loop run in a background thread,
+started lazily on first use — every public function in the module is a
+plain blocking call from the caller's point of view, so
+`preset_service.py`/`active_device_screen.py` needed no changes.
+
+`config/settings.json` needs `androidtv_ip`, `androidtv_cert_file`,
+`androidtv_key_file` (no port — the protocol uses fixed ports 6466/6467).
+Run `scripts/pair_androidtv.py` once per TV (or after a TV factory reset)
+to generate the cert/key and complete pairing; the TV shows a code on
+screen to enter.
+
+`launch_app()` needs a real deep link (e.g. `https://www.youtube.com/tv`),
+not a bare package name — confirmed 2026-09-09: the bare-package path
+(`market://launch?id=<package>`) reported success but didn't actually
+switch away from whatever app had foreground focus (seen with Plex open).
+`config/keypad_presets.json`'s `androidtv_app` steps use `"app_link"`
+(not `"package"`) accordingly.
 
 ## IR Tools & Integrations
 

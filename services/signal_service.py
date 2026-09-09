@@ -38,17 +38,19 @@ def create_home(home: str) -> None:
     _chown_to_file_owner(d)
 
 
-def _device_order(home: str) -> list[str]:
-    """config/device_order.json's explicit order for *home*, or [] if the
-    file/home entry is missing — list_devices() falls back to pure
-    alphabetical either way (see there)."""
+def _explicit_order(key: str) -> list[str]:
+    """config/device_order.json's explicit order for *key*, or [] if the
+    file/key entry is missing — callers fall back to pure alphabetical
+    either way. *key* is a home name for list_devices()'s top-level
+    ordering (e.g. "home"), or "<home>/<device>" for list_locations()'s
+    per-device ordering (e.g. "home/light" — see there)."""
     if not _ORDER_PATH.exists():
         return []
     try:
         data = json.loads(_ORDER_PATH.read_text())
     except (OSError, json.JSONDecodeError):
         return []
-    return data.get(home, [])
+    return data.get(key, [])
 
 
 def list_devices(home: str) -> list[str]:
@@ -61,7 +63,7 @@ def list_devices(home: str) -> list[str]:
         return []
     names = {p.name for p in d.iterdir() if p.is_dir()}
 
-    order = [name for name in _device_order(home) if name in names]
+    order = [name for name in _explicit_order(home) if name in names]
     remaining = sorted(names - set(order))
     return order + remaining
 
@@ -128,10 +130,19 @@ def default_leaf_device(home: str) -> tuple[str, str]:
 
 
 def list_locations(home: str, device: str) -> list[str]:
+    """Location directory names under *device*, in Left/Right cycling
+    order for that device (e.g. screens.active_device_screen's light
+    leaves) — config/device_order.json's explicit order for "<home>/
+    <device>" first (see _explicit_order()), then any location not listed
+    there, alphabetically, appended after."""
     d = home_dir(home) / device
     if not d.is_dir():
         return []
-    return sorted(p.name for p in d.iterdir() if p.is_dir())
+    names = {p.name for p in d.iterdir() if p.is_dir()}
+
+    order = [name for name in _explicit_order(f"{home}/{device}") if name in names]
+    remaining = sorted(names - set(order))
+    return order + remaining
 
 
 def list_buttons(home: str, device: str, location: str = "") -> list[str]:

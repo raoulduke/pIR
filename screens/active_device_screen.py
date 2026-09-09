@@ -57,7 +57,7 @@ from hardware.input import (
     read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT,
     DeviceCycledAway,
 )
-from services import home_service, signal_service, step_device_service, preset_service
+from services import home_service, signal_service, step_device_service, preset_service, androidtv_service
 from screens.widgets.format import format_name
 from app.constants import DEFAULT_ACTIVE_DEVICE, LIGHT_MENU_DEVICE
 from app.state import AppState
@@ -243,10 +243,19 @@ def _display_name(function: dict) -> str:
 
 def _device_label(device: str, location: str) -> str:
     """Line-1 title for a leaf device — location first, like a person
-    would actually say it ("Hall Light", "Bedroom TV"), not "Light / Hall"
-    — so two leaves under the same device (light/hall vs. light/kitchen)
-    don't display identically as just "Light" with no way to tell which
-    one is active."""
+    would actually say it ("Bedroom TV"), not "Light / Hall" — so two
+    leaves under the same device (tv/bedroom vs. tv/living_room) don't
+    display identically with no way to tell which one is active.
+
+    The "light" device drops the device-name suffix entirely (2026-09-09)
+    — just "Lamp"/"Ceiling"/"Hall", not "Lamp Light"/"Hall Light": once
+    you're inside the Light menu the device type is already established
+    by context, so repeating "Light" on every individual light's label is
+    redundant rather than disambiguating, unlike e.g. "Bedroom TV" where
+    dropping "TV" would lose real information (there's no other clue
+    you're looking at a TV, not another bedroom device)."""
+    if device == "light":
+        return format_name(location) if location else "Light"
     name = format_name(device)
     return f"{format_name(location)} {name}" if location else name
 
@@ -311,14 +320,36 @@ def _reveal_presets(lcd: LCD, state: AppState, device: str, location: str, norma
     *device*/*location* is no longer what's actually active — the same
     quick-action-inside-read_key() race every branch below already
     re-checks for on its own read_key() call (e.g. < Device/Device >
-    firing mid-reveal)."""
+    firing mid-reveal).
+
+    A quick action (Preset Function, a device-slot button) also returns
+    None here, same as a genuine per-frame timeout — but unlike a timeout,
+    it may already have overwritten line 1 with its own content (e.g. a
+    Preset's own "Sending..."/"Sent" — see app/quick_actions.py's
+    _handle_preset), which this function has no way to detect since it
+    only ever touches line 2 itself. Left unhandled, that stale line 1
+    would sit there indefinitely: the very next thing after this function
+    returns is a plain, indefinitely-blocking read_key(), so nothing
+    would repaint it until some unrelated future key happened to trigger
+    a full redraw (confirmed 2026-09-09 — a Preset fired mid-reveal left
+    the LCD showing the preset's own name until an unrelated keypress
+    much later). Telling the two apart by elapsed time (a quick action
+    returns near-instantly; a real timeout takes the full duration) and
+    bailing out immediately on the quick-action case — via the same
+    None-means-redraw-everything contract the caller (show()'s
+    DEFAULT_ACTIVE_DEVICE branch) already honors for every other quick
+    action — fixes it without needing frame timing changes for the
+    ordinary case."""
     for frame in frames:
         if (state.active_device, state.active_location) != (device, location):
             return None
         lcd.write_line2(frame)
+        frame_start = time.monotonic()
         key = read_key(timeout=_PRESET_REVEAL_FRAME_SECONDS)
         if key is not None:
             return key
+        if time.monotonic() - frame_start < _PRESET_REVEAL_FRAME_SECONDS * 0.9:
+            return None  # a quick action fired, not a genuine timeout — see above
 
     if (state.active_device, state.active_location) != (device, location):
         return None
@@ -444,6 +475,15 @@ def show(lcd: LCD, state: AppState) -> None:
                 if key == KEY_QUIT:
                     state.running = False
                     return
+                # Any real key here is D-pad/Back (see _DPAD_BUTTONS below) —
+                # plain IR, so it never touches androidtv_service on its own
+                # (only Preset Function's Home/YouTube do, via send_keyevent/
+                # launch_app). Poking it anyway keeps an already-open TV
+                # connection warm while you're actively driving the remote
+                # by any input, not just the ones that happen to go over
+                # this protocol — see androidtv_service.keepalive()'s own
+                # docstring; a no-op if nothing's connected right now.
+                androidtv_service.keepalive()
                 # < Device/Device > runs entirely inside the blocking read_key()
                 # call above (see hardware.input.read_key's quick-action
                 # interception) — it redraws the screen for the new device but

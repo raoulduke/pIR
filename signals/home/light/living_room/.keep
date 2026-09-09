@@ -1,0 +1,5 @@
+Placeholder — this location has no real IR signal files. It exists only
+so services/signal_service.py's list_locations() finds it as a leaf
+directory; its actual behavior comes entirely from config/step_devices.json's
+"light/kitchen" entry (a Hue "off" step for each of the two real kitchen
+lights). See services/step_device_service.py's module docstring.

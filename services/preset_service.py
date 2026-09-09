@@ -19,14 +19,18 @@ A voice step sends free-text through Home Assistant
 (services/voice_service.py) instead of an IR signal:
   {"type": "voice", "command": "Rest", "delay_after": 0.3}
 
-An androidtv step sends an Android keyevent over adb
-(services/androidtv_service.py) — for Google TV functions IR can't reach
-(Home, true Back distinct from Menu):
+An androidtv step sends an Android keyevent over the Android TV Remote
+protocol (services/androidtv_service.py) — for Google TV functions IR
+can't reach (Home, true Back distinct from Menu):
   {"type": "androidtv", "keyevent": "KEYCODE_HOME", "delay_after": 0.3}
 
-An androidtv_app step launches an app by package name over adb — for
-functions with no keyevent equivalent (e.g. a YouTube shortcut button):
-  {"type": "androidtv_app", "package": "com.google.android.youtube.tv",
+An androidtv_app step launches an app the same way — for functions with no
+keyevent equivalent (e.g. a YouTube shortcut button). Use an actual deep
+link, not a bare package name: confirmed 2026-09-09 that a bare package
+name (sent as a market://launch?id=<package> request) doesn't reliably
+switch away from whatever app currently has foreground focus (seen with
+Plex open), while an explicit deep link does.
+  {"type": "androidtv_app", "app_link": "https://www.youtube.com/tv",
    "delay_after": 0.3}
 
 A hue step controls a Philips Hue light over the bridge's local API
@@ -172,7 +176,7 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
             if success:
                 sent += 1
         elif step.get("type") == "androidtv_app":
-            success, _ = androidtv_service.launch_app(step["package"])
+            success, _ = androidtv_service.launch_app(step["app_link"])
             if success:
                 sent += 1
         elif step.get("type") == "hue":

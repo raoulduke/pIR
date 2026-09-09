@@ -15,10 +15,11 @@
     "google_tv": {
       "1": {"name": "Back", "steps": [{"home": "home", "device": "google_tv", "location": "", "button": "back"}]},
       "2": {"name": "Home", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_HOME"}]},
-      "3": {"name": "YouTube", "steps": [{"type": "androidtv_app", "package": "com.google.android.youtube.tv"}]},
-      "4": {"name": "Power", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_POWER"}]}
+      "3": {"name": "YouTube", "steps": [{"type": "androidtv_app", "app_link": "https://www.youtube.com/tv"}]},
+      "4": {"name": "Captions", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_CAPTIONS"}]}
     },
     "receiver": {
+      "1": {"name": "Power", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_POWER"}]},
       "4": {"name": "Mute", "steps": [{"home": "home", "device": "google_tv", "location": "", "button": "mute"}]}
     },
     "google_home": {

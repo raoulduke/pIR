@@ -48,8 +48,12 @@ def get_androidtv_ip() -> str | None:
     return _load().get("androidtv_ip")
 
 
-def get_androidtv_port() -> int | None:
-    return _load().get("androidtv_port")
+def get_androidtv_certfile() -> str | None:
+    return _load().get("androidtv_cert_file")
+
+
+def get_androidtv_keyfile() -> str | None:
+    return _load().get("androidtv_key_file")
 
 
 def get_hue_bridge_ip() -> str | None:

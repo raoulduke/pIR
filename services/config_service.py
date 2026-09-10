@@ -62,3 +62,26 @@ def get_hue_bridge_ip() -> str | None:
 
 def get_hue_username_file() -> str | None:
     return _load().get("hue_username_file")
+
+
+def get_wifi_wake_enabled() -> bool:
+    return _load().get("wifi_wake_enabled", True)
+
+
+def get_wifi_wake_mode() -> str:
+    """"every_key" (default) fires services.wifi_wake_service.wake() on
+    every keypress; "throttled" limits it to at most once per
+    get_wifi_wake_interval_seconds(). See that module's docstring for why
+    "every_key" is the current default — untuned, deliberately generous."""
+    return _load().get("wifi_wake_mode", "every_key")
+
+
+def get_wifi_wake_interval_seconds() -> float:
+    """Only consulted when get_wifi_wake_mode() == "throttled"."""
+    return _load().get("wifi_wake_interval_seconds", 3.0)
+
+
+def get_wifi_wake_target() -> str | None:
+    """Ping target for services.wifi_wake_service.wake() — None (the
+    default) auto-detects the LAN default gateway at runtime instead."""
+    return _load().get("wifi_wake_target")

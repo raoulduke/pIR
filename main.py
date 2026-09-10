@@ -15,7 +15,8 @@ print(f"[BOOT] PID={os.getpid()}")
 from app.startup import initialize
 from app import quick_actions
 from hardware.lcd import lcd
-from hardware.input import set_quick_action_handler, close as close_input
+from hardware.input import set_quick_action_handler, set_key_observer, close as close_input
+from services import wifi_wake_service
 import screens.active_device_screen as active_device_screen
 
 
@@ -28,6 +29,9 @@ def main() -> None:
 
     quick_actions.init(state)
     set_quick_action_handler(quick_actions.handle)
+    # Speculative Wi-Fi radio wake on every keypress — see
+    # services/wifi_wake_service.py's docstring for why.
+    set_key_observer(wifi_wake_service.wake)
 
     def _handle_signal(signum, frame):
         print(f"[BOOT] signal {signum}")

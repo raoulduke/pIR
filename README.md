@@ -1,6 +1,6 @@
 # Pi Home Control
 
-A DIY IR remote control and home automation device built on a Raspberry Pi Zero 2 W. Runs headless, battery-powered, and handles IR transmit/receive, an LCD status display, physical button/keypad input, and Home Assistant integration (including voice commands).
+A DIY IR remote control and home automation device built on a Raspberry Pi Zero 2 W. Runs headless, battery-powered, and handles IR transmit/receive, an LCD status display, physical button/keypad input, Philips Hue (direct local control), Google TV (Android TV Remote protocol v2), and Home Assistant integration (including voice commands).
 
 ## Hardware
 
@@ -95,31 +95,54 @@ sudo .venv/bin/python3 main.py
 
 Do **not** run `sudo python3 main.py` — that bypasses the venv entirely.
 
-### 4. Run as a service (recommended)
+### 4. Disable unused stock services
+
+Confirmed inactive/unused on this headless, single-purpose, battery-powered box, but enabled by default (polling on a timer, or socket-activated waiting for a trigger that never comes):
+
+```bash
+sudo scripts/disable-unused-services.sh
+```
+
+`sysstat-collect.timer` matters most — it wakes the CPU every 10 minutes around the clock for stats nothing here reads.
+
+### 5. Install the shutdown LED signal
+
+Lets you tell when it's actually safe to flip the PowerBoost 500C's physical battery switch after pressing the shutdown button — see [`CLAUDE.md`](CLAUDE.md)'s "Shutdown / power-off signaling" note for why this is needed at all (the OS shutting down doesn't visibly change anything on its own).
+
+```bash
+sudo cp systemd/system-shutdown/shutdown-signal.sh /lib/systemd/system-shutdown/shutdown-signal.sh
+sudo chmod +x /lib/systemd/system-shutdown/shutdown-signal.sh
+```
+
+No enable step needed — systemd runs everything in that directory automatically on every shutdown/reboot. The LED's `heartbeat` trigger (set in `boot/config.txt`, step 1) needs a reboot to take effect.
+
+### 6. Run as a service (recommended)
 
 The app runs as a systemd service so it starts on boot without a login session. Unit files and IR config live in this repo and are deployed by copying them to their real system paths:
 
 ```bash
-sudo cp systemd/pihome.service systemd/ir-keymap.service systemd/ir-nec.service /etc/systemd/system/
+sudo cp systemd/pihome.service systemd/ir-keymap.service systemd/ir-nec.service systemd/usb0-gadget.service /etc/systemd/system/
 sudo cp etc/rc_maps.cfg /etc/rc_maps.cfg
 sudo cp etc/rc_keymaps/shutdown.toml /etc/rc_keymaps/shutdown.toml
 sudo systemctl daemon-reload
-sudo systemctl enable --now ir-keymap.service ir-nec.service pihome.service
+sudo systemctl enable --now ir-keymap.service ir-nec.service usb0-gadget.service pihome.service
 ```
 
 Keep both copies in sync whenever one changes, the same as `boot/config.txt`.
 
-- **`pihome.service`** — runs the app (as root — required for keypad/GPIO access) from `.venv/bin/python3`, ordered to start after the two IR units below.
+- **`pihome.service`** — runs the app (as root — required for keypad/GPIO access) from `.venv/bin/python3`. Starts in parallel with the two IR units below, not after them (see [`CLAUDE.md`](CLAUDE.md)'s "Pi OS boot time" note) — the app needs a human to press a button before anything matters, which takes far longer than these finishing up in the background.
 - **`ir-keymap.service`** — loads the custom IR keymap (`etc/rc_keymaps/shutdown.toml`, matched via `etc/rc_maps.cfg`) onto the receiver.
 - **`ir-nec.service`** — locks the receiver to NEC-only decoding. The board's `gpio_ir_recv` (RX) and `gpio-ir-tx` (TX) devices don't get a stable `rc0`/`rc1` index across boots, so both IR units resolve the correct device dynamically via `dmesg` rather than hardcoding one — locking out the kernel's default `rc-6` decoder prevents it from also decoding real NEC signals and injecting spurious keypresses into the app (which reads `gpio_ir_recv` as a keyboard-like input device for menu navigation).
+- **`usb0-gadget.service`** — gives the Pi's USB OTG gadget interface (`usb0`) a static `10.55.0.1/24` the moment it exists, for SSH recovery access over the data-capable micro-USB port when Wi-Fi is down (see [`CLAUDE.md`](CLAUDE.md)'s USB gadget notes).
 
 ## Development
 
 - Developed locally on WSL2, synced to the Pi for testing (hardware-dependent libraries like `smbus2` do not function on WSL2)
 - `.venv/` is excluded from sync — Windows-built venvs are not compatible with ARM Linux
 - SSH to the Pi: `ssh 10.0.0.56` (bash alias `pi`). The connection can be flaky on the first attempt — retry a few times before assuming it's down.
+- Deploy: `rsync -a --exclude='.venv' --exclude='signals/' /mnt/c/Users/mattk/code/pi/ir/ 10.0.0.56:/home/matt/dev/ir/`, then `sudo systemctl restart pihome.service` on the Pi. `signals/` is excluded deliberately — never sync it with `--delete`, which can destroy a Learn capture. See [`CLAUDE.md`](CLAUDE.md)'s Development Workflow for the full command and why.
 
 ## Notes
 
 - Battery monitoring is not yet implemented. The LBO pin approach (binary low-battery signal) has been chosen over an ADC; SPI0 is reserved in case an MCP3008-based percentage readout is added later
-- Wi-Fi power management is disabled to avoid wake-latency interference with IR timing and LCD responsiveness
+- Wi-Fi power management stays **enabled** (for battery life) — a speculative background wake on every keypress (`services/wifi_wake_service.py`) hides the resulting radio wake latency instead of disabling power save outright. See [`CLAUDE.md`](CLAUDE.md)'s "Wi-Fi Power Save + Speculative Wake" note for the full mechanism and tunable settings.

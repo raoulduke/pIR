@@ -271,6 +271,7 @@ class InputReader:
 # ---------------------------------------------------------------------------
 _reader: InputReader | None = None
 _quick_handler = None
+_key_observer = None
 
 
 def _get_reader() -> InputReader:
@@ -319,6 +320,23 @@ def set_quick_action_handler(handler) -> None:
     _quick_handler = handler
 
 
+def set_key_observer(observer) -> None:
+    """Register a callback fired on every real key this module returns —
+    quick-action keys included, USB/SSH input included, before either the
+    quick-action dispatch above or the caller ever sees it. Unlike
+    set_quick_action_handler(), *observer* doesn't affect what read_key()
+    returns or does — it's a side-effect-only notification, called from
+    this same thread, so it must not block or raise. This module (like
+    set_quick_action_handler above) stays agnostic of what a registered
+    observer actually does — see main.py for what's wired up (currently
+    services.wifi_wake_service.wake(), a speculative Wi-Fi radio nudge on
+    every press so a Wi-Fi-dependent action a press or two later doesn't
+    pay however long the radio takes to wake from power-save; see that
+    module's docstring)."""
+    global _key_observer
+    _key_observer = observer
+
+
 def read_key(timeout: float | None = None) -> str | None:
     """*timeout* (seconds): return None if no key arrives in time, instead
     of blocking forever. A quick action key doesn't consume the caller's
@@ -332,6 +350,8 @@ def read_key(timeout: float | None = None) -> str | None:
         key = _get_reader().read_key(remaining)
         if key is None:
             return None
+        if _key_observer is not None:
+            _key_observer(key)
         if _quick_handler is not None and key in QUICK_ACTION_KEYS:
             if _quick_handler(key):
                 return None

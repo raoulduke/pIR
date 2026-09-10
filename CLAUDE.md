@@ -72,6 +72,9 @@ config/
 
 - Boot launches directly to `active_device_screen` (the most-used screen) — no menu detour on startup. `send_screen`/"Full Device List" was the boot screen in an earlier design; it was superseded by Active Device Control and later removed outright as redundant with `< Device/Device >` (see `docs/active-device-control-plan.md`'s "Superseded" notes) — it no longer exists.
 - **Exit behavior**: on error, LCD line 1 shows the error message, line 2 shows "Program stopped". On clean exit, line 1 shows "Program stopped". LCD is **never** cleared on exit.
+- **Menu-device grouping** (2026-09-09): `< Device/Device >` collapses a device's per-location leaves into a single top-level stop instead of listing each one — originally light-only, generalized to `app/constants.py`'s `MENU_DEVICE_LABELS = {"light": "Lights", "tv": "TVs"}` when Living Room TV/Bedroom TV joined the light devices under this scheme. Enter drills into the group's first leaf; Left/Right (otherwise unused on a fixed-mapping-shaped leaf) cycles between the rest, since they never appear as separate top-level stops. `screens/active_device_screen.py`'s `_device_label()` drops the device-name suffix for any grouped leaf ("Lamp", "Living Room", not "Lamp Light"/"Living Room TV") and frames the label in `<>` on line 1 whenever the group has more than one leaf to cycle to — same convention the plain multi-function cycling branch already used on line 2. See `docs/active-device-control-plan.md`'s "Extended 2026-09-09" notes for the full mechanics, including why a grouped leaf that isn't itself fixed-mapping-shaped (a lone function not named "power", e.g. Living Room TV's "Picture" before it also got a "Power" signal) still needs its own resolution logic distinct from `_fixed_mapping_functions()`.
+- **Learn picks from existing devices/locations instead of typing** (2026-09-09): `screens/receive_screen.py`'s device and location steps show a list (`services/signal_service.py`'s `list_devices()`/`list_locations()`), `+ New Device`/`+ New Location` first, when anything already exists — adding another button to an already-learned device no longer means re-typing e.g. "tv"/"living_room" on the D-pad composer every time. A device with no locations at all (buttons directly under it, e.g. `ac`) skips the location step entirely, same as always. Typing is still how you name the button itself (the one genuinely new piece of information) and how you add a brand-new device/location.
+- **Non-blocking voice/hue/IR step execution** (2026-09-09): `services/preset_service.py`'s `run_steps_background()` queues steps onto a single dedicated background worker thread (mirrors `androidtv_service.py`'s event-loop-thread bridge) instead of the caller blocking on `run_steps()` directly — a voice or Hue step is a real network round-trip (`voice_service.send_command()`'s timeout is up to 15s), and blocking used to leave the keypad unresponsive for however long that took. Every call site (Active Device Control's per-leaf functions, Preset Function 1-4, the voice Command screen) shows "Sending..."/"Running..." for a brief fixed flash (`app/constants.py`'s `ASYNC_SEND_FLASH_SECONDS`) — long enough to actually be seen before the next screen redraw would otherwise overwrite it — then returns; a failure overwrites the message once the background call actually finishes, which may be after the screen has already moved on. One worker thread, not one per call, so two quick presses run in order rather than racing each other through the in-memory assumed-state dicts (`_ir_toggle_state`/`_voice_toggle_state`) `ir_toggle`/`voice_toggle` steps use. `hardware/lcd.py` gained a lock around every write for this reason — a background thread reporting a late failure can now race the main loop's own writes.
 
 ## Python Environment
 
@@ -162,7 +165,7 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
 - **Hardware I²C1 disabled** (`dtparam=i2c_arm=off`) — required to free GPIO3 for `gpio-shutdown`; otherwise a 3-pin workaround via GPIO17 would be needed.
 - **Transistor/MOSFET low-side switch for backlight control** (decided, not yet built) — GPIO pins cap at ~16mA; backlight draws 80–120mA, so GPIO12 needs to switch a transistor rather than drive the backlight directly. I²C cannot carry this. Confirmed 2026-08-29: this switch isn't wired yet — GPIO12 currently has no effect on the backlight.
 - The backpack's own PCF8574-driven backlight switch has not been ruled out as a cheaper alternative to the GPIO12 transistor — needs physically inspecting the board for a backlight jumper before deciding.
-- **Wi-Fi power management disabled** — introduces 100–500ms wake latency that disrupts IR timing and LCD responsiveness. Disable via systemd service (most reliable method on Kali).
+- **Wi-Fi power management stays enabled** (`wifi.powersave = 3` in NetworkManager's `/etc/NetworkManager/conf.d/wifi-powersave.conf`, not tracked in this repo) — reversed 2026-09-09 from the earlier "disable it outright" decision; see "Wi-Fi Power Save + Speculative Wake" below for why and what replaced it.
 - **`pigpio`, `asyncio`, and `gpu_mem=16`** are the highest-impact performance changes for this build.
 - **Android TV Remote protocol v2 over adb** for Google TV control (decided 2026-09-09) — see "Google TV / Android TV Remote Control" below.
 
@@ -261,6 +264,62 @@ not a bare package name — confirmed 2026-09-09: the bare-package path
 switch away from whatever app had foreground focus (seen with Plex open).
 `config/keypad_presets.json`'s `androidtv_app` steps use `"app_link"`
 (not `"package"`) accordingly.
+
+## Wi-Fi Power Save + Speculative Wake (2026-09-09)
+
+Reverses the earlier "disable Wi-Fi power management outright" decision.
+`wifi.powersave = 3` (NetworkManager's "force enable", set in
+`/etc/NetworkManager/conf.d/wifi-powersave.conf` — not tracked in this
+repo) stays in effect for the battery savings; a `wifi-power-off.service`
+systemd unit that used to run `iw dev wlan0 set power_save off` once at
+boot was removed — confirmed via `journalctl` that it only ever "won" for
+the first ~15 minutes of uptime, since wlan0 fully disconnects/re-
+associates roughly every 15 minutes on this network (cause not yet
+investigated) and NetworkManager reapplies its powersave policy on every
+one of those re-associations; the oneshot service never re-ran, so it
+was providing no real benefit and had already been quietly overridden
+whenever anyone actually experienced the resulting latency.
+
+The tradeoff being kept: measured up to ~1.6s latency for the first
+packet after an idle period (surfaced as `ssh`/`rsync` from WSL2
+intermittently failing with "No route to host" — the wake takes longer
+than the OS's ARP/route resolution will wait for a fresh connection
+attempt, vs. a `ping`'s more tolerant timeout), dropping to single-digit
+ms once the radio's awake. The Pi's onboard chip (Broadcom BCM43430/1,
+`brcmfmac` driver, confirmed via `readlink /sys/class/net/wlan0/device/
+driver`) doesn't expose the firmware's own "how long awake after
+activity" timing anywhere in sysfs (unlike e.g. `iwlwifi`'s
+`power_save_timeout`) — that timing is opaque, inside Broadcom's closed
+firmware.
+
+Middle ground instead of disabling power save: `services/
+wifi_wake_service.py`'s `wake()` fires a small, fire-and-forget
+background `ping` (target: the LAN default gateway, auto-detected via
+`ip route`, or `wifi_wake_target` in `config/settings.json` to override)
+on every real keypress, globally — wired via a new generic
+`hardware/input.py` hook, `set_key_observer()` (mirrors the existing
+`set_quick_action_handler()` pattern; called from `main.py`), which
+fires for every key `read_key()` returns, not just quick-action keys. A
+Wi-Fi station controls its own transmit timing (unlike receiving, which
+waits on the AP's next DTIM beacon), so an outbound packet tends to wake
+the radio faster than an inbound one — and a Wi-Fi-dependent action
+(voice/Hue/Android TV) is often not the very first press of a session,
+so nudging the radio on earlier presses gives it a head start.
+
+Not throttled by default (`wifi_wake_mode` = `"every_key"` in
+`config/settings.json`, not `"throttled"`) — deliberately, because the
+brcmfmac re-doze timing couldn't be reliably measured (a controlled test
+ran back-to-back with a lot of other SSH activity already keeping the
+radio warm, so it couldn't isolate a genuinely cold re-doze interval; see
+git history around 2026-09-09 for the actual measurements). Rather than
+guess an interval and have it silently stop helping partway through a
+session, every keypress fires the (cheap, non-blocking) nudge; the real
+battery savings are in the long idle stretches between button-pressing
+sessions, not during them. `config/settings.json`'s `wifi_wake_enabled`
+(bool), `wifi_wake_mode` (`"every_key"`/`"throttled"`),
+`wifi_wake_interval_seconds` (float, only used by `"throttled"`), and
+`wifi_wake_target` (string IP, `null` = auto-detect) exist specifically
+so this can be tuned without a code change once more is learned.
 
 ## IR Tools & Integrations
 

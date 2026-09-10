@@ -317,3 +317,94 @@ One display wrinkle worth knowing about: voice command names are shown
 exactly as authored, never through `format_name()` — `str.title()` mangles
 an apostrophe (`"it's".title()` → `"It'S"`), which would otherwise show up
 as a visible glitch on a name typed correctly in the config.
+
+## Extended 2026-09-09: `ir_toggle`/`voice_toggle` steps
+
+The step engine (`voice`/`androidtv`/`androidtv_app`/`hue`/plain-IR, all
+described above) gained two more step types, both solving the same
+problem for a different backend: a single physical action ("toggle the
+light") that has no reliable way to read the target's actual current
+on/off state back, so "send one command that flips it" can't be trusted
+to fire the right one.
+
+- `ir_toggle` — for a dumb IR light whose remote has separate on/off
+  buttons, no single toggle button (e.g. Hall Light): flips an in-memory
+  assumed on/off state (`services/preset_service.py`'s
+  `_ir_toggle_state`, keyed by home/device/location) and fires whichever
+  real signal matches it. Resets to "off" on every app restart and can
+  drift if the light is ever changed another way (its own remote, a wall
+  switch) — accepted as a real limitation for a light with no other
+  regular control path.
+- `voice_toggle` — for a Google Home device, same idea
+  (`_voice_toggle_state`, keyed by an arbitrary `"key"` string in the
+  step). Added after discovering a bare `"Toggle X"` voice command isn't
+  one of the phrasings Google Assistant is confirmed to act on (only
+  `"Turn on {}"`/`"Turn off {}"`/`"Dim {}"`/`"Brighten {}"` are — see
+  `screens/command_screen.py`'s `_TEMPLATES`), and a Google Home Routine
+  has no way to read a device's current state either — so a `"Toggle X"`
+  command (or routine) can only ever perform one fixed action, not
+  actually toggle. `voice_toggle` alternates between the two confirmed
+  phrasings instead: `{"type": "voice_toggle", "key": "lamp",
+  "on_command": "Turn on lamp", "off_command": "Turn off lamp"}`.
+
+Both step types, and every other step type, are shared verbatim between
+keypad presets (`config/keypad_presets.json`) and step-device functions
+(`config/step_devices.json`) — one vocabulary, one `run_steps()`
+implementation, no separate config authoring for the two.
+
+## Extended 2026-09-09: menu-device grouping generalized beyond light
+
+`LIGHT_MENU_DEVICE` (a single hardcoded sentinel for the "light" device)
+became `app/constants.py`'s `MENU_DEVICE_LABELS = {"light": "Lights",
+"tv": "TVs"}` + `MENU_DEVICE_SENTINELS`/`MENU_SENTINEL_TO_DEVICE`
+(derived from it) when Living Room TV and Bedroom TV needed the exact
+same "collapse into one top-level `< Device/Device >` stop, Left/Right
+moves between the group's leaves" treatment light devices already had.
+`light_leaves()`/`cycle_light_leaf()` became `menu_leaves(home, device)`/
+`cycle_menu_leaf(home, device, ...)`, parameterized by which group.
+
+One real wrinkle the generalization hit: the light-only branch
+(`screens/active_device_screen.py`) assumed every grouped leaf was
+`_fixed_mapping_functions()`-shaped (a function literally named "power"
+plus at most one paired action) — true for every light (Power+
+Brightness), not true for Living Room TV, whose only signal was
+`picture` (not named "power"). A new `_menu_power_paired()` handles this
+specifically for grouped leaves: since Left/Right is already claimed by
+cross-leaf group cycling there (never per-function cycling, unlike the
+plain multi-function branch), a Power-named function fires on Enter
+regardless of what else the leaf has (an "other" leftover function
+`_fixed_mapping_functions()` would reject the whole leaf over), falling
+back to the leaf's one-and-only function if it has neither a Power-named
+nor a paired function. This mattered concretely: once Living Room TV
+grew a second signal (`power`, alongside `picture`),
+`_fixed_mapping_functions()` itself would have rejected the leaf down to
+no Enter action at all, `picture` counting as an unaccounted-for
+leftover — confirmed as a live regression before `_menu_power_paired()`
+was written. `picture` stays reachable via a Preset Function shortcut
+instead (`config/keypad_presets.json`'s `"tv/living_room"` override,
+Preset Function 1) — the same pattern any leftover function on a grouped
+leaf needs, since there's no D-pad path to it otherwise.
+
+The plain multi-function cycling branch (non-grouped devices, e.g.
+`google_home`) also gained the Preset Function reveal on entry it used
+to skip — it had been reasoned "several functions to choose from, so
+line 2 already shows something useful (the selected function's name)
+instead," but that just meant a device's presets were invisible until
+you already knew their names by heart. Every screen shape now reveals
+the same way on landing.
+
+## Extended 2026-09-09: Preset Function abbreviations
+
+`screens/active_device_screen.py`'s `_preset_entries()` packs all 4
+configured Preset Function slots onto one compact frame — no separator
+between slots, e.g. `1Bak2Rst3Hme4Ssh` — when every configured name has
+a hand-picked entry in `_PRESET_ABBREVIATIONS` (chosen by hand, not
+derived automatically, so an odd truncation never sneaks in silently).
+Falls back to the older behavior (space-separated `"N:Name"` pairs,
+packed as many to a frame as fit, cycling to a next frame for whatever
+doesn't) if *any* configured slot's name has no abbreviation — a mix of
+abbreviated and full-name slots on one line would read worse than either
+style consistently. `google_home`'s preset overrides were removed
+outright rather than abbreviated (it's a device that runs actions, not
+one this pass wanted Preset Functions configured for) — it now falls
+back to the global defaults like any device with no override.

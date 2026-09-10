@@ -171,16 +171,17 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
 
 ## Development Workflow
 
-- Local development happens on WSL2 at `/mnt/c/Users/mattk/code/pi/ir/`, synced to the Pi at `/home/matt/dev/ir/`
+- Local development happens on WSL2 at `/mnt/c/Users/mattk/code/pi/ir/`, pushed to GitHub (`git@github.com:raoulduke/pIR.git`) and pulled onto the Pi at `/home/matt/dev/ir/` — both are checkouts of the same repo/remote, not independent clones. The Pi's checkout must always be a clean `git pull` away from `origin/main`; never hand-edit files there outside of `signals/` Learn captures (see below), or the two will silently diverge the way rsync-based deploy used to.
 - SSH to the Pi (normal Wi-Fi path, not the USB recovery path above): `ssh 10.0.0.56` (bash alias `pi`, defined in WSL2's `~/.bash_aliases`). The connection can be flaky on the first attempt — retry a few times before assuming it's down. Note: a *slow*/failed-then-succeeds first attempt is the "flaky" case worth retrying past; "No route to host" on repeated attempts means the Pi is actually unreachable (off, Wi-Fi down, etc.) — don't keep retrying that past a few tries, surface it.
-- **Deploy sync + restart** (run from WSL2):
+- **Deploy (2026-09-09): `git pull` on the Pi, not rsync.** Push from WSL2, then pull + restart on the Pi:
   ```bash
-  rsync -a --exclude='.venv' --exclude='signals/' /mnt/c/Users/mattk/code/pi/ir/ 10.0.0.56:/home/matt/dev/ir/
+  git push
   ```
   ```bash
-  ssh 10.0.0.56 "sudo systemctl restart pihome.service; sleep 2; sudo systemctl is-active pihome.service"
+  ssh 10.0.0.56 "cd /home/matt/dev/ir && git pull && sudo systemctl restart pihome.service; sleep 2; sudo systemctl is-active pihome.service"
   ```
-  `--exclude='.venv'` because Windows-built venvs are unusable on ARM Linux (see below); `--exclude='signals/'` because `--delete` must never reach `signals/` (see `[[scope-rsync-delete-to-code]]` — it destroyed a Learn capture once) and excluding it entirely from the sync sidesteps that risk rather than relying on remembering to omit `--delete`. `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service && sudo systemctl daemon-reload` is only needed first when `systemd/pihome.service` itself changed (see "Pi OS boot time" above) — a plain code change just needs the sync + restart above.
+  Replaces the earlier rsync-based deploy: rsync wrote files to disk but never touched the Pi's `.git`, so its repo silently diverged from `origin/main` on every deploy (confirmed 2026-09-09 — Pi's repo was a commit behind with the last deploy's changes sitting as uncommitted local diffs instead of a pulled commit). `git pull` keeps the Pi's repo meaning something (real history, rollback via `git checkout <sha>`) and is safer for `signals/` — it's tracked in git, and pull refuses to overwrite uncommitted local changes there rather than silently deleting them the way rsync `--delete` once did (see `[[scope-rsync-delete-to-code]]`). `.venv/` needs no exclude — it's gitignored, never tracked, per the "never sync `.venv/` to the Pi" rule below. `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service && sudo systemctl daemon-reload` is still a separate manual step, only needed when `systemd/pihome.service` itself changed (see "Pi OS boot time" above) — `git pull` does not install that file.
+  - **Learn captures made directly on the Pi** land in `signals/` as uncommitted local changes on the Pi's checkout (Learn writes to disk, not to git) — they aren't backed up anywhere until pushed. Periodically run `git add signals/ && git commit && git push` from the Pi, then `git pull` on WSL2, to bring them back into the shared history instead of letting them sit as permanent local drift.
 - Hardware-dependent libraries (e.g. `smbus2`) will not function on WSL2 — expect import/runtime errors there for hardware-touching code paths
 - IDE: CLion, with `ir/` marked as Sources Root; `pyproject.toml` added to the project to resolve import resolution issues in CLion
 

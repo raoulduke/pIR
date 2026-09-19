@@ -22,10 +22,13 @@ STATEMENT_SAVE_FAILED = "Save failed!"
 STATEMENT_SENDING = "Sending..."
 STATEMENT_SENT = "Done!"
 STATEMENT_FAILED = "Failed!"
+STATEMENT_RENAMED = "Renamed!"
+STATEMENT_NO_SIGNALS = "No signals"
 
 # Menu options (screens/main_menu.py — the escape-hatch reached via the
 # physical Menu key; see docs/active-device-control-plan.md)
 MENU_LEARN = "Learn"
+MENU_RENAME = "Rename Signal"
 MENU_COMMAND = "Command"
 MENU_HOME = "Change Home"
 MENU_NETWORK = "WiFi"

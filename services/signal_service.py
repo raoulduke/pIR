@@ -240,6 +240,41 @@ def save_signal(
     _chown_to_file_owner(path)
 
 
+def rename_signal(
+        home: str,
+        device: str,
+        button: str,
+        location: str,
+        new_device: str,
+        new_button: str,
+        new_location: str,
+) -> None:
+    """Move a signal file to a new device/location/button identity — for
+    screens.rename_screen, fixing a name mistyped during Learn without
+    re-learning the IR signal itself. Caller is responsible for checking
+    signal_exists() at the destination first if an overwrite prompt is
+    wanted; this always overwrites silently.
+
+    Any now-empty directories left behind at the old location (the old
+    location dir, then the old device dir) are removed, so a renamed-away
+    leaf doesn't linger as an empty stop in list_locations()/list_devices()
+    — stops as soon as a directory still has something else in it."""
+    old_path = signal_path(home, device, button, location)
+    new_path = signal_path(home, new_device, new_button, new_location)
+
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.rename(new_path)
+    _chown_to_file_owner(new_path)
+
+    d = old_path.parent
+    while d != _BASE:
+        try:
+            d.rmdir()
+        except OSError:
+            break
+        d = d.parent
+
+
 def _chown_to_file_owner(path: Path) -> None:
     """Recursively set ownership up to SIGNALS_DIR to FILE_OWNER."""
     try:

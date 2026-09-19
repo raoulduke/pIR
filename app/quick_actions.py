@@ -252,8 +252,11 @@ def _handle_menu() -> None:
     import screens.home_screen as home_screen
     import screens.receive_screen as receive_screen
     import screens.rename_screen as rename_screen
+    import screens.rename_home_screen as rename_home_screen
     import screens.network_screen as network_screen
-    from app.constants import MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK
+    from app.constants import (
+        MENU_LEARN, MENU_RENAME, MENU_RENAME_HOME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
+    )
 
     global _in_menu
     _in_menu = True
@@ -271,6 +274,8 @@ def _handle_menu() -> None:
                 result = receive_screen.show(lcd, _state)
             elif choice == MENU_RENAME:
                 result = rename_screen.show(lcd, _state)
+            elif choice == MENU_RENAME_HOME:
+                result = rename_home_screen.show(lcd, _state)
             elif choice == MENU_COMMAND:
                 result = command_screen.show(lcd)
             elif choice == MENU_HOME:

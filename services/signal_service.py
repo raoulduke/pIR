@@ -38,6 +38,49 @@ def create_home(home: str) -> None:
     _chown_to_file_owner(d)
 
 
+def rename_home(old: str, new: str) -> None:
+    """Rename a home's signals/ directory. Caller (services.home_service)
+    is responsible for checking home_exists(new) first if it wants to
+    refuse an overwrite — Path.rename() would otherwise silently merge
+    *old*'s contents into an existing *new* directory on most platforms,
+    or fail outright, depending on whether *new* is empty."""
+    old_dir = home_dir(old)
+    new_dir = home_dir(new)
+    old_dir.rename(new_dir)
+    _chown_to_file_owner(new_dir)
+
+
+def rename_order_keys(old: str, new: str) -> None:
+    """Rewrite config/device_order.json's home-prefixed keys (the home's
+    own top-level key, e.g. "home", plus every "<home>/<device>" key
+    under it, e.g. "home/light") from *old* to *new* — for
+    services.home_service.rename_home(). A silently stale key would just
+    fall back to alphabetical ordering (see _explicit_order()), not
+    break anything outright, but there's no reason to let a rename orphan
+    it when fixing it up is this cheap."""
+    if not _ORDER_PATH.exists():
+        return
+    try:
+        data = json.loads(_ORDER_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+
+    renamed = {}
+    changed = False
+    for key, value in data.items():
+        if key == old:
+            renamed[new] = value
+            changed = True
+        elif key.startswith(f"{old}/"):
+            renamed[new + key[len(old):]] = value
+            changed = True
+        else:
+            renamed[key] = value
+
+    if changed:
+        _ORDER_PATH.write_text(json.dumps(renamed, indent=2))
+
+
 def _explicit_order(key: str) -> list[str]:
     """config/device_order.json's explicit order for *key*, or [] if the
     file/key entry is missing — callers fall back to pure alphabetical

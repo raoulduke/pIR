@@ -28,6 +28,19 @@ def set_active_home(name: str) -> None:
     _save(data)
 
 
+def rename_active_home_if_matches(old: str, new: str) -> None:
+    """Update settings.json's active_home to *new* if it's currently
+    *old* — for services.home_service.rename_home(). Writes an explicit
+    "active_home": new even when the key was previously absent (meaning
+    *old* was only active via _DEFAULT_HOME's implicit fallback), since
+    that fallback would otherwise silently point at a home directory that
+    no longer exists after the rename."""
+    data = _load()
+    if data.get("active_home", _DEFAULT_HOME) == old:
+        data["active_home"] = new
+        _save(data)
+
+
 def get_ha_url() -> str | None:
     return _load().get("ha_url")
 

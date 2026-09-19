@@ -3,7 +3,8 @@
 (that's screens/active_device_screen.py — see
 docs/active-device-control-plan.md).
 
-Returns one of: MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, KEY_QUIT, or None
+Returns one of: MENU_LEARN, MENU_RENAME, MENU_RENAME_HOME, MENU_COMMAND,
+MENU_HOME, KEY_QUIT, or None
 (pressing Left backs out to Active Device Control without choosing
 anything). Selecting "Quit" also returns KEY_QUIT. MENU_IP is handled
 inline here rather than returned — it's display-only. MENU_NETWORK
@@ -18,7 +19,7 @@ docs/active-device-control-plan.md's "Superseded" notes.
 """
 
 from app.constants import (
-    MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
+    MENU_LEARN, MENU_RENAME, MENU_RENAME_HOME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
     MENU_QUIT, MENU_IP, MENU_WIFI_POLL_INTERVAL_SECONDS,
 )
 from app.state import AppState
@@ -28,7 +29,10 @@ from hardware.network import get_ip_address
 from services import wifi_service
 
 
-_OPTIONS = [MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_QUIT, MENU_IP]
+_OPTIONS = [
+    MENU_LEARN, MENU_RENAME, MENU_RENAME_HOME, MENU_COMMAND, MENU_HOME,
+    MENU_NETWORK, MENU_QUIT, MENU_IP,
+]
 
 
 def _line2(option: str) -> str:

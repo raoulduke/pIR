@@ -29,6 +29,7 @@ STATEMENT_NO_SIGNALS = "No signals"
 # physical Menu key; see docs/active-device-control-plan.md)
 MENU_LEARN = "Learn"
 MENU_RENAME = "Rename Signal"
+MENU_RENAME_HOME = "Rename Home"
 MENU_COMMAND = "Command"
 MENU_HOME = "Change Home"
 MENU_NETWORK = "WiFi"

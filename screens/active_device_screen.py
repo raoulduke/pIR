@@ -358,13 +358,11 @@ def _preset_entries(device: str, location: str) -> list[str]:
     while e.g. holding a D-pad direction.
 
     When every configured slot's name has a _PRESET_ABBREVIATIONS entry,
-    all of them are packed onto one single frame as "<N><abbr>" with no
-    separator between slots (e.g. "1Bak2Rst3Hme4Ssh") — tight enough that
-    4 slots at their hand-picked lengths still exactly fit one 16-char
-    line, so there's nothing to cycle through; the digit before each
-    abbreviation is separator enough to read at a glance. Falls back to
-    "N:Name" pairs, space-separated and packed as many to a frame as fit
-    (e.g. "1:Back 2:Rest" together when they both fit), cycling to a next
+    all of them are packed onto one single frame as space-separated
+    abbreviations (e.g. "Bak Rst Hme Ssh") — no slot number, since the
+    digit-prefixed form read as noise rather than a helpful label. Falls
+    back to plain names, space-separated and packed as many to a frame as
+    fit (e.g. "Back Rest" together when they both fit), cycling to a next
     frame for whatever doesn't, if *any* configured slot's name has no
     abbreviation — a mix of abbreviated and full-name slots on the same
     line would read worse than all of one style or the other."""
@@ -379,9 +377,9 @@ def _preset_entries(device: str, location: str) -> list[str]:
 
     abbreviations = [_PRESET_ABBREVIATIONS.get(name.lower()) for _, name in slots]
     if all(abbreviations):
-        return ["".join(f"{number}{abbr}" for (number, _), abbr in zip(slots, abbreviations))[:16]]
+        return [" ".join(abbreviations)[:16]]
 
-    parts = [f"{number}:{name}"[:16] for number, name in slots]
+    parts = [name[:16] for _, name in slots]
     frames = []
     current = ""
     for part in parts:

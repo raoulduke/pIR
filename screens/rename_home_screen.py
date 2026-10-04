@@ -1,4 +1,4 @@
-"""Rename Home screen — reached via the Menu (MENU_RENAME_HOME), for
+"""Rename Home screen — reached via Menu > Rename > Home, for
 fixing a home's name without re-creating it and re-learning every signal
 under it.
 

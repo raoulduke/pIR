@@ -1,4 +1,4 @@
-"""Rename Signal screen — reached via the Menu (MENU_RENAME), for fixing a
+"""Rename Signal screen — reached via Menu > Rename > Signal, for fixing a
 device/location/button name mistyped during Learn without re-learning the
 IR signal itself.
 

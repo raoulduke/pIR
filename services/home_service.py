@@ -92,3 +92,100 @@ def _rename_home_in_place(node, old: str, new: str) -> bool:
             if _rename_home_in_place(item, old, new):
                 changed = True
     return changed
+
+
+# Config dicts keyed by "device" or "device/location" (not by home) —
+# config/keypad_presets.json's "by_device" overrides, and
+# config/step_devices.json's top level. (filename, path to the dict).
+_DEVICE_KEYED_DICTS = [("keypad_presets.json", ["by_device"]), ("step_devices.json", [])]
+
+
+def rename_device(home: str, old: str, new: str) -> None:
+    """Rename a device within *home*: its signals/<home>/<device>
+    directory, its config/device_order.json entries, the "device" field
+    on any step/slot in _STEP_REFERENCING_FILES that also names *home*,
+    and any _DEVICE_KEYED_DICTS key for it ("old" or "old/<location>").
+
+    Those device-keyed dicts aren't scoped by home, so if another home
+    still has a device named *old* its keys are copied to *new* rather
+    than moved — renaming one home's device shouldn't strip the other's
+    presets. An existing key for *new* is never overwritten. Raises if
+    *new* already exists in *home* (same last-resort guard as
+    rename_home())."""
+    if new in signal_service.list_devices(home):
+        raise ConfigError(f"'{new}' already exists")
+
+    signal_service.rename_device(home, old, new)
+    signal_service.rename_device_order(home, old, new)
+    for filename in _STEP_REFERENCING_FILES:
+        _rewrite_json_file(
+            _CONFIG_DIR / filename,
+            lambda data: _rename_device_in_place(data, home, old, new),
+        )
+
+    keep_old = any(
+        old in signal_service.list_devices(h) for h in list_homes() if h != home
+    )
+    for filename, key_path in _DEVICE_KEYED_DICTS:
+        _rewrite_json_file(
+            _CONFIG_DIR / filename,
+            lambda data: _rename_device_keys(data, key_path, old, new, keep_old),
+        )
+
+
+def _rewrite_json_file(path: Path, mutate) -> None:
+    """Load *path*, apply *mutate* (returns True if it changed anything),
+    write it back if so. Missing/unparsable files are skipped, same as
+    _rewrite_home_refs_in_file()."""
+    if not path.exists():
+        return
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    if mutate(data):
+        path.write_text(json.dumps(data, indent=2))
+
+
+def _rename_device_in_place(node, home: str, old: str, new: str) -> bool:
+    """Like _rename_home_in_place(), but renames the "device" field of
+    any {"home": home, "device": old, ...} step/slot."""
+    changed = False
+    if isinstance(node, dict):
+        if node.get("home") == home and node.get("device") == old:
+            node["device"] = new
+            changed = True
+        for value in node.values():
+            if _rename_device_in_place(value, home, old, new):
+                changed = True
+    elif isinstance(node, list):
+        for item in node:
+            if _rename_device_in_place(item, home, old, new):
+                changed = True
+    return changed
+
+
+def _rename_device_keys(data, key_path: list[str], old: str, new: str, keep_old: bool) -> bool:
+    target = data
+    for key in key_path:
+        if not isinstance(target, dict):
+            return False
+        target = target.get(key)
+    if not isinstance(target, dict):
+        return False
+
+    changed = False
+    for key in list(target):
+        if key == old:
+            new_key = new
+        elif key.startswith(f"{old}/"):
+            new_key = new + key[len(old):]
+        else:
+            continue
+        if new_key in target:
+            continue
+        target[new_key] = target[key] if not keep_old else json.loads(json.dumps(target[key]))
+        if not keep_old:
+            del target[key]
+        changed = True
+    return changed

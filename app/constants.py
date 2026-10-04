@@ -28,13 +28,17 @@ STATEMENT_NO_SIGNALS = "No signals"
 # Menu options (screens/main_menu.py — the escape-hatch reached via the
 # physical Menu key; see docs/active-device-control-plan.md)
 MENU_LEARN = "Learn"
-MENU_RENAME = "Rename Signal"
-MENU_RENAME_HOME = "Rename Home"
+MENU_RENAME = "Rename"
 MENU_COMMAND = "Command"
 MENU_HOME = "Change Home"
 MENU_NETWORK = "WiFi"
 MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
+
+# Rename submenu options (screens/rename_menu_screen.py, "Rename what?")
+RENAME_HOME = "Home"
+RENAME_DEVICE = "Device"
+RENAME_SIGNAL = "Signal"
 
 # How often screens/main_menu.py re-checks wifi_service.is_ready() while the
 # WiFi entry is the highlighted one, so "WiFi loading..." clears back to

@@ -81,6 +81,44 @@ def rename_order_keys(old: str, new: str) -> None:
         _ORDER_PATH.write_text(json.dumps(renamed, indent=2))
 
 
+def rename_device(home: str, old: str, new: str) -> None:
+    """Rename a device's signals/<home>/<device> directory. Caller
+    (services.home_service) is responsible for refusing an existing
+    *new* first — same caveat as rename_home()."""
+    old_dir = home_dir(home) / old
+    new_dir = home_dir(home) / new
+    old_dir.rename(new_dir)
+    _chown_to_file_owner(new_dir)
+
+
+def rename_device_order(home: str, old: str, new: str) -> None:
+    """Rewrite config/device_order.json for a device rename within
+    *home*: *old*'s entry in the home's own top-level list (keeping its
+    position, so < Device/Device > cycle order doesn't change), plus its
+    "<home>/<old>" location-order key — for
+    services.home_service.rename_device()."""
+    if not _ORDER_PATH.exists():
+        return
+    try:
+        data = json.loads(_ORDER_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+
+    changed = False
+    devices = data.get(home)
+    if isinstance(devices, list) and old in devices:
+        data[home] = [new if d == old else d for d in devices]
+        changed = True
+
+    old_key, new_key = f"{home}/{old}", f"{home}/{new}"
+    if old_key in data:
+        data = {(new_key if k == old_key else k): v for k, v in data.items()}
+        changed = True
+
+    if changed:
+        _ORDER_PATH.write_text(json.dumps(data, indent=2))
+
+
 def _explicit_order(key: str) -> list[str]:
     """config/device_order.json's explicit order for *key*, or [] if the
     file/key entry is missing — callers fall back to pure alphabetical

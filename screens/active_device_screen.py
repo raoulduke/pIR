@@ -353,7 +353,7 @@ _PRESET_ABBREVIATIONS = {
     "mute": "Ssh",
     "power": "Pwr",
     "youtube": "YT",
-    "captions": "Cap",
+    "captions": "CC",
     "candlelight": "Cdl",
     "warm white": "Wrm",
     "daylight": "Day",

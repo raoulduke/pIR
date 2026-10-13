@@ -244,6 +244,19 @@ def _menu_power_paired(functions: list[dict]) -> tuple[dict | None, dict | None]
     return power, paired
 
 
+def _persistent_presets_line2(power: dict | None, paired: dict | None, frames: list[str]) -> str | None:
+    """Line 2 for a fixed-mapping leaf with exactly one action (Power
+    alone, or one paired action alone) and presets that fit one frame:
+    the presets themselves, shown permanently instead of the one-shot
+    reveal. With a single action there's nothing to disambiguate, so the
+    "Power"/"X Control" hint is expendable; with both, or with presets
+    that need several frames (a timer repaint would cost battery), None —
+    caller keeps the normal label + one-shot reveal."""
+    if (power is None) == (paired is None) or len(frames) != 1:
+        return None
+    return frames[0]
+
+
 def _fire_power(lcd: LCD, home: str, device: str, location: str, function: dict) -> None:
     if function["type"] == "standalone":
         _transmit(lcd, home, device, location, function["button"])
@@ -506,8 +519,9 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
 
     fixed = _fixed_mapping_functions(functions)
     if fixed is not None:
-        _, paired = fixed
-        line2 = f"{format_name(paired['name'])} Control" if paired else "Power"
+        power, paired = fixed
+        line2 = _persistent_presets_line2(power, paired, _preset_entries(device, location)) \
+            or (f"{format_name(paired['name'])} Control" if paired else "Power")
         lcd.write(_device_label(device, location), line2[:16])
         return
 
@@ -687,11 +701,13 @@ def show(lcd: LCD, state: AppState) -> None:
             fixed = _fixed_mapping_functions(functions)
             if fixed is not None:
                 power, paired = fixed
-                line2 = f"{format_name(paired['name'])} Control" if paired else "Power"
+                persistent = _persistent_presets_line2(power, paired, preset_entries)
+                line2 = persistent or (f"{format_name(paired['name'])} Control" if paired else "Power")
                 if leaf_changed or dpad_needs_redraw:
                     lcd.write(_device_label(device, location), line2[:16])
                     dpad_needs_redraw = False
-                key = _reveal_presets(lcd, state, device, location, line2, preset_entries) if reveal_presets else read_key()
+                key = _reveal_presets(lcd, state, device, location, line2, preset_entries) \
+                    if reveal_presets and not persistent else read_key()
                 if key is None:
                     # See the google_tv branch above's identical handling.
                     dpad_needs_redraw = True

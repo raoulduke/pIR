@@ -27,6 +27,49 @@ _BAR_PARTIAL_BITS = {
 }
 _BAR_FULL_CELL = chr(5)
 
+# Preset-line glyphs (screens/active_device_screen.py's
+# _PRESET_ABBREVIATIONS). The progress bar only runs during startup, so
+# once it's done load_preset_glyphs() reuses its CGRAM slots 1-3 for these
+# — never loaded alongside the bar, so no slot conflict.
+GLYPH_HOME = chr(1)
+GLYPH_CC_LEFT = chr(2)
+GLYPH_CC_RIGHT = chr(3)
+_PRESET_GLYPHS = {
+    # Solid house.
+    1: [
+        0b00100,
+        0b01110,
+        0b11111,
+        0b01110,
+        0b01110,
+        0b01110,
+        0b01110,
+        0b01110,
+    ],
+    # Closed captions: a box split across two cells, a small "c" in each
+    # (single-pixel ends).
+    2: [
+        0b11111,
+        0b10000,
+        0b10010,
+        0b10100,
+        0b10100,
+        0b10010,
+        0b10000,
+        0b11111,
+    ],
+    3: [
+        0b11111,
+        0b00001,
+        0b00101,
+        0b01001,
+        0b01001,
+        0b00101,
+        0b00001,
+        0b11111,
+    ],
+}
+
 
 class LCD:
     def __init__(self) -> None:
@@ -82,6 +125,14 @@ class LCD:
         with self._lock:
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(text[:16].ljust(16))
+
+    def load_preset_glyphs(self) -> None:
+        """Replace the progress bar's CGRAM slots with the preset-line
+        glyphs. Call once startup (the only user of write_progress) is
+        done."""
+        with self._lock:
+            for location, rows in _PRESET_GLYPHS.items():
+                self._lcd.create_char(location, rows)
 
     def write_progress(self, line1: str, fraction: float) -> None:
         """Top row is *line1*; bottom row is a fill bar for *fraction*

@@ -57,7 +57,7 @@ Tracks one active leaf device (state.active_device, state.active_location):
 """
 
 import time
-from hardware.lcd import LCD
+from hardware.lcd import LCD, GLYPH_HOME, GLYPH_CC_LEFT, GLYPH_CC_RIGHT
 from hardware import ir_transmitter
 from hardware import input as input_hw
 from hardware.input import (
@@ -346,14 +346,14 @@ def _menu_leaf_label(home: str, device: str, location: str) -> str:
 # cycle-frames behavior for any name with no entry here, so adding a new
 # preset without an abbreviation degrades gracefully instead of breaking.
 _PRESET_ABBREVIATIONS = {
-    "back": "Bak",
+    "back": "<-",
     "rust": "Rst",
     "rest": "Rst",
-    "home": "Hme",
+    "home": GLYPH_HOME,
     "mute": "Ssh",
     "power": "Pwr",
     "youtube": "YT",
-    "captions": "CC",
+    "captions": GLYPH_CC_LEFT + GLYPH_CC_RIGHT,
     "candlelight": "Cdl",
     "warm white": "Wrm",
     "daylight": "Day",

@@ -47,6 +47,8 @@ def initialize() -> AppState | None:
             lcd.write_progress("Initializing...", (i + 1) / len(checks))
             check()
 
+        lcd.load_preset_glyphs()
+
         # No "Ready" screen here — active_device_screen.show() draws the
         # real first screen immediately, and a network-connectivity check
         # used to run right before this too: state.network_connected/

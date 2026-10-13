@@ -200,16 +200,46 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
    sudo scripts/disable-unused-services.sh
    ```
    `sysstat-collect.timer` is the one that matters most — it wakes the CPU every 10 minutes around the clock to log stats nothing reads here, defeating idle power states all day for no benefit.
-4. Install the shutdown LED signal (see "Shutdown / power-off signaling" above):
+4. Install the journal size/age caps (see "Log retention" below):
+   ```bash
+   sudo mkdir -p /etc/systemd/journald.conf.d
+   ```
+   ```bash
+   sudo cp systemd/journald.conf.d/pihome.conf /etc/systemd/journald.conf.d/pihome.conf
+   ```
+   ```bash
+   sudo systemctl restart systemd-journald
+   ```
+5. Install the shutdown LED signal (see "Shutdown / power-off signaling" above):
    ```bash
    sudo cp systemd/system-shutdown/shutdown-signal.sh /lib/systemd/system-shutdown/shutdown-signal.sh
    sudo chmod +x /lib/systemd/system-shutdown/shutdown-signal.sh
    ```
    No enable step needed — systemd runs everything in that directory automatically on every shutdown/reboot. The `heartbeat` LED trigger itself (step 1) needs a reboot to take effect.
-5. Run:
+6. Run:
    ```bash
    sudo .venv/bin/python3 main.py
    ```
+
+## Log retention (2026-10-13)
+
+Device failures (IR TX/RX, missing signals, voice/Hue/Android TV steps,
+startup) log to the journal as well as the LCD — the LCD message is gone
+at the next redraw. Read them with `journalctl -u pihome.service`.
+
+Logs are bounded by **size/age caps, not a scheduled cleanup**:
+`systemd/journald.conf.d/pihome.conf` (`SystemMaxUse=200M`,
+`SystemKeepFree=2G`, `MaxRetentionSec=3month`) — journald enforces these
+itself on every write, so there's no timer adding a CPU wakeup. Measured
+~2MB/day (565M accumulated Jan–Oct 2026 under stock settings, whose cap
+was ~4G), so 200M is roughly 3 months of history.
+
+`rsyslog.service` is disabled (`scripts/disable-unused-services.sh`) and
+`ForwardToSyslog=no` is set — it duplicated every journal line into
+`/var/log/syslog`, writing each one to the SD card twice for a text log
+nothing reads. `journalctl` is the only log now. The remaining
+`/var/log/*` text logs (dpkg, apt, etc.) are tiny and already rotated
+weekly by stock logrotate — left alone.
 
 ## Google TV / Android TV Remote Control (2026-09-09)
 

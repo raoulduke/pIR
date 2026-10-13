@@ -361,6 +361,21 @@ _PRESET_ABBREVIATIONS = {
 }
 
 
+def _justify(words: list[str], width: int = 16) -> str:
+    """Spread *words* across *width* columns — first flush left, last flush
+    right, the gaps between as equal as possible (any leftover spaces go to
+    the middle gaps first, so it stays visually symmetric). Falls back to
+    single-space packing if the words don't leave room for one space per gap."""
+    gaps = len(words) - 1
+    spaces = width - sum(len(w) for w in words)
+    if gaps < 1 or spaces < gaps:
+        return " ".join(words)[:width]
+    base, extra = divmod(spaces, gaps)
+    order = sorted(range(gaps), key=lambda i: abs(i - (gaps - 1) / 2))
+    widths = [base + (1 if i in order[:extra] else 0) for i in range(gaps)]
+    return "".join(w + " " * n for w, n in zip(words, widths)) + words[-1]
+
+
 def _preset_entries(device: str, location: str) -> list[str]:
     """Preset Function display frames for this leaf, ready for
     _reveal_presets() to show one at a time. [] if none are configured.
@@ -390,6 +405,8 @@ def _preset_entries(device: str, location: str) -> list[str]:
 
     abbreviations = [_PRESET_ABBREVIATIONS.get(name.lower()) for _, name in slots]
     if all(abbreviations):
+        if len(abbreviations) == 4:
+            return [_justify(abbreviations)]
         return [" ".join(abbreviations)[:16]]
 
     parts = [name[:16] for _, name in slots]

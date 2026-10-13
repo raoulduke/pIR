@@ -40,11 +40,11 @@ _PRESET_GLYPHS = {
         0b00100,
         0b01110,
         0b11111,
-        0b01110,
-        0b01110,
-        0b01110,
-        0b01110,
-        0b01110,
+        0b11111,
+        0b11111,
+        0b11111,
+        0b11111,
+        0b11111,
     ],
     # Closed captions: a box split across two cells, a small "c" in each
     # (single-pixel ends).

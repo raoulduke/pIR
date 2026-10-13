@@ -508,7 +508,7 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
         input_hw.set_repeatable_keys(set())
         input_hw.set_repeat_interval(None)
         frames = _preset_entries(device, location)
-        lcd.write(_menu_leaf_label(home, device, location), frames[0] if len(frames) == 1 else _MENU_CONTROL_LABEL[device])
+        lcd.write(_menu_leaf_label(home, device, location), frames[0] if len(frames) == 1 else "" if not frames else _MENU_CONTROL_LABEL[device])
         return
 
     input_hw.set_repeatable_keys(set())
@@ -521,8 +521,9 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
     fixed = _fixed_mapping_functions(functions)
     if fixed is not None:
         power, paired = fixed
-        line2 = _persistent_presets_line2(power, paired, _preset_entries(device, location)) \
-            or (f"{format_name(paired['name'])} Control" if paired else "Power")
+        frames = _preset_entries(device, location)
+        line2 = _persistent_presets_line2(power, paired, frames) \
+            or ("" if not frames else f"{format_name(paired['name'])} Control" if paired else "Power")
         lcd.write(_device_label(device, location), line2[:16])
         return
 
@@ -652,7 +653,7 @@ def show(lcd: LCD, state: AppState) -> None:
                 # generic "Light Control"/"TV Control" label says nothing
                 # the device name doesn't already.
                 persistent = len(preset_entries) == 1
-                control_label = preset_entries[0] if persistent else _MENU_CONTROL_LABEL[device]
+                control_label = preset_entries[0] if persistent else "" if not preset_entries else _MENU_CONTROL_LABEL[device]
                 input_hw.set_repeatable_keys(set())
                 input_hw.set_repeat_interval(None)
                 if leaf_changed or dpad_needs_redraw:
@@ -708,7 +709,7 @@ def show(lcd: LCD, state: AppState) -> None:
             if fixed is not None:
                 power, paired = fixed
                 persistent = _persistent_presets_line2(power, paired, preset_entries)
-                line2 = persistent or (f"{format_name(paired['name'])} Control" if paired else "Power")
+                line2 = persistent or ("" if not preset_entries else f"{format_name(paired['name'])} Control" if paired else "Power")
                 if leaf_changed or dpad_needs_redraw:
                     lcd.write(_device_label(device, location), line2[:16])
                     dpad_needs_redraw = False

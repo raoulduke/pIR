@@ -495,7 +495,8 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
     if device == DEFAULT_ACTIVE_DEVICE:
         input_hw.set_repeatable_keys(_GOOGLE_TV_REPEAT_KEYS)
         input_hw.set_repeat_interval(_GOOGLE_TV_REPEAT_INTERVAL_SECONDS)
-        lcd.write(_device_label(device, location), "Remote Control")
+        frames = _preset_entries(device, location)
+        lcd.write(_device_label(device, location), frames[0] if len(frames) == 1 else "Remote Control")
         return
 
     if device in MENU_SENTINEL_TO_DEVICE:
@@ -576,10 +577,14 @@ def show(lcd: LCD, state: AppState) -> None:
                 # identical write here measured ~81ms on this LCD (bit-banged
                 # software I2C), which was eating into the repeat interval
                 # budget above just as much as the IR transmit itself.
+                # Presets stay up permanently when they fit one frame.
+                persistent = len(preset_entries) == 1
+                remote_label = preset_entries[0] if persistent else "Remote Control"
                 if leaf_changed or dpad_needs_redraw:
-                    lcd.write(_device_label(device, location), "Remote Control")
+                    lcd.write(_device_label(device, location), remote_label)
                     dpad_needs_redraw = False
-                key = _reveal_presets(lcd, state, device, location, "Remote Control", preset_entries) if reveal_presets else read_key()
+                key = _reveal_presets(lcd, state, device, location, remote_label, preset_entries) \
+                    if reveal_presets and not persistent else read_key()
                 if key is None:
                     # A quick action wants an immediate redraw (currently
                     # just Preset Function — see hardware.input.read_key's

@@ -3,9 +3,13 @@
 (that's screens/active_device_screen.py — see
 docs/active-device-control-plan.md).
 
-Returns one of: MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, KEY_QUIT, or None
-(pressing Left backs out to Active Device Control without choosing
-anything). Selecting "Quit" also returns KEY_QUIT. MENU_IP is handled
+Left/Right cycle the options, shown as "<   Option   >" like any other
+multi-option screen (Up/Down do nothing here). There's no explicit Back
+key — < Device/Device > (hardware.input.DeviceCycledAway) already unwinds
+out of the menu back to Active Device Control.
+
+Returns one of: MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, KEY_QUIT.
+Selecting "Quit" also returns KEY_QUIT. MENU_IP is handled
 inline here rather than returned — it's display-only. MENU_NETWORK
 (labeled "WiFi") is disabled — Enter is a no-op — while
 wifi_service.is_ready() is false, showing "WiFi loading..." instead; see
@@ -23,7 +27,7 @@ from app.constants import (
 )
 from app.state import AppState
 from hardware.lcd import LCD
-from hardware.input import read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_ENTER, KEY_QUIT
+from hardware.input import read_key, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT
 from hardware.network import get_ip_address
 from services import wifi_service
 
@@ -35,10 +39,14 @@ _OPTIONS = [
 
 def _line2(option: str) -> str:
     if option == MENU_IP:
-        return get_ip_address() or "No network"
-    if option == MENU_NETWORK and not wifi_service.is_ready():
-        return "WiFi loading..."
-    return option
+        text = get_ip_address() or "No network"
+    elif option == MENU_NETWORK and not wifi_service.is_ready():
+        text = "WiFi loading..."
+    else:
+        text = option
+    # Same "<   name   >" framing as active_device_screen's _cycle_line2();
+    # text too long to frame (a long IP, "WiFi loading...") is shown plain.
+    return f"<{text.center(14)}>" if len(text) <= 14 else text
 
 
 def show(lcd: LCD, state: AppState) -> str | None:
@@ -61,10 +69,8 @@ def show(lcd: LCD, state: AppState) -> str | None:
             lcd.clear()
             return KEY_QUIT
         if key == KEY_LEFT:
-            return None
-        if key == KEY_UP:
             index = (index - 1) % len(_OPTIONS)
-        if key == KEY_DOWN:
+        if key == KEY_RIGHT:
             index = (index + 1) % len(_OPTIONS)
         if key == KEY_ENTER:
             if option == MENU_QUIT:

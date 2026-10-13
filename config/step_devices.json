@@ -1,0 +1,76 @@
+{
+  "google_home": [
+    {"name": "Rust", "steps": [
+      {"type": "voice", "command": "Rust"},
+      {"home": "home", "device": "light", "location": "hall", "button": "off"}
+    ]},
+    {"name": "Lamp Rust", "steps": [{"type": "voice", "command": "Change lamp light to rust"}]},
+    {"name": "Soften kitchen", "steps": [
+      {"type": "voice", "command": "Change kitchen north to candlelight"},
+      {"type": "voice", "command": "Turn off kitchen south"}
+    ]},
+    {"name": "It's Friday", "steps": [{"type": "voice", "command": "It's Friday"}]},
+    {"name": "Lamp Candle", "steps": [{"type": "voice", "command": "Change lamp to candlelight"}]},
+    {"name": "Ceiling Candle", "steps": [{"type": "voice", "command": "Change ceiling to candlelight"}]}
+  ],
+  "light/lamp": [
+    {"name": "Power", "steps": [{"type": "voice", "command": "Toggle lamp"}]},
+    {"name": "Brightness",
+      "up_steps": [{"type": "voice", "command": "Brighten the lamp"}],
+      "down_steps": [{"type": "voice", "command": "Dim the lamp"}]}
+  ],
+  "light/ceiling": [
+    {"name": "Power", "steps": [{"type": "voice", "command": "Toggle ceiling"}]},
+    {"name": "Brightness",
+      "up_steps": [{"type": "voice", "command": "Brighten the ceiling"}],
+      "down_steps": [{"type": "voice", "command": "Dim the ceiling"}]}
+  ],
+  "light/corner": [
+    {"name": "Power", "steps": [{"type": "voice", "command": "Toggle corner"}]},
+    {"name": "Brightness",
+      "up_steps": [{"type": "voice", "command": "Brighten the corner"}],
+      "down_steps": [{"type": "voice", "command": "Dim the corner"}]}
+  ],
+  "light/window": [
+    {"name": "Power", "steps": [{"type": "voice", "command": "Toggle window"}]}
+  ],
+  "light/hall": [
+    {"name": "Power", "steps": [{"type": "ir_toggle", "home": "home", "device": "light",
+      "location": "hall", "on_button": "on", "off_button": "off"}]},
+    {"name": "Brightness",
+      "up_steps": [{"home": "home", "device": "light", "location": "hall", "button": "brightness_up"}],
+      "down_steps": [{"home": "home", "device": "light", "location": "hall", "button": "brightness_down"}]}
+  ],
+  "light/bedroom": [
+    {"name": "Power", "steps": [{"type": "hue", "action": "toggle", "light_id": "3"}]},
+    {"name": "Brightness",
+      "up_steps": [{"type": "hue", "bri_inc": 25, "light_id": "3"}],
+      "down_steps": [{"type": "hue", "bri_inc": -25, "light_id": "3"}]}
+  ],
+  "light/kitchen_s": [
+    {"name": "Power", "steps": [{"type": "hue", "action": "toggle", "light_id": "4"}]},
+    {"name": "Brightness",
+      "up_steps": [{"type": "hue", "bri_inc": 25, "light_id": "4"}],
+      "down_steps": [{"type": "hue", "bri_inc": -25, "light_id": "4"}]}
+  ],
+  "light/kitchen_n": [
+    {"name": "Power", "steps": [{"type": "hue", "action": "toggle", "light_id": "5"}]},
+    {"name": "Brightness",
+      "up_steps": [{"type": "hue", "bri_inc": 25, "light_id": "5"}],
+      "down_steps": [{"type": "hue", "bri_inc": -25, "light_id": "5"}]}
+  ],
+  "light/kitchen": [
+    {"name": "Power", "steps": [
+      {"type": "hue", "action": "toggle", "light_id": "4"},
+      {"type": "hue", "action": "toggle", "light_id": "5"}
+    ]}
+  ],
+  "light/living_room": [
+    {"name": "Power", "steps": [{"type": "voice_toggle", "key": "living_room",
+      "on_command": "Turn on the living room lights",
+      "off_command": "Turn off the living room lights"}]},
+    {"name": "Brightness",
+      "up_steps": [{"type": "voice", "command": "Brighten the living room lights"}],
+      "down_steps": [{"type": "voice", "command": "Dim the living room lights"}]}
+  ]
+}

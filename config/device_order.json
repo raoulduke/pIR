@@ -1,0 +1,26 @@
+{
+  "home": [
+    "google_tv",
+    "light",
+    "receiver",
+    "google_home",
+    "ac",
+    "tv"
+  ],
+  "home/light": [
+    "lamp",
+    "ceiling",
+    "living_room",
+    "hall",
+    "window",
+    "corner",
+    "kitchen",
+    "kitchen_n",
+    "kitchen_s",
+    "bedroom"
+  ],
+  "home/tv": [
+    "living_room",
+    "bedroom"
+  ]
+}

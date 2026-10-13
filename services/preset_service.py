@@ -71,19 +71,18 @@ way) and alternates between the two confirmed phrasings:
 "key" only needs to be unique among voice_toggle steps — it's the state
 lookup, unrelated to the command text.
 
-Top-level "1".."4" are the global defaults — what fires when the active
-device (screens/active_device_screen.py's state.active_device/location) has
-no override for that slot. A top-level "by_device" key adds per-device
-overrides, keyed "device" or "device/location" (matching whatever's active
-when the button is pressed):
+There are no global defaults: a device only ever has the presets it defines
+itself. config/keypad_presets.json's top-level "by_device" key maps
+"device" or "device/location" (matching whatever's active when the button
+is pressed) to that device's own slots:
   "by_device": {
-    "light/hall": {"1": [{"home": "home", "device": "light",
-                           "location": "hall", "button": "on"}]}
+    "light/hall": {"1": {"name": "On", "steps": [{"home": "home",
+                           "device": "light", "location": "hall",
+                           "button": "on"}]}}
   }
-A device's override block only needs the slots it wants to change — any
-slot it doesn't define still falls through to the matching global default,
-so e.g. a device can override Preset Function 1 while 2-4 keep firing
-their usual global macros.
+A slot a device doesn't define is simply not configured (Preset Function
+shows "Not configured") — it never falls through to another device's or a
+shared preset.
 
 run_steps() below is the actual step-execution engine, shared with
 services/step_device_service.py — a step device's Active Device Control
@@ -150,21 +149,11 @@ def _device_key(device: str, location: str) -> str:
     return f"{device}/{location}" if location else device
 
 
-def get_preset(number: int, device: str = "", location: str = "", fallback: bool = True) -> tuple[str, list[dict]]:
-    """Returns (name, steps) — the active device's override for this slot
-    if it has one, else the global default. name is "" if the entry (or
-    its "name" field) is missing. fallback=False skips the global default
-    — for display, where only a device's own presets are worth showing."""
-    data = _load()
-    slot = str(number)
-
-    entry = None
-    if device:
-        overrides = data.get("by_device", {}).get(_device_key(device, location), {})
-        entry = overrides.get(slot)
-    if entry is None:
-        entry = data.get(slot, {}) if fallback else {}
-
+def get_preset(number: int, device: str = "", location: str = "") -> tuple[str, list[dict]]:
+    """Returns (name, steps) — the active device's own preset for this
+    slot. ("", []) if that device doesn't define it (or there is no active
+    device); there is deliberately no global default to fall back on."""
+    entry = _load().get("by_device", {}).get(_device_key(device, location), {}).get(str(number), {}) if device else {}
     return entry.get("name", ""), entry.get("steps", [])
 
 

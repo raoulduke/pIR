@@ -1,16 +1,4 @@
 {
-  "1": {"name": "Back", "steps": [
-    {"home": "home", "device": "google_tv", "location": "", "button": "back"}
-  ]},
-  "2": {"name": "Rest", "steps": [
-    {"type": "voice", "command": "Rest"}
-  ]},
-  "3": {"name": "Home", "steps": [
-    {"type": "androidtv", "keyevent": "KEYCODE_HOME"}
-  ]},
-  "4": {"name": "Mute", "steps": [
-    {"home": "home", "device": "google_tv", "location": "", "button": "mute"}
-  ]},
   "by_device": {
     "google_tv": {
       "1": {"name": "Back", "steps": [{"home": "home", "device": "google_tv", "location": "", "button": "back"}]},

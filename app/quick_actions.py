@@ -148,7 +148,8 @@ def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
 
 def _handle_preset(number: int) -> None:
     """Preset Function N — runs the active device's override for slot N if
-    it has one (see services/preset_service.py), else the global default.
+    it has one (see services/preset_service.py); a slot it doesn't define is
+    "Not configured" — there is no global default.
     Active device is read-only here; presses never change it.
 
     Shows the preset's configured name (e.g. "Candlelight", "Rest")

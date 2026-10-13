@@ -37,9 +37,9 @@ GLYPH_CC_RIGHT = chr(3)
 _PRESET_GLYPHS = {
     # Solid house.
     1: [
+        0b00000,
         0b00100,
         0b01110,
-        0b11111,
         0b11111,
         0b11111,
         0b11111,

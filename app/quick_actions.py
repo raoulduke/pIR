@@ -10,6 +10,7 @@ these touch AppState — handle() itself stays a plain function of just the
 key, matching hardware.input.set_quick_action_handler's calling convention.
 """
 
+import logging
 import time
 
 from hardware.lcd import lcd
@@ -43,6 +44,9 @@ _state: AppState | None = None
 # _handle_device_cycle can tell it's currently nested under a Menu screen —
 # see hardware.input.DeviceCycledAway.
 _in_menu = False
+
+
+log = logging.getLogger(__name__)
 
 
 def init(state: AppState) -> None:
@@ -108,6 +112,7 @@ def _handle_device(key: str) -> None:
         slot["home"], slot["device"], button, slot.get("location", "")
     )
     if not path.exists():
+        log.warning("IR signal missing: %s", path)
         lcd.write(label, "Signal missing")
         time.sleep(1)
         return
@@ -116,6 +121,7 @@ def _handle_device(key: str) -> None:
         ir_transmitter.transmit(path)
         lcd.write(label, button.replace("_", " ").title())
     except HardwareError as e:
+        log.error("IR transmit failed (%s): %s", path, e)
         lcd.write("TX Error", str(e)[:16])
     time.sleep(0.6)
 

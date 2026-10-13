@@ -108,6 +108,7 @@ above.
 """
 
 import json
+import logging
 import queue
 import threading
 import time
@@ -117,6 +118,8 @@ from app.constants import KEYPAD_PRESETS_FILE, PRESET_DEFAULT_DELAY_SECONDS
 from app.exceptions import HardwareError
 from hardware import ir_transmitter
 from services import signal_service, voice_service, androidtv_service, hue_service
+
+log = logging.getLogger(__name__)
 
 _PATH = Path(__file__).parent.parent / KEYPAD_PRESETS_FILE
 
@@ -198,16 +201,17 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
 
     for i, step in enumerate(steps):
         sent_before = sent
+        error = ""
         if step.get("type") == "voice":
-            success, _ = voice_service.send_command(step["command"])
+            success, error = voice_service.send_command(step["command"])
             if success:
                 sent += 1
         elif step.get("type") == "androidtv":
-            success, _ = androidtv_service.send_keyevent(step["keyevent"])
+            success, error = androidtv_service.send_keyevent(step["keyevent"])
             if success:
                 sent += 1
         elif step.get("type") == "androidtv_app":
-            success, _ = androidtv_service.launch_app(step["app_link"])
+            success, error = androidtv_service.launch_app(step["app_link"])
             if success:
                 sent += 1
         elif step.get("type") == "hue":
@@ -239,8 +243,8 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                         current = hue_service.get_light(light_id).get("state", {}).get("on", False)
                         hue_service.set_light_state(light_id, on=not current)
                 sent += 1
-            except (OSError, ValueError, KeyError):
-                pass
+            except (OSError, ValueError, KeyError) as e:
+                error = repr(e)
         elif step.get("type") == "ir_toggle":
             # Flip the assumed state and fire whichever real signal
             # matches it — see _ir_toggle_state's own comment for the
@@ -254,12 +258,14 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
             path = signal_service.signal_path(
                 step["home"], step["device"], button, step.get("location", "")
             )
-            if path.exists():
+            if not path.exists():
+                error = f"signal missing: {path}"
+            else:
                 try:
                     ir_transmitter.transmit(path)
                     sent += 1
-                except HardwareError:
-                    pass
+                except HardwareError as e:
+                    error = str(e)
         elif step.get("type") == "voice_toggle":
             # Same "no real state readback" caveat as ir_toggle — see
             # this step type's docstring for why a bare "Toggle X" voice
@@ -268,22 +274,26 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
             now_on = not _voice_toggle_state.get(key, False)
             _voice_toggle_state[key] = now_on
             command = step["on_command"] if now_on else step["off_command"]
-            success, _ = voice_service.send_command(command)
+            success, error = voice_service.send_command(command)
             if success:
                 sent += 1
         else:
             path = signal_service.signal_path(
                 step["home"], step["device"], step["button"], step.get("location", "")
             )
-            if path.exists():
+            if not path.exists():
+                error = f"signal missing: {path}"
+            else:
                 try:
                     ir_transmitter.transmit(path)
                     sent += 1
-                except HardwareError:
-                    pass
+                except HardwareError as e:
+                    error = str(e)
 
-        if sent == sent_before and failed_step is None:
-            failed_step = step
+        if sent == sent_before:
+            log.warning("Step failed (%s): %s", describe_step(step), error or "unknown error")
+            if failed_step is None:
+                failed_step = step
 
         # No delay needed after the last step — nothing follows it that
         # could be disrupted by firing signals too close together.
@@ -304,9 +314,14 @@ _worker_start_lock = threading.Lock()
 def _worker_loop() -> None:
     while True:
         steps, on_result = _task_queue.get()
-        result = run_steps(steps)
-        if on_result:
-            on_result(*result)
+        # An unexpected exception here would otherwise kill this thread
+        # silently, leaving every later queued step waiting forever.
+        try:
+            result = run_steps(steps)
+            if on_result:
+                on_result(*result)
+        except Exception:
+            log.exception("Background steps crashed: %r", steps)
 
 
 def _ensure_worker() -> None:

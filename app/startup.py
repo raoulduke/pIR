@@ -4,12 +4,15 @@ Runs each hardware/config check in order, updating *state* as it goes.
 Returns the populated AppState on success, or None on unrecoverable failure.
 """
 
+import logging
 import time
 from app.state import AppState
 from app.exceptions import ConfigError, HardwareError
 from hardware.lcd import lcd
 from hardware import ir_transmitter, ir_receiver
 from services import home_service
+
+log = logging.getLogger(__name__)
 
 
 def initialize() -> AppState | None:
@@ -59,11 +62,13 @@ def initialize() -> AppState | None:
         return state
 
     except (ConfigError, HardwareError) as e:
+        log.error("Startup failed: %s", e)
         lcd.write("Startup Failed", str(e)[:16])
         time.sleep(5)
         return None
 
     except Exception as e:
+        log.exception("Startup failed")
         lcd.write("Startup Failed", str(e)[:16])
         time.sleep(5)
         return None

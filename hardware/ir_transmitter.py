@@ -20,10 +20,12 @@ def transmit(signal_file: Path) -> None:
             ["ir-ctl", "-d", LIRC_TX_DEVICE, "-s", str(signal_file)],
             check=True,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
         )
     except subprocess.CalledProcessError as e:
-        raise HardwareError(f"ir-ctl TX failed: {e}") from e
+        detail = (e.stderr or "").strip()
+        raise HardwareError(f"ir-ctl TX failed: {detail or e}") from e
     except FileNotFoundError:
         raise HardwareError("ir-ctl not found") from None
 

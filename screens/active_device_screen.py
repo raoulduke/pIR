@@ -56,6 +56,7 @@ Tracks one active leaf device (state.active_device, state.active_location):
     _functions_for().
 """
 
+import logging
 import time
 from hardware.lcd import LCD, GLYPH_HOME, GLYPH_CC_LEFT, GLYPH_CC_RIGHT
 from hardware import ir_transmitter
@@ -72,6 +73,8 @@ from app.constants import (
 )
 from app.state import AppState
 from app.exceptions import HardwareError
+
+log = logging.getLogger(__name__)
 
 _DPAD_BUTTONS = {
     KEY_UP: "up", KEY_DOWN: "down", KEY_LEFT: "left",
@@ -854,6 +857,7 @@ def _transmit(lcd: LCD, home: str, device: str, location: str, button: str) -> b
     branch, knows to restore its normal display next), True on success."""
     path = signal_service.signal_path(home, device, button, location)
     if not path.exists():
+        log.warning("IR signal missing: %s", path)
         lcd.write(_device_label(device, location), "Signal missing")
         time.sleep(1)
         return False
@@ -861,6 +865,7 @@ def _transmit(lcd: LCD, home: str, device: str, location: str, button: str) -> b
         ir_transmitter.transmit(path)
         return True
     except HardwareError as e:
+        log.error("IR transmit failed (%s): %s", path, e)
         lcd.write("TX Error", str(e)[:16])
         time.sleep(1)
         return False

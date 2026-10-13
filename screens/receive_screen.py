@@ -11,6 +11,7 @@ characters from a USB keyboard or SSH session only) just sat there
 unresponsive to every physical keypress here.
 """
 
+import logging
 import time
 from hardware.lcd import LCD
 from hardware import ir_receiver
@@ -28,6 +29,8 @@ from app.constants import (
 )
 from app.exceptions import HardwareError
 from app.state import AppState
+
+log = logging.getLogger(__name__)
 
 
 def show(lcd: LCD, state: AppState) -> str | None:
@@ -95,6 +98,7 @@ def _capture(lcd: LCD) -> str:
     try:
         return ir_receiver.capture(lcd)
     except HardwareError as e:
+        log.error("IR capture failed: %s", e)
         lcd.write("RX Error", str(e)[:16])
         time.sleep(2)
         return ""

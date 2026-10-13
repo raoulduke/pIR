@@ -6,9 +6,15 @@ Startup → Active Device Control (main loop) → shutdown. Everything else
 Menu key from anywhere — see docs/active-device-control-plan.md.
 """
 
+import logging
 import os
 import signal
 import sys
+
+# Device failures (IR TX/RX, voice, Hue, Android TV) log here as well as
+# the LCD — the LCD message is gone the moment the screen redraws, the
+# journal (`journalctl -u pihome.service`) keeps it.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 print(f"[BOOT] PID={os.getpid()}")
 

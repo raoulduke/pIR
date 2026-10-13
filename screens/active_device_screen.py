@@ -507,7 +507,8 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
     if device in MENU_DEVICE_LABELS:
         input_hw.set_repeatable_keys(set())
         input_hw.set_repeat_interval(None)
-        lcd.write(_menu_leaf_label(home, device, location), _MENU_CONTROL_LABEL[device])
+        frames = _preset_entries(device, location)
+        lcd.write(_menu_leaf_label(home, device, location), frames[0] if len(frames) == 1 else _MENU_CONTROL_LABEL[device])
         return
 
     input_hw.set_repeatable_keys(set())
@@ -647,13 +648,18 @@ def show(lcd: LCD, state: AppState) -> None:
                 continue
 
             if device in MENU_DEVICE_LABELS:
-                control_label = _MENU_CONTROL_LABEL[device]
+                # Presets stay up permanently when they fit one frame — the
+                # generic "Light Control"/"TV Control" label says nothing
+                # the device name doesn't already.
+                persistent = len(preset_entries) == 1
+                control_label = preset_entries[0] if persistent else _MENU_CONTROL_LABEL[device]
                 input_hw.set_repeatable_keys(set())
                 input_hw.set_repeat_interval(None)
                 if leaf_changed or dpad_needs_redraw:
                     lcd.write(_menu_leaf_label(home, device, location), control_label)
                     dpad_needs_redraw = False
-                key = _reveal_presets(lcd, state, device, location, control_label, preset_entries) if reveal_presets else read_key()
+                key = _reveal_presets(lcd, state, device, location, control_label, preset_entries) \
+                    if reveal_presets and not persistent else read_key()
                 if key is None:
                     # See the google_tv branch above's identical handling.
                     dpad_needs_redraw = True

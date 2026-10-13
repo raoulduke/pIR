@@ -205,7 +205,7 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
    sudo mkdir -p /etc/systemd/journald.conf.d
    ```
    ```bash
-   sudo cp systemd/journald.conf.d/pihome.conf /etc/systemd/journald.conf.d/pihome.conf
+   sudo cp systemd/journald.conf.d/zz-pihome.conf /etc/systemd/journald.conf.d/zz-pihome.conf
    ```
    ```bash
    sudo systemctl restart systemd-journald
@@ -228,7 +228,7 @@ startup) log to the journal as well as the LCD — the LCD message is gone
 at the next redraw. Read them with `journalctl -u pihome.service`.
 
 Logs are bounded by **size/age caps, not a scheduled cleanup**:
-`systemd/journald.conf.d/pihome.conf` (`SystemMaxUse=200M`,
+`systemd/journald.conf.d/zz-pihome.conf` (`SystemMaxUse=200M`,
 `SystemKeepFree=2G`, `MaxRetentionSec=3month`) — journald enforces these
 itself on every write, so there's no timer adding a CPU wakeup. Measured
 ~2MB/day (565M accumulated Jan–Oct 2026 under stock settings, whose cap

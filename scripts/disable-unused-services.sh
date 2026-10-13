@@ -15,7 +15,7 @@
 # rsyslog.service copies every journal message into /var/log/syslog, so
 # each log line hit the SD card twice; nothing here reads those text logs
 # (journalctl is the log), and the journal itself is size-capped by
-# systemd/journald.conf.d/pihome.conf.
+# systemd/journald.conf.d/zz-pihome.conf.
 #
 # Idempotent — safe to re-run after a re-flash/rebuild. Run once during
 # setup (see CLAUDE.md "Setup (on the Pi)"):

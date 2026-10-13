@@ -381,7 +381,7 @@ def _preset_entries(device: str, location: str) -> list[str]:
     line would read worse than all of one style or the other."""
     slots = []
     for number in range(1, 5):
-        name, _ = preset_service.get_preset(number, device, location)
+        name, _ = preset_service.get_preset(number, device, location, fallback=False)
         if name:
             slots.append((number, name))
 

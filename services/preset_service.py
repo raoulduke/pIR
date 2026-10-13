@@ -150,10 +150,11 @@ def _device_key(device: str, location: str) -> str:
     return f"{device}/{location}" if location else device
 
 
-def get_preset(number: int, device: str = "", location: str = "") -> tuple[str, list[dict]]:
+def get_preset(number: int, device: str = "", location: str = "", fallback: bool = True) -> tuple[str, list[dict]]:
     """Returns (name, steps) — the active device's override for this slot
     if it has one, else the global default. name is "" if the entry (or
-    its "name" field) is missing."""
+    its "name" field) is missing. fallback=False skips the global default
+    — for display, where only a device's own presets are worth showing."""
     data = _load()
     slot = str(number)
 
@@ -162,7 +163,7 @@ def get_preset(number: int, device: str = "", location: str = "") -> tuple[str, 
         overrides = data.get("by_device", {}).get(_device_key(device, location), {})
         entry = overrides.get(slot)
     if entry is None:
-        entry = data.get(slot, {})
+        entry = data.get(slot, {}) if fallback else {}
 
     return entry.get("name", ""), entry.get("steps", [])
 

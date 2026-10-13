@@ -54,6 +54,25 @@
       "2": {"name": "Warm White", "steps": [{"type": "voice", "command": "Change corner to warm white"}]},
       "3": {"name": "Daylight", "steps": [{"type": "voice", "command": "Change corner to daylight"}]}
     },
+    "light/kitchen": {
+      "1": {"name": "Candlelight", "steps": [
+        {"type": "hue", "ct": 454, "light_id": "4"},
+        {"type": "hue", "ct": 454, "light_id": "5"}
+      ]},
+      "2": {"name": "Warm White", "steps": [
+        {"type": "hue", "ct": 370, "light_id": "4"},
+        {"type": "hue", "ct": 370, "light_id": "5"}
+      ]},
+      "3": {"name": "Daylight", "steps": [
+        {"type": "hue", "ct": 153, "light_id": "4"},
+        {"type": "hue", "ct": 153, "light_id": "5"}
+      ]}
+    },
+    "light/living_room": {
+      "1": {"name": "Candlelight", "steps": [{"type": "voice", "command": "Change living room lights to candlelight"}]},
+      "2": {"name": "Warm White", "steps": [{"type": "voice", "command": "Change living room lights to warm white"}]},
+      "3": {"name": "Daylight", "steps": [{"type": "voice", "command": "Change living room lights to daylight"}]}
+    },
     "tv/living_room": {
       "1": {"name": "Picture", "steps": [
         {"home": "home", "device": "tv", "location": "living_room", "button": "picture"}

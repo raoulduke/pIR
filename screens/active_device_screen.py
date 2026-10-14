@@ -58,7 +58,10 @@ Tracks one active leaf device (state.active_device, state.active_location):
 
 import logging
 import time
-from hardware.lcd import LCD, GLYPH_HOME, GLYPH_CC_LEFT, GLYPH_CC_RIGHT, GLYPH_BACK_ARROW, GLYPH_BACK_SHAFT
+from hardware.lcd import (
+    LCD, GLYPH_HOME, GLYPH_CC_LEFT, GLYPH_CC_RIGHT, GLYPH_BACK_ARROW,
+    GLYPH_BACK_SHAFT, GLYPH_YT_Y, GLYPH_YT_T,
+)
 from hardware import ir_transmitter
 from hardware import input as input_hw
 from hardware.input import (
@@ -355,7 +358,7 @@ _PRESET_ABBREVIATIONS = {
     "home": GLYPH_HOME,
     "mute": "Ssh",
     "power": "Pwr",
-    "youtube": "YT",
+    "youtube": GLYPH_YT_Y + GLYPH_YT_T,
     "captions": GLYPH_CC_LEFT + GLYPH_CC_RIGHT,
     "candlelight": "Cdl",
     "warm white": "Wrm",

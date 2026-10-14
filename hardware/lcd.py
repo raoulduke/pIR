@@ -37,14 +37,13 @@ GLYPH_CC_RIGHT = chr(3)
 GLYPH_BACK_ARROW = chr(4)
 GLYPH_BACK_SHAFT = chr(5)
 _PRESET_GLYPHS = {
-    # Solid house with a door: a 1px gap up the bottom center, half the
-    # house's height.
+    # Solid house with a door: a 1px gap 2px up the bottom center.
     1: [
         0b00000,
         0b00100,
         0b01110,
         0b11111,
-        0b11011,
+        0b11111,
         0b11011,
         0b11011,
         0b00000,
@@ -73,7 +72,7 @@ _PRESET_GLYPHS = {
     ],
     # Back arrow, split across two cells: a "<" head whose tip runs right
     # to the cell edge on row 3, then the shaft continuing on row 3 in the
-    # next cell, stopping one pixel short of its right edge.
+    # next cell, stopping two pixels short of its right edge.
     4: [
         0b00000,
         0b00100,
@@ -88,7 +87,7 @@ _PRESET_GLYPHS = {
         0b00000,
         0b00000,
         0b00000,
-        0b11110,
+        0b11100,
         0b00000,
         0b00000,
         0b00000,

@@ -29,21 +29,23 @@ _BAR_FULL_CELL = chr(5)
 
 # Preset-line glyphs (screens/active_device_screen.py's
 # _PRESET_ABBREVIATIONS). The progress bar only runs during startup, so
-# once it's done load_preset_glyphs() reuses its CGRAM slots 1-3 for these
+# once it's done load_preset_glyphs() reuses its CGRAM slots 1-4 for these
 # — never loaded alongside the bar, so no slot conflict.
 GLYPH_HOME = chr(1)
 GLYPH_CC_LEFT = chr(2)
 GLYPH_CC_RIGHT = chr(3)
+GLYPH_BACK_ARROW = chr(4)
 _PRESET_GLYPHS = {
-    # Solid house.
+    # Solid house with a door: a 1px gap up the bottom center, half the
+    # house's height.
     1: [
         0b00000,
         0b00100,
         0b01110,
         0b11111,
-        0b11111,
-        0b11111,
-        0b11111,
+        0b11011,
+        0b11011,
+        0b11011,
         0b00000,
     ],
     # Closed captions: a box split across two cells, a small "c" in each
@@ -67,6 +69,19 @@ _PRESET_GLYPHS = {
         0b00101,
         0b00001,
         0b11111,
+    ],
+    # Back arrow head: a "<" whose tip runs right to the cell edge on row 3,
+    # meeting the ROM "-" (also row 3) in the next cell as one continuous
+    # shaft.
+    4: [
+        0b00010,
+        0b00100,
+        0b01000,
+        0b11111,
+        0b01000,
+        0b00100,
+        0b00010,
+        0b00000,
     ],
 }
 

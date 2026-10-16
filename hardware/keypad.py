@@ -39,6 +39,7 @@ from app.constants import (
     KEYPAD_POLL_INTERVAL_SECONDS,
     KEYPAD_REPEAT_DELAY_SECONDS,
     KEYPAD_REPEAT_INTERVAL_SECONDS,
+    KEYPAD_HOLD_SECONDS,
 )
 from app.exceptions import HardwareError
 from hardware.input import (
@@ -276,6 +277,7 @@ class KeypadScanner:
         self._stop = threading.Event()
         self._repeatable_keys = set(_REPEATABLE_KEYS)
         self._repeat_interval = KEYPAD_REPEAT_INTERVAL_SECONDS
+        self._hold_keys: dict[str, str] = {}
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -284,14 +286,29 @@ class KeypadScanner:
         """Readable fd — becomes ready whenever an event is queued."""
         return self._wake_r
 
-    def set_repeatable_keys(self, extra: set[str]) -> None:
+    def set_repeatable_keys(self, extra: set[str], exclude: set[str] = frozenset()) -> None:
         """Runtime override of which keys auto-repeat while held, layering
         *extra* on top of the always-repeatable baseline (_REPEATABLE_KEYS —
-        Up/Down). Pass an empty set to fall back to just the baseline.
+        Up/Down) and dropping *exclude* from it — list screens repeat
+        Left/Right but not Up, which is Back there, so holding it can't
+        back out several levels. Pass empty sets to fall back to just the
+        baseline.
         Read by the scan thread on its next key press, so this is safe to
         call from any thread without a lock — worst case a press right at
         the boundary uses the old set for that one press."""
-        self._repeatable_keys = set(_REPEATABLE_KEYS) | set(extra)
+        self._repeatable_keys = (set(_REPEATABLE_KEYS) | set(extra)) - set(exclude)
+
+    def set_hold_keys(self, holds: dict[str, str]) -> None:
+        """Runtime opt-in to tap vs. hold for the keys in *holds* (key ->
+        event emitted on a hold). A tap emits the key on release instead
+        of on press; holding past KEYPAD_HOLD_SECONDS emits the mapped
+        hold event instead, and nothing on release. Pass {} to restore
+        on-press behavior. Only the Fun sweep uses this (Enter: tap
+        pauses/resumes, hold saves) — everywhere else Enter has to act
+        the instant it's pressed (Google TV's D-pad; see
+        docs/active-device-control-plan.md's "Rejected: long-press
+        Enter"). Same lock-free reasoning as set_repeatable_keys()."""
+        self._hold_keys = dict(holds)
 
     def set_repeat_interval(self, seconds: float | None) -> None:
         """Runtime override of the pace once a repeatable key is held past
@@ -363,6 +380,20 @@ class KeypadScanner:
                 repeating = True
             time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
 
+    def _tap_or_hold(self, reading: str, key: str, hold_event: str) -> None:
+        """Emit *key* on release, or *hold_event* once held past
+        KEYPAD_HOLD_SECONDS (see set_hold_keys())."""
+        pressed_at = time.monotonic()
+        while not self._stop.is_set():
+            if self._scan() != reading:
+                self._emit(key)
+                return
+            if time.monotonic() - pressed_at >= KEYPAD_HOLD_SECONDS:
+                self._emit(hold_event)
+                _wait_for_release(self._stop, self._scan)
+                return
+            time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
+
     def _run(self) -> None:
         while not self._stop.is_set():
             reading = _wait_for_press(self._stop, self._scan)
@@ -374,6 +405,11 @@ class KeypadScanner:
                 continue
 
             key = resolve_label(label)
+            hold_event = self._hold_keys.get(key)
+            if hold_event is not None:
+                self._tap_or_hold(reading, key, hold_event)
+                continue
+
             self._emit(key)
 
             if key in self._repeatable_keys:

@@ -11,21 +11,30 @@ it and move to the next slot with Right. Only Up/Down/Left/Right/Enter are
 used, since those are the only raw keys the bare keypad can ever produce
 (everything else — Menu, Device cycle, Presets — is a global quick action
 intercepted before it reaches read_key() here; see hardware/input.py).
+
+The one screen exempt from the app-wide Left/Right scrolling convention
+(CLAUDE.md's "Navigation convention") — composing text needs all four
+directions, so Up/Down pick the character here.
 """
 
 from hardware.lcd import LCD
-from hardware.input import read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK
+from hardware.input import read_key, use_default_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK
 
-# Ordered so the common case (a lowercase letter) is reachable with the
-# fewest Up presses from the default starting character. Excludes `"` —
+# Ordered so the common case is reachable with the fewest presses from the
+# default starting character: a capital for the first character (labels
+# start capitalized), lowercase after that. Excludes `"` —
 # services/wifi_service.py wraps values in literal double quotes for
 # wpa_cli, so keeping them out of the charset sidesteps escaping entirely.
-_CHARSET = (
-    "abcdefghijklmnopqrstuvwxyz"
-    "0123456789"
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    " !#$%&'()*+,-./:;<=>?@[]^_`{|}~"
-)
+_LOWER = "abcdefghijklmnopqrstuvwxyz"
+_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_DIGITS = "0123456789"
+_SYMBOLS = " !#$%&'()*+,-./:;<=>?@[]^_`{|}~"
+_FIRST_CHARSET = _UPPER + _LOWER + _DIGITS + _SYMBOLS
+_CHARSET = _LOWER + _DIGITS + _UPPER + _SYMBOLS
+
+
+def _charset(text: str) -> str:
+    return _FIRST_CHARSET if not text else _CHARSET
 
 
 def read_dpad_text(lcd: LCD, prompt: str) -> str:
@@ -48,7 +57,7 @@ def read_dpad_text(lcd: LCD, prompt: str) -> str:
     The one exception is a slot you haven't touched Up/Down on since the
     last commit (or since the start) — its default preview character
     doesn't count, so pressing Right then Enter immediately doesn't
-    silently tack on an unintended "a" (_CHARSET's first character), and
+    silently tack on an unintended "a"/"A" (the charset's first character), and
     a fresh, completely untouched call still submits "" on Enter, same as
     before — an empty Wi-Fi password is valid for an open network.
     """
@@ -57,7 +66,9 @@ def read_dpad_text(lcd: LCD, prompt: str) -> str:
     candidate_touched = False  # Up/Down pressed since the last commit/start?
 
     while True:
-        display = (text + _CHARSET[candidate_index])[-16:]
+        use_default_keys()  # Up/Down repeat to scroll characters; Left doesn't
+        chars = _charset(text)
+        display = (text + chars[candidate_index])[-16:]
         lcd.write(prompt[:16], display)
 
         key = read_key()
@@ -65,15 +76,15 @@ def read_dpad_text(lcd: LCD, prompt: str) -> str:
         if key == KEY_QUIT:
             return KEY_QUIT
         if key == KEY_ENTER:
-            return text + _CHARSET[candidate_index] if candidate_touched else text
+            return text + chars[candidate_index] if candidate_touched else text
         if key == KEY_DOWN:
-            candidate_index = (candidate_index + 1) % len(_CHARSET)
+            candidate_index = (candidate_index + 1) % len(chars)
             candidate_touched = True
         elif key == KEY_UP:
-            candidate_index = (candidate_index - 1) % len(_CHARSET)
+            candidate_index = (candidate_index - 1) % len(chars)
             candidate_touched = True
         elif key == KEY_RIGHT:
-            text += _CHARSET[candidate_index]
+            text += chars[candidate_index]
             candidate_index = 0
             candidate_touched = False
         elif key == KEY_LEFT:

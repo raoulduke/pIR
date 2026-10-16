@@ -2,11 +2,18 @@
 
 ``select_from_list(lcd, title, options)`` displays a navigable list on the
 LCD and returns the chosen option string, KEY_BACK, or KEY_QUIT.
+
+Follows the app-wide navigation convention (CLAUDE.md's "Navigation
+convention"): Left/Right scroll (wrapping), with line 2 framed "<  name  >"
+whenever there's more than one option; Enter selects; Up goes back one
+level (returned as KEY_BACK); Down does nothing.
 """
 
 from hardware.lcd import LCD
-from hardware.input import read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_ENTER, KEY_QUIT, KEY_BACK
-from screens.widgets.format import format_name
+from hardware.input import (
+    read_key, use_list_keys, KEY_UP, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
+)
+from screens.widgets.format import format_name, frame
 
 
 def select_from_list(
@@ -27,16 +34,20 @@ def select_from_list(
     count = len(options)
 
     while True:
-        lcd.write(title[:16], formatter(options[index])[:16])
+        # Re-asserted every pass: a quick action (Menu) or another screen
+        # may have changed it while this list was waiting.
+        use_list_keys()
+        text = formatter(options[index])
+        lcd.write(title[:16], frame(text) if count > 1 else text[:16])
         key = read_key()
 
         if key == KEY_QUIT:
             return KEY_QUIT
-        if key == KEY_LEFT:
-            return KEY_BACK
         if key == KEY_UP:
+            return KEY_BACK
+        if key == KEY_LEFT:
             index = (index - 1) % count
-        if key == KEY_DOWN:
+        if key == KEY_RIGHT:
             index = (index + 1) % count
         if key == KEY_ENTER:
             return options[index]

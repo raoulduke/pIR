@@ -71,6 +71,23 @@ config/
 ```
 
 - Boot launches directly to `active_device_screen` (the most-used screen) — no menu detour on startup. `send_screen`/"Full Device List" was the boot screen in an earlier design; it was superseded by Active Device Control and later removed outright as redundant with `< Device/Device >` (see `docs/active-device-control-plan.md`'s "Superseded" notes) — it no longer exists.
+- **Navigation convention** (2026-10-15): every screen that scrolls through
+  options uses the same keys — **Left/Right** scroll (wrapping), with line 2
+  framed `<   name   >` (`screens/widgets/format.py`'s `frame()`, cut to 14
+  characters so the arrows always show) whenever there's more than one
+  option; **Enter** selects; **Up** goes back one level (the main Menu's Up
+  closes it, back to Active Device Control); Down does nothing in lists.
+  `screens/widgets/selector.py`'s `select_from_list` implements it for every
+  list (Fun, Learn, Rename, Change Home, Command, Overwrite?/Try again
+  prompts); the main Menu, Wi-Fi network list and Fun sweep follow it in
+  their own loops. While a list is showing, Left/Right auto-repeat when held
+  and Up doesn't (`hardware.input.use_list_keys()`), so a held Up can't back
+  out several levels. Two deliberate exceptions: Active Device Control
+  (Up/Down are device controls — volume, brightness, Google TV's D-pad) and
+  the D-pad text entry (`screens/widgets/char_input.py`: Up/Down pick the
+  character, Right commits it, Left deletes / backs out when empty). Text
+  entry's first character starts on capitals, later ones on lowercase.
+  New screens must follow this convention rather than invent their own.
 - **Exit behavior**: on error, LCD line 1 shows the error message, line 2 shows "Program stopped". On clean exit, line 1 shows "Program stopped". LCD is **never** cleared on exit.
 - **Menu-device grouping** (2026-09-09): `< Device/Device >` collapses a device's per-location leaves into a single top-level stop instead of listing each one — originally light-only, generalized to `app/constants.py`'s `MENU_DEVICE_LABELS = {"light": "Lights", "tv": "TVs"}` when Living Room TV/Bedroom TV joined the light devices under this scheme. Enter drills into the group's first leaf; Left/Right (otherwise unused on a fixed-mapping-shaped leaf) cycles between the rest, since they never appear as separate top-level stops. `screens/active_device_screen.py`'s `_device_label()` drops the device-name suffix for any grouped leaf ("Lamp", "Living Room", not "Lamp Light"/"Living Room TV") and frames the label in `<>` on line 1 whenever the group has more than one leaf to cycle to — same convention the plain multi-function cycling branch already used on line 2. See `docs/active-device-control-plan.md`'s "Extended 2026-09-09" notes for the full mechanics, including why a grouped leaf that isn't itself fixed-mapping-shaped (a lone function not named "power", e.g. Living Room TV's "Picture" before it also got a "Power" signal) still needs its own resolution logic distinct from `_fixed_mapping_functions()`.
 - **Learn picks from existing devices/locations instead of typing** (2026-09-09): `screens/receive_screen.py`'s device and location steps show a list (`services/signal_service.py`'s `list_devices()`/`list_locations()`), `+ New Device`/`+ New Location` first, when anything already exists — adding another button to an already-learned device no longer means re-typing e.g. "tv"/"living_room" on the D-pad composer every time. A device with no locations at all (buttons directly under it, e.g. `ac`) skips the location step entirely, same as always. Typing is still how you name the button itself (the one genuinely new piece of information) and how you add a brand-new device/location.
@@ -357,11 +374,15 @@ so this can be tuned without a code change once more is learned.
 TV-B-Gone style, but one brand at a time and slow enough to see which code
 worked. `Menu → Fun → Sweep → TV → <brand> → Power` sends each of that
 brand's library codes `SWEEP_GAP_SECONDS` (1s) apart, showing the code on
-line 1 (`#3 NECx 0586:0F`). Enter pauses; while paused Up/Down send the
-previous/next code (no wrapping), Enter saves it under a typed name, Right
-resumes, Left exits to the brand list. Sweep with the TV **on** — turning
-off shows immediately, turning on can take seconds. `Fun → Saved` mirrors
-the same path and sends a saved code on Enter.
+line 1 (`#3 NECx 0586:0F`). Tap Enter to pause/resume; while paused
+Left/Right send the previous/next code (no wrapping, `< >` only where
+there's one to step to), **holding Enter** (`KEYPAD_HOLD_SECONDS`, 0.7s)
+saves it under a typed name, Up goes back a level. Tap-vs-hold is opted
+into by this screen only (`hardware.input.set_hold_keys()`) — a tap acts
+on release there; Enter acts on press everywhere else (Google TV's D-pad
+needs that). Sweep with the TV **on** — turning off shows immediately,
+turning on can take seconds. `Fun → Saved` mirrors the same path and
+sends a saved code on Enter.
 
 - **Code library**: `data/fun_codes.json`, built once on WSL2 by
   `scripts/build_fun_codes.py` from Flipper-IRDB (+ probonopd/irdb for

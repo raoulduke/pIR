@@ -1,7 +1,9 @@
 """Wi-Fi network picker — reached via Menu > Network.
 
-Scan and pick an SSID work from the bare physical keypad already (Up/Down/
-Enter/Left, same as the rest of the app). Password entry, when the chosen
+Scan and pick an SSID work from the bare physical keypad already, with the
+same keys as every other list (the app-wide navigation convention,
+CLAUDE.md's "Navigation convention"): Left/Right scroll, Enter picks, Up
+goes back. Password entry, when the chosen
 network is secured, uses screens/widgets/char_input.py's D-pad-only
 composer so the whole flow needs no USB keyboard or SSH session, even at a
 brand-new location.
@@ -24,10 +26,12 @@ battery on nmcli rescans forever.
 
 import time
 from hardware.lcd import LCD
-from hardware.input import read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_ENTER, KEY_QUIT, KEY_BACK
+from hardware.input import (
+    read_key, use_list_keys, KEY_UP, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
+)
 from services import wifi_service
 from screens.widgets.char_input import read_dpad_text
-from screens.widgets.format import format_name
+from screens.widgets.format import format_name, frame
 from app.constants import WIFI_RESCAN_INTERVAL_SECONDS, WIFI_SCAN_STOP_AFTER_UNCHANGED
 
 
@@ -77,6 +81,7 @@ def _pick_network(lcd: LCD) -> dict | str | None:
     scanning = True
 
     while True:
+        use_list_keys()
         if not ssids:
             # Distinguish "genuinely nothing in range" from "NetworkManager
             # itself isn't answering yet" (see wifi_service.is_ready()) —
@@ -85,7 +90,8 @@ def _pick_network(lcd: LCD) -> dict | str | None:
             # is guaranteed to be up.
             lcd.write(_title(ssids), "No networks" if wifi_service.is_ready() else "Wi-Fi starting")
         else:
-            lcd.write(_title(ssids), format_name(ssids[index])[:16])
+            name = format_name(ssids[index])
+            lcd.write(_title(ssids), frame(name) if len(ssids) > 1 else name[:16])
 
         # No more timeout once scanning has given up — just block for a
         # real key, same as any other screen, instead of waking up every
@@ -123,13 +129,13 @@ def _pick_network(lcd: LCD) -> dict | str | None:
 
         if key == KEY_QUIT:
             return KEY_QUIT
-        if key == KEY_LEFT:
+        if key == KEY_UP:
             return KEY_BACK
         if not ssids:
             continue  # nothing to select yet
-        if key == KEY_UP:
+        if key == KEY_LEFT:
             index = (index - 1) % len(ssids)
-        elif key == KEY_DOWN:
+        elif key == KEY_RIGHT:
             index = (index + 1) % len(ssids)
         elif key == KEY_ENTER:
             return by_ssid[ssids[index]]

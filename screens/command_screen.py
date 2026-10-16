@@ -9,7 +9,7 @@ several "Turn on X"s in a row, is the common case):
 
   1. Pick a template from _TEMPLATES — screens/widgets/selector.py's
      select_from_list, same widget receive_screen.py and the Wi-Fi network
-     picker already use. Left backs out of Command entirely.
+     picker already use. Up backs out of Command entirely.
   2. Fill its one blank — screens/widgets/char_input.py's D-pad-only
      read_dpad_text, same as network_screen.py's Wi-Fi password prompt
      (see command_screen's prior version, which used this for the whole

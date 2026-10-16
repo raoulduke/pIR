@@ -54,7 +54,7 @@ RENAME_DEVICE = "Device"
 RENAME_SIGNAL = "Signal"
 
 # How often screens/main_menu.py re-checks wifi_service.is_ready() while the
-# WiFi entry is the highlighted one, so "WiFi loading..." clears back to
+# WiFi entry is the highlighted one, so "WiFi loading" clears back to
 # "WiFi" (and the entry re-enables) on its own once NetworkManager comes up
 # — without this, nothing would redraw the menu until the next keypress.
 MENU_WIFI_POLL_INTERVAL_SECONDS = 2
@@ -168,9 +168,13 @@ KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
 # further.
 KEYPAD_POLL_INTERVAL_SECONDS = 0.01
 
-# Auto-repeat while Up/Down is held (see hardware/keypad.py's
-# KeypadScanner._repeat_while_held) — scrolling long lists or the
-# character picker (screens/widgets/char_input.py) one press at a time
-# is tedious otherwise.
+# Auto-repeat while a scroll key is held (see hardware/keypad.py's
+# KeypadScanner._repeat_while_held) — Left/Right on list screens
+# (hardware.input.use_list_keys()), Up/Down in the character picker
+# (screens/widgets/char_input.py); one press at a time is tedious otherwise.
 KEYPAD_REPEAT_DELAY_SECONDS = 0.4     # hold time before repeat kicks in
 KEYPAD_REPEAT_INTERVAL_SECONDS = 0.1  # pace once repeating
+# Tap vs. hold for a key a screen has opted into via
+# hardware.input.set_hold_keys() (only the Fun sweep's Enter: tap pauses/
+# resumes, hold saves). A tap acts on release instead of on press there.
+KEYPAD_HOLD_SECONDS = 0.7

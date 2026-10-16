@@ -69,9 +69,9 @@ def handle(key: str) -> bool:
     there), which is also exactly what lets that screen notice a leaf
     change and start its Preset-name reveal (_reveal_presets()) the
     instant a device switch actually happens, not one extra keypress
-    later. Menu keeps the previous behavior (False/None) — it already
-    redraws synchronously as part of replacing the screen entirely, so
-    there's nothing stale left to clear."""
+    later. Menu returns True only when it was closed with Up — the
+    screen it was opened over then needs that same redraw, since the
+    menu's own last frame is still on the LCD."""
     if key in _DEVICE_KEYS:
         _handle_device(key)
         return True
@@ -82,7 +82,7 @@ def handle(key: str) -> bool:
         _handle_device_cycle(key)
         return True
     elif key == KEY_MENU:
-        _handle_menu()
+        return _handle_menu()
     return False
 
 
@@ -237,11 +237,12 @@ def _handle_device_cycle(key: str) -> None:
         raise DeviceCycledAway()
 
 
-def _handle_menu() -> None:
+def _handle_menu() -> bool:
     """Menu key — the escape hatch. Opens screens.main_menu and dispatches
     to whichever screen is chosen directly, since a quick action doesn't
     feed back into an outer dispatch loop (there isn't one anymore — see
-    screens/active_device_screen.py, which owns the app's main loop)."""
+    screens/active_device_screen.py, which owns the app's main loop).
+    Returns True when Up closed the menu (see handle())."""
     # This can fire while active_device_screen.py has google_tv's D-pad
     # Left/Right hold-to-scroll turned on (it re-asserts that per loop
     # iteration, but this quick action runs from inside its blocked
@@ -251,8 +252,9 @@ def _handle_menu() -> None:
     # text entry widget at the wrong pace. active_device_screen.py
     # reasserts the right state again on its own next loop pass regardless.
     from hardware import input as input_hw
-    input_hw.set_repeatable_keys(set())
-    input_hw.set_repeat_interval(None)
+    input_hw.use_default_keys()
+    # Same for the Fun sweep's tap/hold Enter, if Menu was pressed mid-sweep.
+    input_hw.set_hold_keys({})
 
     import screens.main_menu as main_menu
     import screens.command_screen as command_screen
@@ -272,10 +274,10 @@ def _handle_menu() -> None:
             choice = main_menu.show(lcd, _state)
 
             if choice is None:
-                return
+                return _state.running
             if choice == KEY_QUIT:
                 _state.running = False
-                return
+                return False
 
             if choice == MENU_LEARN:
                 result = receive_screen.show(lcd, _state)
@@ -294,7 +296,8 @@ def _handle_menu() -> None:
 
             if result == KEY_QUIT:
                 _state.running = False
-                return
+                return False
+        return False
     finally:
         # Not catching DeviceCycledAway here — it's meant to propagate
         # further up, past this function entirely, to

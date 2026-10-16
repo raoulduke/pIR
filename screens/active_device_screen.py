@@ -69,7 +69,7 @@ from hardware.input import (
     DeviceCycledAway,
 )
 from services import home_service, signal_service, step_device_service, preset_service, androidtv_service
-from screens.widgets.format import format_name
+from screens.widgets.format import format_name, frame
 from app.constants import (
     DEFAULT_ACTIVE_DEVICE, MENU_DEVICE_LABELS, MENU_DEVICE_SENTINELS, MENU_SENTINEL_TO_DEVICE,
     ASYNC_SEND_FLASH_SECONDS,
@@ -282,11 +282,10 @@ def _cycle_line2(functions: list[dict], function: dict) -> str:
     """Line-2 text for the plain multi-function Left/Right-cycling
     branch — the selected function's name, framed in <> when there's more
     than one to cycle to (nothing to cycle to, so no arrows, when there's
-    just the one)."""
+    just the one) — screens.widgets.format.frame(), shared with every
+    other scrolling screen."""
     name = _display_name(function)
-    if len(functions) > 1 and len(name) <= 14:
-        return f"<{name.center(14)}>"
-    return name
+    return frame(name) if len(functions) > 1 else name
 
 
 def _functions_for(home: str, device: str, location: str) -> list[dict]:
@@ -340,9 +339,7 @@ def _menu_leaf_label(home: str, device: str, location: str) -> str:
     _cycle_line2() already uses on line 2 for a plain multi-function
     device's selected function name, so it reads the same way here."""
     label = _device_label(device, location)
-    if len(menu_leaves(home, device)) > 1 and len(label) <= 14:
-        return f"<{label.center(14)}>"
-    return label
+    return frame(label) if len(menu_leaves(home, device)) > 1 else label
 
 
 # Hand-picked short forms for Preset Function names (2026-09-1x) — chosen

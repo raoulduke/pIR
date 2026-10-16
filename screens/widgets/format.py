@@ -31,3 +31,11 @@ def slugify(text: str) -> str:
     doesn't come out "lake__cabin"."""
     text = "_".join(text.strip().lower().replace("-", " ").split())
     return "".join(c for c in text if c.isalnum() or c == "_")
+
+
+def frame(text: str) -> str:
+    """Line-2 text for an option you can scroll away from with Left/Right —
+    "<   name   >", cut to 14 characters so the arrows always show. The one
+    framing every scrolling screen uses (the app-wide navigation
+    convention — see CLAUDE.md's "Navigation convention")."""
+    return f"<{text[:14].center(14)}>"

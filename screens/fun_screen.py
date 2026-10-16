@@ -3,9 +3,8 @@
   Fun ─┬─ Sweep → TV → <brand> → Power → sweep (screens/code_sweep_screen.py)
        └─ Saved → TV → <brand> → Power → <saved name>  (Enter sends it)
 
-Every level is a select_from_list; Left goes back one level, except out of
-a sweep, which goes back to the brand list (picking the next brand to try
-is the usual next step). Saved mirrors Sweep's path but only lists what has
+Every level is a select_from_list (Left/Right scroll, Enter picks, Up goes
+back one level — the app-wide convention). Saved mirrors Sweep's path but only lists what has
 at least one save, and stays on the name just sent so Enter resends it.
 
 Codes come from data/fun_codes.json, saves from fun_signals/ — see
@@ -32,6 +31,8 @@ _MODES = [FUN_SWEEP, FUN_SAVED]
 
 # Level index each path's lists sit at: device type, brand, signal[, name].
 _BRAND_LEVEL = 1
+_SIGNAL_LEVEL = 2
+_NAME_LEVEL = 3
 
 
 def show(lcd: LCD) -> str | None:
@@ -73,7 +74,7 @@ def _browse(lcd: LCD, title: str, sources: list, finish) -> str | None:
     """Walk one list per entry in *sources* (each called with the picks so
     far), then call finish(lcd, *picks), which returns KEY_QUIT or the level to
     go back to. Each list re-opens on its last pick. Returns KEY_QUIT, or
-    None when Left backs out of the first list."""
+    None when Up backs out of the first list."""
     picks: list[str] = []
     starts = [0] * len(sources)
 
@@ -118,7 +119,7 @@ def _formatter(level: int):
 
 def _sweep(lcd: LCD, device_type: str, brand: str, signal: str) -> str | int:
     result = code_sweep_screen.show(lcd, device_type, brand, signal)
-    return KEY_QUIT if result == KEY_QUIT else _BRAND_LEVEL
+    return KEY_QUIT if result == KEY_QUIT else _SIGNAL_LEVEL
 
 
 def _send_saved(lcd: LCD, device_type: str, brand: str, signal: str, name: str) -> int:
@@ -130,4 +131,4 @@ def _send_saved(lcd: LCD, device_type: str, brand: str, signal: str, name: str) 
         log.error("IR transmit failed (%s): %s", path, e)
         lcd.write("TX Error", str(e)[:16])
     time.sleep(0.6)
-    return 3  # back to the name list, on the name just sent
+    return _NAME_LEVEL  # back to the name list, on the name just sent

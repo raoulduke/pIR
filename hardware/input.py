@@ -27,6 +27,7 @@ KEY_ENTER     = "ENTER"
 KEY_QUIT      = "QUIT"
 KEY_BACK      = "BACK"
 KEY_BACKSPACE = "BACKSPACE"
+KEY_ENTER_HOLD = "ENTER_HOLD"  # Enter held — only on screens that opt in, see set_hold_keys()
 
 _COMMANDS = {KEY_UP, KEY_DOWN, KEY_RIGHT, KEY_LEFT, KEY_ENTER, KEY_QUIT, KEY_BACKSPACE}
 
@@ -281,17 +282,43 @@ def _get_reader() -> InputReader:
     return _reader
 
 
-def set_repeatable_keys(extra: set[str]) -> None:
+def set_repeatable_keys(extra: set[str], exclude: set[str] = frozenset()) -> None:
     """Forward to the physical keypad's scanner (see hardware/keypad.py's
     KeypadScanner.set_repeatable_keys), if one is actually present — a
     no-op otherwise (dev on WSL2, SSH-only input, or a keypad-map error at
     startup), same fallback style as everything else that touches
-    self.keypad. Up/Down always repeat regardless; *extra* adds more keys
-    on top for as long as the caller keeps re-asserting it — see
-    screens/active_device_screen.py for the Google TV D-pad use."""
+    self.keypad. Up/Down repeat by default; *extra* adds more keys on top
+    and *exclude* removes baseline ones, for as long as the caller keeps
+    re-asserting it — see screens/active_device_screen.py for the Google
+    TV D-pad use, and use_list_keys() below for list screens."""
     reader = _get_reader()
     if reader.keypad is not None:
-        reader.keypad.set_repeatable_keys(extra)
+        reader.keypad.set_repeatable_keys(extra, exclude)
+
+
+def use_list_keys() -> None:
+    """Hold behavior for every Left/Right list screen (the app-wide
+    navigation convention — see CLAUDE.md's "Navigation convention"):
+    Left/Right repeat so a long list scrolls while held, Up (Back) doesn't
+    so a hold can't back out several levels."""
+    set_repeatable_keys({KEY_LEFT, KEY_RIGHT}, exclude={KEY_UP})
+    set_repeat_interval(None)
+
+
+def use_default_keys() -> None:
+    """Restore the baseline: Up/Down repeat, nothing else."""
+    set_repeatable_keys(set())
+    set_repeat_interval(None)
+
+
+def set_hold_keys(holds: dict[str, str]) -> None:
+    """Forward to the physical keypad's scanner (KeypadScanner.
+    set_hold_keys) — tap vs. hold for the keys in *holds*, e.g.
+    {KEY_ENTER: KEY_ENTER_HOLD}. Pass {} to turn it off. A no-op without a
+    keypad (USB/SSH input has no hold, so a hold event never arrives)."""
+    reader = _get_reader()
+    if reader.keypad is not None:
+        reader.keypad.set_hold_keys(holds)
 
 
 def set_repeat_interval(seconds: float | None) -> None:

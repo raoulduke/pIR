@@ -8,6 +8,7 @@ PROMPT_LOCATION = "Location:"
 PROMPT_BUTTON = "Button:"
 PROMPT_SEARCH = "Search:"
 PROMPT_HOME_NAME = "Home name:"
+PROMPT_NAME = "Name:"
 
 # Status statements
 STATEMENT_NO_SIGNAL = "No signal!"
@@ -28,12 +29,24 @@ STATEMENT_NO_SIGNALS = "No signals"
 # Menu options (screens/main_menu.py — the escape-hatch reached via the
 # physical Menu key; see docs/active-device-control-plan.md)
 MENU_LEARN = "Learn"
+MENU_FUN = "Fun"
 MENU_RENAME = "Rename"
 MENU_COMMAND = "Command"
 MENU_HOME = "Change Home"
 MENU_NETWORK = "WiFi"
 MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
+
+# Fun menu (screens/fun_screen.py, screens/code_sweep_screen.py) — the
+# TV-B-Gone style power-code sweep. See CLAUDE.md's "Fun menu" section.
+FUN_SWEEP = "Sweep"
+FUN_SAVED = "Saved"
+FUN_SIGNALS_DIR = "fun_signals"           # saves, relative to project root
+FUN_CODES_FILE = "data/fun_codes.json"    # built by scripts/build_fun_codes.py
+# Gap between codes while sweeping. Most TVs go dark 0.3-1s after a power
+# code, so at 1s the screen is usually still showing the code that worked
+# when the TV reacts; Up while paused resends the previous one to check.
+SWEEP_GAP_SECONDS = 1.0
 
 # Rename submenu options (screens/rename_menu_screen.py, "Rename what?")
 RENAME_HOME = "Home"

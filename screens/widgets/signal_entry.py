@@ -39,11 +39,11 @@ def collect_device_location_button(lcd: LCD, home: str) -> list[str] | str | Non
             if devices:
                 choice = select_from_list(lcd, PROMPT_DEVICE, [LABEL_NEW_DEVICE] + devices)
                 if choice == LABEL_NEW_DEVICE:
-                    result = _prompt_text(lcd, PROMPT_DEVICE, format_name(home)[:16])
+                    result = prompt_text(lcd, PROMPT_DEVICE, format_name(home)[:16])
                 else:
                     result = choice  # an existing device, or KEY_QUIT/KEY_BACK — handled below either way
             else:
-                result = _prompt_text(lcd, PROMPT_DEVICE, format_name(home)[:16])
+                result = prompt_text(lcd, PROMPT_DEVICE, format_name(home)[:16])
 
         elif i == 1:
             device = values[0]
@@ -51,7 +51,7 @@ def collect_device_location_button(lcd: LCD, home: str) -> list[str] | str | Non
             if locations:
                 choice = select_from_list(lcd, context, [LABEL_NEW_LOCATION] + locations)
                 if choice == LABEL_NEW_LOCATION:
-                    result = _prompt_text(lcd, PROMPT_LOCATION, context)
+                    result = prompt_text(lcd, PROMPT_LOCATION, context)
                 else:
                     result = choice  # an existing location, or KEY_QUIT/KEY_BACK — handled below either way
             elif signal_service.buttons_at_device_level(home, device):
@@ -65,12 +65,12 @@ def collect_device_location_button(lcd: LCD, home: str) -> list[str] | str | Non
                 if choice == LABEL_SINGLE_DEVICE:
                     result = ""
                 elif choice == LABEL_ENTER_LOCATION:
-                    result = _prompt_text(lcd, PROMPT_LOCATION, context)
+                    result = prompt_text(lcd, PROMPT_LOCATION, context)
                 else:
                     result = choice  # KEY_QUIT or KEY_BACK
 
         elif i == 2:
-            result = _prompt_text(lcd, PROMPT_BUTTON, context)
+            result = prompt_text(lcd, PROMPT_BUTTON, context)
 
         if result == KEY_QUIT:
             return KEY_QUIT
@@ -87,7 +87,7 @@ def collect_device_location_button(lcd: LCD, home: str) -> list[str] | str | Non
     return values
 
 
-def _prompt_text(lcd: LCD, prompt: str, context_line: str = "") -> str:
+def prompt_text(lcd: LCD, prompt: str, context_line: str = "") -> str:
     """Show an optional context line then collect text, slugified
     (screens.widgets.format.slugify()) into a filesystem-safe snake_case
     name. Loops on empty input (including text that's *only* punctuation/

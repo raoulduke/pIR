@@ -8,7 +8,8 @@ multi-option screen (Up/Down do nothing here). There's no explicit Back
 key — < Device/Device > (hardware.input.DeviceCycledAway) already unwinds
 out of the menu back to Active Device Control.
 
-Returns one of: MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, KEY_QUIT.
+Returns one of: MENU_LEARN, MENU_FUN, MENU_RENAME, MENU_COMMAND, MENU_HOME,
+MENU_NETWORK, KEY_QUIT.
 Selecting "Quit" also returns KEY_QUIT. MENU_IP is handled
 inline here rather than returned — it's display-only. MENU_NETWORK
 (labeled "WiFi") is disabled — Enter is a no-op — while
@@ -22,7 +23,7 @@ docs/active-device-control-plan.md's "Superseded" notes.
 """
 
 from app.constants import (
-    MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
+    MENU_LEARN, MENU_FUN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
     MENU_QUIT, MENU_IP, MENU_WIFI_POLL_INTERVAL_SECONDS,
 )
 from app.state import AppState
@@ -33,7 +34,8 @@ from services import wifi_service
 
 
 _OPTIONS = [
-    MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_QUIT, MENU_IP,
+    MENU_LEARN, MENU_FUN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_QUIT,
+    MENU_IP,
 ]
 
 

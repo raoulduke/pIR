@@ -260,8 +260,9 @@ def _handle_menu() -> None:
     import screens.receive_screen as receive_screen
     import screens.rename_menu_screen as rename_menu_screen
     import screens.network_screen as network_screen
+    import screens.fun_screen as fun_screen
     from app.constants import (
-        MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
+        MENU_LEARN, MENU_FUN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
     )
 
     global _in_menu
@@ -278,6 +279,8 @@ def _handle_menu() -> None:
 
             if choice == MENU_LEARN:
                 result = receive_screen.show(lcd, _state)
+            elif choice == MENU_FUN:
+                result = fun_screen.show(lcd)
             elif choice == MENU_RENAME:
                 result = rename_menu_screen.show(lcd, _state)
             elif choice == MENU_COMMAND:

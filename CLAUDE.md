@@ -352,6 +352,36 @@ sessions, not during them. `config/settings.json`'s `wifi_wake_enabled`
 `wifi_wake_target` (string IP, `null` = auto-detect) exist specifically
 so this can be tuned without a code change once more is learned.
 
+## Fun menu: TV power-code sweep (2026-10-15)
+
+TV-B-Gone style, but one brand at a time and slow enough to see which code
+worked. `Menu → Fun → Sweep → TV → <brand> → Power` sends each of that
+brand's library codes `SWEEP_GAP_SECONDS` (1s) apart, showing the code on
+line 1 (`#3 NECx 0586:0F`). Enter pauses; while paused Up/Down send the
+previous/next code (no wrapping), Enter saves it under a typed name, Right
+resumes, Left exits to the brand list. Sweep with the TV **on** — turning
+off shows immediately, turning on can take seconds. `Fun → Saved` mirrors
+the same path and sends a saved code on Enter.
+
+- **Code library**: `data/fun_codes.json`, built once on WSL2 by
+  `scripts/build_fun_codes.py` from Flipper-IRDB (+ probonopd/irdb for
+  ProScan). 20 brands: the Statista Canada 2022 brand-share core, then the
+  user's additions A–Z; Skyworth, Sansui and Xiaomi are left out (no power
+  code in either database). `services/ir_encode.py` encodes each entry to
+  raw timings + carrier.
+- **Carrier**: Learn captures go out at the 38 kHz `gpio-ir-tx` default,
+  but Sony (40k), Philips RC5/RC6 (36k), Panasonic (37k) and some RCA (56k)
+  codes need their own. A signal file may start with a `carrier N` line;
+  `hardware/ir_transmitter.py` strips it and passes `ir-ctl -c N` (ir-ctl
+  rejects the line mixed with `+/-` values). Files without it behave
+  exactly as before.
+- **Saves**: `fun_signals/<device_type>/<brand>/<signal>/<name>.txt`
+  (`services/fun_service.py`) — top-level, deliberately not under
+  `signals/`, which `signal_service` reads as homes; Fun saves never show
+  in Learn, Rename or Active Device Control. Tracked in git like
+  `signals/`: commit and push saves made on the Pi from the Pi, then pull
+  on WSL2.
+
 ## IR Tools & Integrations
 
 - **IR tooling**: `ir-ctl`, `lirc`

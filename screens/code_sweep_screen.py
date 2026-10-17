@@ -3,16 +3,16 @@
 worked), reached from screens/fun_screen.py.
 
 Running: one code every SWEEP_GAP_SECONDS, line 1 showing the code just
-sent. Enter pauses on it, Up goes back a level (the signal list).
+sent. Enter pauses on it, Left goes back a level (the signal list).
 
-Paused ("||" in front of the code):
-  Left / Right  send the previous / next code and stay paused on it (no
-                wrapping — they stop at the first / last code; line 2's
-                < > only show where there's a code to step to)
+Paused ("||" on line 2):
+  Up / Down     send the previous / next code and stay paused on it (no
+                wrapping — they stop at the first / last code; "^"/"v"
+                only show where there's a code to step to)
   Enter (tap)   resume the sweep from the next code
   Enter (hold)  save the code under a typed name (fun_service.save())
-  Up            back a level
-Running off the end pauses on the last code, so Left can still step back.
+  Left          back a level
+Running off the end pauses on the last code, so Up can still step back.
 
 Tap vs. hold on Enter is this screen's alone (hardware.input.
 set_hold_keys()): a tap acts on release here, ~0.1s later than a press
@@ -31,12 +31,12 @@ from hardware.lcd import LCD
 from hardware import ir_transmitter
 from hardware.input import (
     read_key, set_repeatable_keys, set_repeat_interval, set_hold_keys,
-    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_ENTER_HOLD, KEY_QUIT, KEY_BACK,
+    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_ENTER, KEY_ENTER_HOLD, KEY_QUIT, KEY_BACK,
 )
 from services import fun_service, ir_encode
 from screens.widgets.selector import select_from_list
 from screens.widgets.signal_entry import prompt_text
-from screens.widgets.format import format_name
+from screens.widgets.format import format_name, with_arrows
 from app.constants import (
     SWEEP_GAP_SECONDS, PROMPT_NAME, STATEMENT_NO_SIGNALS,
     STATEMENT_FILE_EXISTS, STATEMENT_SAVED, STATEMENT_SAVE_FAILED,
@@ -48,7 +48,7 @@ log = logging.getLogger(__name__)
 
 
 def show(lcd: LCD, device_type: str, brand: str, signal: str) -> str | None:
-    """Returns KEY_QUIT, or None when Up goes back a level."""
+    """Returns KEY_QUIT, or None when Left goes back a level."""
     codes = fun_service.get_codes(device_type, brand, signal)
     if not codes:
         lcd.write(brand[:16], STATEMENT_NO_SIGNALS)
@@ -61,8 +61,8 @@ def show(lcd: LCD, device_type: str, brand: str, signal: str) -> str | None:
 
 
 def _use_sweep_keys() -> None:
-    """Enter: tap/hold. Nothing repeats — a held Left/Right would
-    rapid-fire IR codes, and Up is Back. Re-asserted every pass, since the
+    """Enter: tap/hold. Nothing repeats — a held Up/Down would
+    rapid-fire IR codes, and Left is Back. Re-asserted every pass, since the
     save prompt's text entry and list switch to their own."""
     set_hold_keys({KEY_ENTER: KEY_ENTER_HOLD})
     set_repeatable_keys(set(), exclude={KEY_UP, KEY_DOWN})
@@ -84,12 +84,12 @@ def _sweep(lcd: LCD, device_type: str, brand: str, signal: str, codes: list[dict
             key = read_key()
             if key == KEY_QUIT:
                 return KEY_QUIT
-            if key == KEY_UP:
+            if key == KEY_LEFT:
                 return None
-            if key == KEY_LEFT and index > 0:
+            if key == KEY_UP and index > 0:
                 index -= 1
                 _send(lcd, brand, codes, index)
-            elif key == KEY_RIGHT and index < last:
+            elif key == KEY_DOWN and index < last:
                 index += 1
                 _send(lcd, brand, codes, index)
             elif key == KEY_ENTER_HOLD:
@@ -106,7 +106,7 @@ def _sweep(lcd: LCD, device_type: str, brand: str, signal: str, codes: list[dict
         key = _wait(lcd, codes, index)
         if key == KEY_QUIT:
             return KEY_QUIT
-        if key == KEY_UP:
+        if key == KEY_LEFT:
             return None
         if key in (KEY_ENTER, KEY_ENTER_HOLD) or index == last:
             paused = True
@@ -118,7 +118,7 @@ def _sweep(lcd: LCD, device_type: str, brand: str, signal: str, codes: list[dict
 
 
 def _wait(lcd: LCD, codes: list[dict], index: int) -> str | None:
-    """Wait out the gap after a code. Returns Enter/Up/Quit as soon as
+    """Wait out the gap after a code. Returns Enter/Left/Quit as soon as
     pressed, or None once the full gap has passed. Other keys are ignored
     without cutting the gap short."""
     deadline = time.monotonic() + SWEEP_GAP_SECONDS
@@ -127,7 +127,7 @@ def _wait(lcd: LCD, codes: list[dict], index: int) -> str | None:
         if remaining <= 0:
             return None
         key = read_key(timeout=remaining)
-        if key in (KEY_ENTER, KEY_ENTER_HOLD, KEY_UP, KEY_QUIT):
+        if key in (KEY_ENTER, KEY_ENTER_HOLD, KEY_LEFT, KEY_QUIT):
             return key
         if key is None and time.monotonic() < deadline:
             # A quick action (e.g. a Preset key) drew over the screen.
@@ -139,10 +139,12 @@ def _draw_running(lcd: LCD, codes: list[dict], index: int) -> None:
 
 
 def _draw_paused(lcd: LCD, codes: list[dict], index: int, last: int) -> None:
-    line1 = "||" + ir_encode.label(codes[index], index + 1, compact=True)
-    hint = ("Done Hold=Save" if index == last else "Hold=Save").center(14)
-    line2 = ("<" if index > 0 else " ") + hint + (">" if index < last else " ")
-    lcd.write(line1[:16], line2)
+    line1, line2 = with_arrows(
+        ir_encode.label(codes[index], index + 1), "|| Hold=Save", index > 0, index < last,
+    )
+    if index == last:
+        line2 = "||Done Hold=Save"  # no "v" on the last code, so all 16 columns are free
+    lcd.write(line1, line2)
 
 
 def _send(lcd: LCD, brand: str, codes: list[dict], index: int) -> bool:

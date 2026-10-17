@@ -169,8 +169,8 @@ KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
 KEYPAD_POLL_INTERVAL_SECONDS = 0.01
 
 # Auto-repeat while a scroll key is held (see hardware/keypad.py's
-# KeypadScanner._repeat_while_held) — Left/Right on list screens
-# (hardware.input.use_list_keys()), Up/Down in the character picker
+# KeypadScanner._repeat_while_held) — Up/Down on list screens
+# (hardware.input.use_list_keys()) and in the character picker
 # (screens/widgets/char_input.py); one press at a time is tedious otherwise.
 KEYPAD_REPEAT_DELAY_SECONDS = 0.4     # hold time before repeat kicks in
 KEYPAD_REPEAT_INTERVAL_SECONDS = 0.1  # pace once repeating

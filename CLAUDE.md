@@ -71,29 +71,38 @@ config/
 ```
 
 - Boot launches directly to `active_device_screen` (the most-used screen) — no menu detour on startup. `send_screen`/"Full Device List" was the boot screen in an earlier design; it was superseded by Active Device Control and later removed outright as redundant with `< Device/Device >` (see `docs/active-device-control-plan.md`'s "Superseded" notes) — it no longer exists.
-- **Navigation convention** (2026-10-15): every screen that scrolls through
-  options uses the same keys — **Left/Right** scroll (wrapping), with line 2
-  framed `<   name   >` (`screens/widgets/format.py`'s `frame()`, cut to 14
-  characters so the arrows always show) whenever there's more than one
-  option; **Enter** selects; **Up** goes back one level (the main Menu's Up
-  closes it, back to Active Device Control); Down does nothing in lists.
-  `screens/widgets/selector.py`'s `select_from_list` implements it for every
-  list (Sweep, Learn, Rename, Change Home, Command, Overwrite?/Try again
-  prompts); the main Menu, Wi-Fi network list and Sweep follow it in
-  their own loops. While a list is showing, Left/Right auto-repeat when held
-  and Up doesn't (`hardware.input.use_list_keys()`), so a held Up can't back
-  out several levels. Two deliberate exceptions: Active Device Control
-  (Up/Down are device controls — volume, brightness, Google TV's D-pad) and
-  the D-pad text entry (`screens/widgets/char_input.py`: Up/Down pick the
-  character, Right commits it, Left deletes / backs out when empty). Text
-  entry's first character starts on capitals, later ones on lowercase.
+- **Navigation convention** (2026-10-15, keys changed 2026-10-17): every
+  screen that scrolls through options uses the same keys — **Up/Down**
+  scroll (wrapping), with `^` in line 1's last column and `v` in line 2's
+  (`screens/widgets/format.py`'s `with_arrows()`) whenever there's more than
+  one option; **Enter** or **Right** selects; **Left** goes back one level
+  (the main Menu's Left closes it, back to Active Device Control). Line 2's
+  option text gets 15 characters. `v` is a plain letter — the HD44780 ROM
+  has `^` but no down arrow, and CGRAM's free slots are taken
+  (`hardware/lcd.py`). `screens/widgets/selector.py`'s `select_from_list`
+  implements it for every list (Sweep, Learn, Rename, Change Home, Command,
+  Overwrite?/Try again prompts); the main Menu, Wi-Fi network list and
+  Sweep's paused screen (Up/Down step to the previous/next code, no
+  wrapping, arrows only where there's one to step to) follow it in their
+  own loops. Up/Down auto-repeat when held and Left doesn't
+  (`hardware.input.use_list_keys()`), so a held Left can't back out several
+  levels. The D-pad text entry (`screens/widgets/char_input.py`) matches
+  it: Up/Down pick the character, Left deletes / backs out when empty,
+  Right commits the character, Enter submits. Text entry's first character
+  starts on capitals, later ones on lowercase. The one deliberate
+  exception is Active Device Control, where Up/Down are device controls
+  (volume, brightness, Google TV's D-pad) and Left/Right cycle
+  devices/functions with line 2 framed `<   name   >` (`frame()`). Changed
+  from Left/Right scrolling + Up = back on 2026-10-17 to match the text
+  entry and read naturally with breadcrumbs (Left steps back along them).
   New screens must follow this convention rather than invent their own.
 - **Breadcrumbs** (2026-10-17): every sub-menu's line 1 — lists and the
   D-pad text entry alike — is the path that led there, ending with the
   screen you're on, joined with ` > `: `Menu > Rename`, `Learn > Device`
   (Learn's first list is the "Device" step), `Device > TV` (TV's location
   list), `TV > Living Room` (typing the button). `screens/widgets/format.py`'s
-  `crumbs()` drops names from the left until it fits 16 characters
+  `crumbs()` drops names from the left until it fits 15 characters (the
+  16th column holds the `^`)
   (`Menu > Sweep > TV` → `Sweep > TV`); the last name always stays. The
   main Menu's own line 1 stays plain `Menu`. Transient status/confirmation
   screens (Saved!, Overwrite?, No signal!, the running sweep's code
@@ -385,9 +394,9 @@ TV-B-Gone style, but one brand at a time and slow enough to see which code
 worked. `Menu → Sweep → TV → <brand> → Power` sends each of that
 brand's library codes `SWEEP_GAP_SECONDS` (1s) apart, showing the code on
 line 1 (`#3 NECx 0586:0F`). Tap Enter to pause/resume; while paused
-Left/Right send the previous/next code (no wrapping, `< >` only where
+Up/Down send the previous/next code (no wrapping, `^`/`v` only where
 there's one to step to), **holding Enter** (`KEYPAD_HOLD_SECONDS`, 0.7s)
-saves it under a typed name, Up goes back a level. Tap-vs-hold is opted
+saves it under a typed name, Left goes back a level. Tap-vs-hold is opted
 into by this screen only (`hardware.input.set_hold_keys()`) — a tap acts
 on release there; Enter acts on press everywhere else (Google TV's D-pad
 needs that). Sweep with the TV **on** — turning off shows immediately,

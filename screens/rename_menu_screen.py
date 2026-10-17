@@ -1,6 +1,6 @@
-"""Rename submenu — reached via Menu > Rename. Hands off to the Home/Device/Signal rename screen picked with Left/Right.
-Backing out of a rename screen returns here; Up here returns to the
-main Menu.
+"""Rename submenu — reached via Menu > Rename. Hands off to the
+Home/Device/Signal rename screen picked with Up/Down. Backing out of a
+rename screen returns here; Left here returns to the main Menu.
 """
 
 from hardware.lcd import LCD

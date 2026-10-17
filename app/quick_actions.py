@@ -69,7 +69,7 @@ def handle(key: str) -> bool:
     there), which is also exactly what lets that screen notice a leaf
     change and start its Preset-name reveal (_reveal_presets()) the
     instant a device switch actually happens, not one extra keypress
-    later. Menu returns True only when it was closed with Up — the
+    later. Menu returns True only when it was closed with Left — the
     screen it was opened over then needs that same redraw, since the
     menu's own last frame is still on the LCD."""
     if key in _DEVICE_KEYS:
@@ -242,7 +242,7 @@ def _handle_menu() -> bool:
     to whichever screen is chosen directly, since a quick action doesn't
     feed back into an outer dispatch loop (there isn't one anymore — see
     screens/active_device_screen.py, which owns the app's main loop).
-    Returns True when Up closed the menu (see handle())."""
+    Returns True when Left closed the menu (see handle())."""
     # This can fire while active_device_screen.py has google_tv's D-pad
     # Left/Right hold-to-scroll turned on (it re-asserts that per loop
     # iteration, but this quick action runs from inside its blocked

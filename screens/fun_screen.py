@@ -3,8 +3,8 @@
   Sweep ─┬─ Saved → TV → <brand> → Power → <saved name>  (Enter sends it)
          └─ TV → <brand> → Power → sweep (screens/code_sweep_screen.py)
 
-Every level is a select_from_list (Left/Right scroll, Enter picks, Up goes
-back one level — the app-wide convention), line 1 a breadcrumb of the path
+Every level is a select_from_list (Up/Down scroll, Enter or Right picks,
+Left goes back one level — the app-wide convention), line 1 a breadcrumb of the path
 so far ("Sweep > TV", "TV > Samsung"). Saved mirrors the sweep's path but
 only lists what has at least one save, and stays on the name just sent so
 Enter resends it.

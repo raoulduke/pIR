@@ -2,8 +2,8 @@
 
 Scan and pick an SSID work from the bare physical keypad already, with the
 same keys as every other list (the app-wide navigation convention,
-CLAUDE.md's "Navigation convention"): Left/Right scroll, Enter picks, Up
-goes back. Password entry, when the chosen
+CLAUDE.md's "Navigation convention"): Up/Down scroll, Enter or Right
+picks, Left goes back. Password entry, when the chosen
 network is secured, uses screens/widgets/char_input.py's D-pad-only
 composer so the whole flow needs no USB keyboard or SSH session, even at a
 brand-new location.
@@ -27,11 +27,11 @@ battery on nmcli rescans forever.
 import time
 from hardware.lcd import LCD
 from hardware.input import (
-    read_key, use_list_keys, KEY_UP, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
+    read_key, use_list_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
 )
 from services import wifi_service
 from screens.widgets.char_input import read_dpad_text
-from screens.widgets.format import format_name, frame, crumbs
+from screens.widgets.format import format_name, with_arrows, crumbs
 from app.constants import (
     WIFI_RESCAN_INTERVAL_SECONDS, WIFI_SCAN_STOP_AFTER_UNCHANGED, MENU_TITLE, MENU_NETWORK,
 )
@@ -92,8 +92,8 @@ def _pick_network(lcd: LCD) -> dict | str | None:
             # is guaranteed to be up.
             lcd.write(_title(ssids), "No networks" if wifi_service.is_ready() else "Wi-Fi starting")
         else:
-            name = format_name(ssids[index])
-            lcd.write(_title(ssids), frame(name) if len(ssids) > 1 else name[:16])
+            scrollable = len(ssids) > 1
+            lcd.write(*with_arrows(_title(ssids), format_name(ssids[index]), scrollable, scrollable))
 
         # No more timeout once scanning has given up — just block for a
         # real key, same as any other screen, instead of waking up every
@@ -131,15 +131,15 @@ def _pick_network(lcd: LCD) -> dict | str | None:
 
         if key == KEY_QUIT:
             return KEY_QUIT
-        if key == KEY_UP:
+        if key == KEY_LEFT:
             return KEY_BACK
         if not ssids:
             continue  # nothing to select yet
-        if key == KEY_LEFT:
+        if key == KEY_UP:
             index = (index - 1) % len(ssids)
-        elif key == KEY_RIGHT:
+        elif key == KEY_DOWN:
             index = (index + 1) % len(ssids)
-        elif key == KEY_ENTER:
+        elif key in (KEY_ENTER, KEY_RIGHT):
             return by_ssid[ssids[index]]
 
 

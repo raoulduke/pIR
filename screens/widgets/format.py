@@ -34,20 +34,38 @@ def slugify(text: str) -> str:
 
 
 def frame(text: str) -> str:
-    """Line-2 text for an option you can scroll away from with Left/Right —
-    "<   name   >", cut to 14 characters so the arrows always show. The one
-    framing every scrolling screen uses (the app-wide navigation
-    convention — see CLAUDE.md's "Navigation convention")."""
+    """Line-2 text for an Active Device Control function/leaf you can cycle
+    away from with Left/Right — "<   name   >", cut to 14 characters so the
+    arrows always show. Menus and lists use with_arrows() instead."""
     return f"<{text[:14].center(14)}>"
+
+
+# Scroll indicators in the last column of each line — "^" is in the
+# HD44780's ROM; it has no down arrow, and CGRAM's free slots are spoken
+# for (hardware/lcd.py), so a plain "v" stands in.
+ARROW_UP = "^"
+ARROW_DOWN = "v"
+
+
+def with_arrows(line1: str, line2: str, up: bool, down: bool) -> tuple[str, str]:
+    """Both lines of a scrolling screen (the app-wide navigation
+    convention — see CLAUDE.md's "Navigation convention"): each cut to 15
+    characters, with "^" in line 1's last column when Up has somewhere to
+    go and "v" in line 2's when Down does."""
+    return (
+        line1[:15].ljust(15) + (ARROW_UP if up else " "),
+        line2[:15].ljust(15) + (ARROW_DOWN if down else " "),
+    )
 
 
 def crumbs(*names: str) -> str:
     """Line-1 breadcrumb for a sub-menu — the path of names that led here,
     ending with the screen you're on: "Menu > Rename". When it's longer
-    than the LCD's 16 characters, names are dropped from the left until it
-    fits ("Menu > Sweep > TV" -> "Sweep > TV"); the last one always stays.
-    Empty names (a device with no location) are skipped."""
+    than 15 characters (the 16th column holds a list's "^"), names are
+    dropped from the left until it fits ("Menu > Sweep > TV" ->
+    "Sweep > TV"); the last one always stays. Empty names (a device with
+    no location) are skipped."""
     parts = [n for n in names if n]
-    while len(parts) > 1 and len(" > ".join(parts)) > 16:
+    while len(parts) > 1 and len(" > ".join(parts)) > 15:
         parts.pop(0)
-    return " > ".join(parts)[:16]
+    return " > ".join(parts)[:15]

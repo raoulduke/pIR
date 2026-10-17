@@ -4,16 +4,16 @@
 LCD and returns the chosen option string, KEY_BACK, or KEY_QUIT.
 
 Follows the app-wide navigation convention (CLAUDE.md's "Navigation
-convention"): Left/Right scroll (wrapping), with line 2 framed "<  name  >"
-whenever there's more than one option; Enter selects; Up goes back one
-level (returned as KEY_BACK); Down does nothing.
+convention"): Up/Down scroll (wrapping), with "^"/"v" in the last column
+of lines 1/2 whenever there's more than one option; Enter or Right
+selects; Left goes back one level (returned as KEY_BACK).
 """
 
 from hardware.lcd import LCD
 from hardware.input import (
-    read_key, use_list_keys, KEY_UP, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
+    read_key, use_list_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
 )
-from screens.widgets.format import format_name, frame
+from screens.widgets.format import format_name, with_arrows
 
 
 def select_from_list(
@@ -37,17 +37,17 @@ def select_from_list(
         # Re-asserted every pass: a quick action (Menu) or another screen
         # may have changed it while this list was waiting.
         use_list_keys()
-        text = formatter(options[index])
-        lcd.write(title[:16], frame(text) if count > 1 else text[:16])
+        scrollable = count > 1
+        lcd.write(*with_arrows(title, formatter(options[index]), scrollable, scrollable))
         key = read_key()
 
         if key == KEY_QUIT:
             return KEY_QUIT
-        if key == KEY_UP:
-            return KEY_BACK
         if key == KEY_LEFT:
+            return KEY_BACK
+        if key == KEY_UP:
             index = (index - 1) % count
-        if key == KEY_RIGHT:
+        if key == KEY_DOWN:
             index = (index + 1) % count
-        if key == KEY_ENTER:
+        if key in (KEY_ENTER, KEY_RIGHT):
             return options[index]

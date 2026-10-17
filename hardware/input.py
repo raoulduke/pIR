@@ -297,11 +297,13 @@ def set_repeatable_keys(extra: set[str], exclude: set[str] = frozenset()) -> Non
 
 
 def use_list_keys() -> None:
-    """Hold behavior for every Left/Right list screen (the app-wide
-    navigation convention — see CLAUDE.md's "Navigation convention"):
-    Left/Right repeat so a long list scrolls while held, Up (Back) doesn't
-    so a hold can't back out several levels."""
-    set_repeatable_keys({KEY_LEFT, KEY_RIGHT}, exclude={KEY_UP})
+    """Hold behavior for every list screen (the app-wide navigation
+    convention — see CLAUDE.md's "Navigation convention"): Up/Down repeat
+    so a long list scrolls while held, Left (Back) doesn't so a hold can't
+    back out several levels. Same as the baseline today; kept as its own
+    call so list screens state their intent and override anything a
+    previous screen (Google TV's D-pad repeat) left behind."""
+    set_repeatable_keys(set())
     set_repeat_interval(None)
 
 

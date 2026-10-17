@@ -224,9 +224,8 @@ def _hex(value: int, digits: int) -> str:
     return f"{value:0{digits}X}"
 
 
-def label(entry: dict, number: int, compact: bool = False) -> str:
-    """Short LCD label: "#3 NECx 0586:0F", or "#3 NECx0586:0F" with
-    *compact* (room for the paused "||" prefix). Raw codes: "#5 Raw 38kHz"."""
+def label(entry: dict, number: int) -> str:
+    """Short LCD label: "#3 NECx 0586:0F". Raw codes: "#5 Raw 38kHz"."""
     if "raw" in entry:
         return f"#{number} Raw {int(entry.get('carrier', DEFAULT_CARRIER)) // 1000}kHz"
 
@@ -246,7 +245,7 @@ def label(entry: dict, number: int, compact: bool = False) -> str:
         address, command = _hex(a, 2), _hex(c, 2)
 
     name = _ABBREVIATIONS.get(protocol, protocol)
-    text = f"#{number} {name}{'' if compact else ' '}{address}:{command}"
+    text = f"#{number} {name} {address}:{command}"
     if "carrier" in entry:
         text += f" {int(entry['carrier']) // 1000}k"
     return text[:16]

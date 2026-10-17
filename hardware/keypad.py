@@ -289,10 +289,9 @@ class KeypadScanner:
     def set_repeatable_keys(self, extra: set[str], exclude: set[str] = frozenset()) -> None:
         """Runtime override of which keys auto-repeat while held, layering
         *extra* on top of the always-repeatable baseline (_REPEATABLE_KEYS —
-        Up/Down) and dropping *exclude* from it — list screens repeat
-        Left/Right but not Up, which is Back there, so holding it can't
-        back out several levels. Pass empty sets to fall back to just the
-        baseline.
+        Up/Down) and dropping *exclude* from it — e.g. the sweep drops
+        Up/Down so a hold can't rapid-fire IR codes. Pass empty sets to
+        fall back to just the baseline.
         Read by the scan thread on its next key press, so this is safe to
         call from any thread without a lock — worst case a press right at
         the boundary uses the old set for that one press."""

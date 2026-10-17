@@ -12,9 +12,10 @@ used, since those are the only raw keys the bare keypad can ever produce
 (everything else — Menu, Device cycle, Presets — is a global quick action
 intercepted before it reaches read_key() here; see hardware/input.py).
 
-The one screen exempt from the app-wide Left/Right scrolling convention
-(CLAUDE.md's "Navigation convention") — composing text needs all four
-directions, so Up/Down pick the character here.
+Matches the app-wide navigation convention (CLAUDE.md's "Navigation
+convention") where it can: Up/Down scroll (the character, here) and Left
+goes back (deleting first, then out once empty). Right commits the
+character instead of selecting, and Enter submits.
 """
 
 from hardware.lcd import LCD

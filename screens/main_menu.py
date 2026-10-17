@@ -3,10 +3,10 @@
 (that's screens/active_device_screen.py — see
 docs/active-device-control-plan.md).
 
-Left/Right cycle the options, shown as "<   Option   >" like any other
-multi-option screen; Up goes back up a level — closes the menu, back to
-Active Device Control (the app-wide navigation convention, CLAUDE.md's
-"Navigation convention"). < Device/Device > (hardware.input.
+Up/Down cycle the options, with "^"/"v" in the last column like any other
+list; Enter or Right selects; Left goes back up a level — closes the menu,
+back to Active Device Control (the app-wide navigation convention,
+CLAUDE.md's "Navigation convention"). < Device/Device > (hardware.input.
 DeviceCycledAway) also unwinds out of the menu back to Active Device
 Control.
 
@@ -30,10 +30,12 @@ from app.constants import (
 )
 from app.state import AppState
 from hardware.lcd import LCD
-from hardware.input import read_key, use_list_keys, KEY_UP, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT
+from hardware.input import (
+    read_key, use_list_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT,
+)
 from hardware.network import get_ip_address
 from services import wifi_service
-from screens.widgets.format import frame
+from screens.widgets.format import with_arrows
 
 
 _OPTIONS = [
@@ -44,14 +46,10 @@ _OPTIONS = [
 
 def _line2(option: str) -> str:
     if option == MENU_IP:
-        text = get_ip_address() or "No network"
-    elif option == MENU_NETWORK and not wifi_service.is_ready():
-        text = "WiFi loading"
-    else:
-        text = option
-    # An IP too long to frame is shown plain rather than cut short — a
-    # truncated address is useless.
-    return frame(text) if len(text) <= 14 else text
+        return get_ip_address() or "No network"  # at most 15 characters
+    if option == MENU_NETWORK and not wifi_service.is_ready():
+        return "WiFi loading"
+    return option
 
 
 def show(lcd: LCD, state: AppState) -> str | None:
@@ -60,7 +58,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     while state.running:
         option = _OPTIONS[index]
         use_list_keys()
-        lcd.write(MENU_TITLE, _line2(option))
+        lcd.write(*with_arrows(MENU_TITLE, _line2(option), True, True))
 
         # Only poll while WiFi is the highlighted entry — a plain block
         # everywhere else, same as before. Without this, "WiFi loading"
@@ -74,13 +72,13 @@ def show(lcd: LCD, state: AppState) -> str | None:
         if key == KEY_QUIT:
             lcd.clear()
             return KEY_QUIT
-        if key == KEY_UP:
-            return None
         if key == KEY_LEFT:
+            return None
+        if key == KEY_UP:
             index = (index - 1) % len(_OPTIONS)
-        if key == KEY_RIGHT:
+        if key == KEY_DOWN:
             index = (index + 1) % len(_OPTIONS)
-        if key == KEY_ENTER:
+        if key in (KEY_ENTER, KEY_RIGHT):
             if option == MENU_QUIT:
                 lcd.clear()
                 return KEY_QUIT

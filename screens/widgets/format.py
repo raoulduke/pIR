@@ -1,3 +1,5 @@
+from hardware.lcd import GLYPH_ARROW_DOWN
+
 # Known acronyms, uppercased in full rather than title-cased — checked
 # per word, not on the whole name, so "google_tv" -> "Google TV" the same
 # way the standalone "tv" device -> "TV". Extend as new devices need it.
@@ -41,10 +43,10 @@ def frame(text: str) -> str:
 
 
 # Scroll indicators in the last column of each line — "^" is in the
-# HD44780's ROM; it has no down arrow, and CGRAM's free slots are spoken
-# for (hardware/lcd.py), so a plain "v" stands in.
+# HD44780's ROM; it has no down arrow, so hardware/lcd.py defines a custom
+# glyph mirroring it.
 ARROW_UP = "^"
-ARROW_DOWN = "v"
+ARROW_DOWN = GLYPH_ARROW_DOWN
 
 
 def with_arrows(line1: str, line2: str, up: bool, down: bool) -> tuple[str, str]:

@@ -77,9 +77,9 @@ config/
   (`screens/widgets/format.py`'s `with_arrows()`) whenever there's more than
   one option; **Enter** or **Right** selects; **Left** goes back one level
   (the main Menu's Left closes it, back to Active Device Control). Line 2's
-  option text gets 15 characters. `v` is a plain letter — the HD44780 ROM
-  has `^` but no down arrow, and CGRAM's free slots are taken
-  (`hardware/lcd.py`). `screens/widgets/selector.py`'s `select_from_list`
+  option text gets 15 characters. The `v` is a custom CGRAM glyph (slot 0,
+  `hardware/lcd.py`'s `GLYPH_ARROW_DOWN`) mirroring the ROM's `^` — the
+  HD44780 ROM has no down arrow. `screens/widgets/selector.py`'s `select_from_list`
   implements it for every list (Sweep, Learn, Rename, Change Home, Command,
   Overwrite?/Try again prompts); the main Menu, Wi-Fi network list and
   Sweep's paused screen (Up/Down step to the previous/next code, no

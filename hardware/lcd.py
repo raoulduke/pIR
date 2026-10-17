@@ -39,6 +39,23 @@ GLYPH_BACK_ARROW = chr(4)
 GLYPH_BACK_SHAFT = chr(5)
 GLYPH_YT_Y = chr(6)
 GLYPH_YT_T = chr(7)
+
+# Down arrow for list screens (screens/widgets/format.py's with_arrows()):
+# the ROM's "^" (A00 0x5E: rows 0-2) mirrored top to bottom within the
+# glyph's 7 rows, since the ROM has no down arrow. Slot 0 — the one slot
+# neither the progress bar nor the preset glyphs use — so it's loaded once
+# at startup and never replaced.
+GLYPH_ARROW_DOWN = chr(0)
+_ARROW_DOWN_ROWS = [
+    0b00000,
+    0b00000,
+    0b00000,
+    0b00000,
+    0b10001,
+    0b01010,
+    0b00100,
+    0b00000,
+]
 _PRESET_GLYPHS = {
     # Solid house with a door: a 1px gap 2px up the bottom center.
     1: [
@@ -142,6 +159,7 @@ class LCD:
         )
         for location, bits in _BAR_PARTIAL_BITS.items():
             self._lcd.create_char(location, [bits] * 8)
+        self._lcd.create_char(0, _ARROW_DOWN_ROWS)
         self.clear()
 
     def clear(self) -> None:

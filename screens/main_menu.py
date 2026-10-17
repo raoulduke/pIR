@@ -10,7 +10,7 @@ Active Device Control (the app-wide navigation convention, CLAUDE.md's
 DeviceCycledAway) also unwinds out of the menu back to Active Device
 Control.
 
-Returns one of: MENU_LEARN, MENU_FUN, MENU_RENAME, MENU_COMMAND, MENU_HOME,
+Returns one of: MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME,
 MENU_NETWORK, KEY_QUIT, or None (Up — closed).
 Selecting "Quit" also returns KEY_QUIT. MENU_IP is handled
 inline here rather than returned — it's display-only. MENU_NETWORK
@@ -25,8 +25,8 @@ docs/active-device-control-plan.md's "Superseded" notes.
 """
 
 from app.constants import (
-    MENU_LEARN, MENU_FUN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
-    MENU_QUIT, MENU_IP, MENU_WIFI_POLL_INTERVAL_SECONDS,
+    MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
+    MENU_QUIT, MENU_IP, MENU_TITLE, MENU_WIFI_POLL_INTERVAL_SECONDS,
 )
 from app.state import AppState
 from hardware.lcd import LCD
@@ -37,7 +37,7 @@ from screens.widgets.format import frame
 
 
 _OPTIONS = [
-    MENU_LEARN, MENU_FUN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_QUIT,
+    MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_QUIT,
     MENU_IP,
 ]
 
@@ -60,7 +60,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     while state.running:
         option = _OPTIONS[index]
         use_list_keys()
-        lcd.write("Menu", _line2(option))
+        lcd.write(MENU_TITLE, _line2(option))
 
         # Only poll while WiFi is the highlighted entry — a plain block
         # everywhere else, same as before. Without this, "WiFi loading"

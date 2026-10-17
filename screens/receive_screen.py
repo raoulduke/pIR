@@ -22,7 +22,7 @@ from screens.widgets.selector import select_from_list
 from screens.widgets.format import format_name
 from screens.widgets.signal_entry import collect_device_location_button
 from app.constants import (
-    PROMPT_BUTTON,
+    PROMPT_BUTTON, MENU_TITLE, MENU_LEARN,
     STATEMENT_NO_SIGNAL, STATEMENT_RECEIVING,
     STATEMENT_FILE_EXISTS, STATEMENT_SAVED, STATEMENT_SAVE_FAILED,
     LABEL_TRY_AGAIN, LABEL_CANCEL, LABEL_OVERWRITE, MIN_SIGNAL_LENGTH,
@@ -45,7 +45,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     # Button is always typed — that's the one genuinely new piece of
     # information each time. Shared with screens.rename_screen, which
     # collects a mistyped signal's new identity the same way.
-    values = collect_device_location_button(lcd, home)
+    values = collect_device_location_button(lcd, home, [MENU_TITLE, MENU_LEARN])
     if values is None:
         return None
     if values == KEY_QUIT:

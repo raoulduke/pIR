@@ -7,7 +7,7 @@ steps, all picked from what's already on disk — nothing typed, since
 every value here must already exist), then collects its new identity the
 exact same way screens.receive_screen collects a brand-new signal's
 identity (screens.widgets.signal_entry.collect_device_location_button) —
-existing entries pickable, + New Device/+ New Location to type instead,
+existing entries pickable, New Device/New Location to type instead,
 button always typed.
 """
 
@@ -17,13 +17,15 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service, signal_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.signal_entry import collect_device_location_button
-from screens.widgets.format import format_name
+from screens.widgets.format import format_name, crumbs
 from app.constants import (
-    PROMPT_DEVICE, STATEMENT_FILE_EXISTS, STATEMENT_RENAMED,
+    MENU_TITLE, MENU_RENAME, RENAME_SIGNAL, STEP_DEVICE, STATEMENT_FILE_EXISTS, STATEMENT_RENAMED,
     STATEMENT_SAVE_FAILED, STATEMENT_NO_SIGNALS,
     LABEL_OVERWRITE, LABEL_CANCEL,
 )
 from app.state import AppState
+
+_PATH = [MENU_TITLE, MENU_RENAME, RENAME_SIGNAL]
 
 
 def show(lcd: LCD, state: AppState) -> str | None:
@@ -39,7 +41,8 @@ def show(lcd: LCD, state: AppState) -> str | None:
     lcd.write("New name for:", format_name(button)[:16])
     time.sleep(1)
 
-    new_values = collect_device_location_button(lcd, home)
+    picked = [format_name(v) for v in old]
+    new_values = collect_device_location_button(lcd, home, [*_PATH, STEP_DEVICE, *picked])
     if new_values is None:
         return None
     if new_values == KEY_QUIT:
@@ -84,11 +87,10 @@ def _pick_existing_signal(lcd: LCD, home: str) -> list[str] | str | None:
     i = 0
 
     while i < 3:
-        context = format_name(values[i - 1])[:16] if i > 0 else ""
+        prompt = crumbs(*_PATH, STEP_DEVICE, *(format_name(v) for v in values))
 
         if i == 0:
             options = signal_service.list_devices(home)
-            prompt = PROMPT_DEVICE
         elif i == 1:
             options = signal_service.list_locations(home, values[0])
             if not options:
@@ -97,10 +99,8 @@ def _pick_existing_signal(lcd: LCD, home: str) -> list[str] | str | None:
                 values.append("")
                 i += 1
                 continue
-            prompt = context
         else:
             options = signal_service.list_buttons(home, values[0], values[1])
-            prompt = context
 
         if not options:
             # Shouldn't happen — a listed device/location always has

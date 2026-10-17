@@ -31,8 +31,10 @@ from hardware.input import (
 )
 from services import wifi_service
 from screens.widgets.char_input import read_dpad_text
-from screens.widgets.format import format_name, frame
-from app.constants import WIFI_RESCAN_INTERVAL_SECONDS, WIFI_SCAN_STOP_AFTER_UNCHANGED
+from screens.widgets.format import format_name, frame, crumbs
+from app.constants import (
+    WIFI_RESCAN_INTERVAL_SECONDS, WIFI_SCAN_STOP_AFTER_UNCHANGED, MENU_TITLE, MENU_NETWORK,
+)
 
 
 def _sorted_ssids(by_ssid: dict) -> list[str]:
@@ -40,9 +42,9 @@ def _sorted_ssids(by_ssid: dict) -> list[str]:
 
 
 def _title(ssids: list[str]) -> str:
-    """Line-1 title — appends a running total once there's anything to
-    count, e.g. "Wi-Fi (7)"."""
-    return f"Wi-Fi ({len(ssids)})" if ssids else "Wi-Fi"
+    """Line-1 breadcrumb — appends a running total once there's anything
+    to count, e.g. "Menu > WiFi (7)"."""
+    return crumbs(MENU_TITLE, f"{MENU_NETWORK} ({len(ssids)})" if ssids else MENU_NETWORK)
 
 
 def _merge_scan(by_ssid: dict) -> int:
@@ -71,7 +73,7 @@ def _pick_network(lcd: LCD) -> dict | str | None:
     this screen up (nmcli rescans aren't free) shouldn't quietly drain the
     battery forever. Backing out and back in starts fresh.
     """
-    lcd.write("Wi-Fi", "Scanning...")
+    lcd.write(_title([]), "Scanning...")
     by_ssid: dict = {}
     _merge_scan(by_ssid)
     ssids = _sorted_ssids(by_ssid)
@@ -153,7 +155,7 @@ def show(lcd: LCD) -> str | None:
         ssid = network["ssid"]
         password = ""
         if network["secure"]:
-            password = read_dpad_text(lcd, "Password:")
+            password = read_dpad_text(lcd, crumbs(MENU_TITLE, MENU_NETWORK, format_name(ssid)))
             if password == KEY_QUIT:
                 return KEY_QUIT
             if password == KEY_BACK:

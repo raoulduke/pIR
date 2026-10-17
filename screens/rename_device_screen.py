@@ -21,13 +21,14 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service, signal_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.char_input import read_dpad_text
-from screens.widgets.format import format_name, slugify
+from screens.widgets.format import format_name, slugify, crumbs
 from app.constants import (
-    PROMPT_DEVICE, STATEMENT_RENAMED, STATEMENT_SAVE_FAILED,
+    MENU_TITLE, MENU_RENAME, RENAME_DEVICE, STATEMENT_RENAMED, STATEMENT_SAVE_FAILED,
     DEFAULT_ACTIVE_DEVICE, MENU_DEVICE_LABELS,
 )
 from app.state import AppState
 
+_PATH = [MENU_TITLE, MENU_RENAME, RENAME_DEVICE]
 _BUILT_IN_DEVICES = {DEFAULT_ACTIVE_DEVICE, *MENU_DEVICE_LABELS}
 
 
@@ -41,7 +42,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
             time.sleep(1.5)
             return None
 
-        old = select_from_list(lcd, "Rename Device:", devices)
+        old = select_from_list(lcd, crumbs(*_PATH), devices)
         if old == KEY_QUIT:
             return KEY_QUIT
         if old == KEY_BACK:
@@ -56,7 +57,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     time.sleep(1)
 
     while True:
-        name = read_dpad_text(lcd, PROMPT_DEVICE)
+        name = read_dpad_text(lcd, crumbs(*_PATH, format_name(old)))
         if name == KEY_QUIT:
             return KEY_QUIT
         if name == KEY_BACK:

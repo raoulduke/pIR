@@ -3,12 +3,13 @@
 # ---------------------------------------------------------------------------
 
 # Prompts
-PROMPT_DEVICE = "Device:"
-PROMPT_LOCATION = "Location:"
 PROMPT_BUTTON = "Button:"
-PROMPT_SEARCH = "Search:"
-PROMPT_HOME_NAME = "Home name:"
 PROMPT_NAME = "Name:"
+
+# Breadcrumb names (screens/widgets/format.py's crumbs()) — every sub-menu's
+# line 1 is the path that led to it, starting from the main Menu.
+MENU_TITLE = "Menu"
+STEP_DEVICE = "Device"
 
 # Status statements
 STATEMENT_NO_SIGNAL = "No signal!"
@@ -29,7 +30,7 @@ STATEMENT_NO_SIGNALS = "No signals"
 # Menu options (screens/main_menu.py — the escape-hatch reached via the
 # physical Menu key; see docs/active-device-control-plan.md)
 MENU_LEARN = "Learn"
-MENU_FUN = "Fun"
+MENU_SWEEP = "Sweep"
 MENU_RENAME = "Rename"
 MENU_COMMAND = "Command"
 MENU_HOME = "Change Home"
@@ -37,9 +38,8 @@ MENU_NETWORK = "WiFi"
 MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
 
-# Fun menu (screens/fun_screen.py, screens/code_sweep_screen.py) — the
+# Sweep menu (screens/fun_screen.py, screens/code_sweep_screen.py) — the
 # TV-B-Gone style power-code sweep. See CLAUDE.md's "Fun menu" section.
-FUN_SWEEP = "Sweep"
 FUN_SAVED = "Saved"
 FUN_SIGNALS_DIR = "fun_signals"           # saves, relative to project root
 FUN_CODES_FILE = "data/fun_codes.json"    # built by scripts/build_fun_codes.py
@@ -48,7 +48,7 @@ FUN_CODES_FILE = "data/fun_codes.json"    # built by scripts/build_fun_codes.py
 # when the TV reacts; Up while paused resends the previous one to check.
 SWEEP_GAP_SECONDS = 1.0
 
-# Rename submenu options (screens/rename_menu_screen.py, "Rename what?")
+# Rename submenu options (screens/rename_menu_screen.py)
 RENAME_HOME = "Home"
 RENAME_DEVICE = "Device"
 RENAME_SIGNAL = "Signal"
@@ -96,9 +96,9 @@ LABEL_SINGLE_DEVICE = "Single device"
 LABEL_CANCEL = "Cancel"
 LABEL_TRY_AGAIN = "Try again"
 LABEL_OVERWRITE = "Overwrite?"
-LABEL_NEW_HOME = "+ New Home"
-LABEL_NEW_DEVICE = "+ New Device"
-LABEL_NEW_LOCATION = "+ New Location"
+LABEL_NEW_HOME = "New Home"
+LABEL_NEW_DEVICE = "New Device"
+LABEL_NEW_LOCATION = "New Location"
 
 # IR hardware
 LIRC_TX_DEVICE = "/dev/lirc0"

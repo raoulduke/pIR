@@ -78,8 +78,8 @@ config/
   option; **Enter** selects; **Up** goes back one level (the main Menu's Up
   closes it, back to Active Device Control); Down does nothing in lists.
   `screens/widgets/selector.py`'s `select_from_list` implements it for every
-  list (Fun, Learn, Rename, Change Home, Command, Overwrite?/Try again
-  prompts); the main Menu, Wi-Fi network list and Fun sweep follow it in
+  list (Sweep, Learn, Rename, Change Home, Command, Overwrite?/Try again
+  prompts); the main Menu, Wi-Fi network list and Sweep follow it in
   their own loops. While a list is showing, Left/Right auto-repeat when held
   and Up doesn't (`hardware.input.use_list_keys()`), so a held Up can't back
   out several levels. Two deliberate exceptions: Active Device Control
@@ -88,9 +88,19 @@ config/
   character, Right commits it, Left deletes / backs out when empty). Text
   entry's first character starts on capitals, later ones on lowercase.
   New screens must follow this convention rather than invent their own.
+- **Breadcrumbs** (2026-10-17): every sub-menu's line 1 — lists and the
+  D-pad text entry alike — is the path that led there, ending with the
+  screen you're on, joined with ` > `: `Menu > Rename`, `Learn > Device`
+  (Learn's first list is the "Device" step), `Device > TV` (TV's location
+  list), `TV > Living Room` (typing the button). `screens/widgets/format.py`'s
+  `crumbs()` drops names from the left until it fits 16 characters
+  (`Menu > Sweep > TV` → `Sweep > TV`); the last name always stays. The
+  main Menu's own line 1 stays plain `Menu`. Transient status/confirmation
+  screens (Saved!, Overwrite?, No signal!, the running sweep's code
+  display, the sweep's save-name entry) keep their own line 1.
 - **Exit behavior**: on error, LCD line 1 shows the error message, line 2 shows "Program stopped". On clean exit, line 1 shows "Program stopped". LCD is **never** cleared on exit.
 - **Menu-device grouping** (2026-09-09): `< Device/Device >` collapses a device's per-location leaves into a single top-level stop instead of listing each one — originally light-only, generalized to `app/constants.py`'s `MENU_DEVICE_LABELS = {"light": "Lights", "tv": "TVs"}` when Living Room TV/Bedroom TV joined the light devices under this scheme. Enter drills into the group's first leaf; Left/Right (otherwise unused on a fixed-mapping-shaped leaf) cycles between the rest, since they never appear as separate top-level stops. `screens/active_device_screen.py`'s `_device_label()` drops the device-name suffix for any grouped leaf ("Lamp", "Living Room", not "Lamp Light"/"Living Room TV") and frames the label in `<>` on line 1 whenever the group has more than one leaf to cycle to — same convention the plain multi-function cycling branch already used on line 2. See `docs/active-device-control-plan.md`'s "Extended 2026-09-09" notes for the full mechanics, including why a grouped leaf that isn't itself fixed-mapping-shaped (a lone function not named "power", e.g. Living Room TV's "Picture" before it also got a "Power" signal) still needs its own resolution logic distinct from `_fixed_mapping_functions()`.
-- **Learn picks from existing devices/locations instead of typing** (2026-09-09): `screens/receive_screen.py`'s device and location steps show a list (`services/signal_service.py`'s `list_devices()`/`list_locations()`), `+ New Device`/`+ New Location` first, when anything already exists — adding another button to an already-learned device no longer means re-typing e.g. "tv"/"living_room" on the D-pad composer every time. A device with no locations at all (buttons directly under it, e.g. `ac`) skips the location step entirely, same as always. Typing is still how you name the button itself (the one genuinely new piece of information) and how you add a brand-new device/location.
+- **Learn picks from existing devices/locations instead of typing** (2026-09-09): `screens/receive_screen.py`'s device and location steps show a list (`services/signal_service.py`'s `list_devices()`/`list_locations()`), `New Device`/`New Location` first, when anything already exists — adding another button to an already-learned device no longer means re-typing e.g. "tv"/"living_room" on the D-pad composer every time. A device with no locations at all (buttons directly under it, e.g. `ac`) skips the location step entirely, same as always. Typing is still how you name the button itself (the one genuinely new piece of information) and how you add a brand-new device/location.
 - **Non-blocking voice/hue/IR step execution** (2026-09-09): `services/preset_service.py`'s `run_steps_background()` queues steps onto a single dedicated background worker thread (mirrors `androidtv_service.py`'s event-loop-thread bridge) instead of the caller blocking on `run_steps()` directly — a voice or Hue step is a real network round-trip (`voice_service.send_command()`'s timeout is up to 15s), and blocking used to leave the keypad unresponsive for however long that took. Every call site (Active Device Control's per-leaf functions, Preset Function 1-4, the voice Command screen) shows "Sending..."/"Running..." for a brief fixed flash (`app/constants.py`'s `ASYNC_SEND_FLASH_SECONDS`) — long enough to actually be seen before the next screen redraw would otherwise overwrite it — then returns; a failure overwrites the message once the background call actually finishes, which may be after the screen has already moved on. One worker thread, not one per call, so two quick presses run in order rather than racing each other through the in-memory assumed-state dicts (`_ir_toggle_state`/`_voice_toggle_state`) `ir_toggle`/`voice_toggle` steps use. `hardware/lcd.py` gained a lock around every write for this reason — a background thread reporting a late failure can now race the main loop's own writes.
 
 ## Python Environment
@@ -369,10 +379,10 @@ sessions, not during them. `config/settings.json`'s `wifi_wake_enabled`
 `wifi_wake_target` (string IP, `null` = auto-detect) exist specifically
 so this can be tuned without a code change once more is learned.
 
-## Fun menu: TV power-code sweep (2026-10-15)
+## Sweep menu: TV power-code sweep (2026-10-15)
 
 TV-B-Gone style, but one brand at a time and slow enough to see which code
-worked. `Menu → Fun → Sweep → TV → <brand> → Power` sends each of that
+worked. `Menu → Sweep → TV → <brand> → Power` sends each of that
 brand's library codes `SWEEP_GAP_SECONDS` (1s) apart, showing the code on
 line 1 (`#3 NECx 0586:0F`). Tap Enter to pause/resume; while paused
 Left/Right send the previous/next code (no wrapping, `< >` only where
@@ -381,7 +391,7 @@ saves it under a typed name, Up goes back a level. Tap-vs-hold is opted
 into by this screen only (`hardware.input.set_hold_keys()`) — a tap acts
 on release there; Enter acts on press everywhere else (Google TV's D-pad
 needs that). Sweep with the TV **on** — turning off shows immediately,
-turning on can take seconds. `Fun → Saved` mirrors the same path and
+turning on can take seconds. `Sweep → Saved` mirrors the same path and
 sends a saved code on Enter.
 
 - **Code library**: `data/fun_codes.json`, built once on WSL2 by

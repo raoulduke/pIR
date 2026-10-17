@@ -1,4 +1,4 @@
-"""Fun menu sweep — steps through every library code for one brand's signal
+"""Sweep — steps through every library code for one brand's signal
 (TV-B-Gone style, but one brand at a time and slow enough to see which code
 worked), reached from screens/fun_screen.py.
 
@@ -154,7 +154,7 @@ def _send(lcd: LCD, brand: str, codes: list[dict], index: int) -> bool:
         ir_transmitter.transmit_pulses(*ir_encode.encode(entry))
         return True
     except (HardwareError, ValueError) as e:
-        log.error("Fun sweep transmit failed (%s #%d %s): %s", brand, index + 1, entry, e)
+        log.error("Sweep transmit failed (%s #%d %s): %s", brand, index + 1, entry, e)
         lcd.write("TX Error", str(e)[:16])
         time.sleep(1.5)
         return False

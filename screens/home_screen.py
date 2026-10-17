@@ -6,8 +6,8 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.char_input import read_dpad_text
-from screens.widgets.format import format_name, slugify
-from app.constants import PROMPT_HOME_NAME, LABEL_NEW_HOME
+from screens.widgets.format import format_name, slugify, crumbs
+from app.constants import MENU_TITLE, MENU_HOME, LABEL_NEW_HOME
 from app.state import AppState
 
 
@@ -15,7 +15,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     while True:
         options = [LABEL_NEW_HOME] + home_service.list_homes()
 
-        choice = select_from_list(lcd, "Select Home", options)
+        choice = select_from_list(lcd, crumbs(MENU_TITLE, MENU_HOME), options)
 
         if choice == KEY_QUIT:
             return KEY_QUIT
@@ -38,7 +38,7 @@ def _create_home(lcd: LCD, state: AppState) -> str | None:
     """Prompt for a new home's name, create it, and make it active.
     Returns KEY_QUIT, or None to fall back to the home list (cancelled,
     rejected, or created — the caller re-lists either way)."""
-    name = read_dpad_text(lcd, PROMPT_HOME_NAME)
+    name = read_dpad_text(lcd, crumbs(MENU_TITLE, MENU_HOME, LABEL_NEW_HOME))
     if name == KEY_QUIT:
         return KEY_QUIT
     if name == KEY_BACK:

@@ -26,21 +26,21 @@ from services import preset_service, voice_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.char_input import read_dpad_text
 from app.constants import (
-    PROMPT_DEVICE, PROMPT_SEARCH, STATEMENT_SENDING, STATEMENT_FAILED, ASYNC_SEND_FLASH_SECONDS,
+    MENU_TITLE, MENU_COMMAND, STATEMENT_SENDING, STATEMENT_FAILED, ASYNC_SEND_FLASH_SECONDS,
 )
 
 # (list label, command template with one "{}" blank, fill-in prompt).
 # Phrasing matches exactly what Google Home is confirmed to act on — don't
 # reword these without confirming the new phrasing still works.
 _TEMPLATES = [
-    ("Turn On", "Turn on {}", PROMPT_DEVICE),
-    ("Turn Off", "Turn off {}", PROMPT_DEVICE),
-    ("Dim", "Dim {}", PROMPT_DEVICE),
-    ("Brighten", "Brighten {}", PROMPT_DEVICE),
-    ("Play on YouTube", "Play {} on YouTube", PROMPT_SEARCH),
-    ("Play on Spotify", "Play {} on Spotify", PROMPT_SEARCH),
+    ("Turn On", "Turn on {}"),
+    ("Turn Off", "Turn off {}"),
+    ("Dim", "Dim {}"),
+    ("Brighten", "Brighten {}"),
+    ("Play on YouTube", "Play {} on YouTube"),
+    ("Play on Spotify", "Play {} on Spotify"),
 ]
-_LABELS = [label for label, _, _ in _TEMPLATES]
+_LABELS = [label for label, _ in _TEMPLATES]
 
 
 def _fill_blank(lcd: LCD, prompt: str) -> str:
@@ -62,7 +62,7 @@ def show(lcd: LCD) -> str | None:
     while True:
         # start_index re-opens on the template just used, so repeating the
         # same kind of command is just Enter, fill, Enter again.
-        choice = select_from_list(lcd, "Command", _LABELS, start_index=index)
+        choice = select_from_list(lcd, crumbs(MENU_TITLE, MENU_COMMAND), _LABELS, start_index=index)
 
         if choice == KEY_QUIT:
             return KEY_QUIT
@@ -70,9 +70,9 @@ def show(lcd: LCD) -> str | None:
             return None
 
         index = _LABELS.index(choice)
-        _, template, prompt = _TEMPLATES[index]
+        label, template = _TEMPLATES[index]
 
-        value = _fill_blank(lcd, prompt)
+        value = _fill_blank(lcd, crumbs(MENU_TITLE, MENU_COMMAND, label))
         if value == KEY_QUIT:
             return KEY_QUIT
         if value == KEY_BACK:

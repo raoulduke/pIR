@@ -1,5 +1,4 @@
-"""Rename submenu — reached via Menu > Rename. Asks "Rename what?" and
-hands off to the Home/Device/Signal rename screen picked with Left/Right.
+"""Rename submenu — reached via Menu > Rename. Hands off to the Home/Device/Signal rename screen picked with Left/Right.
 Backing out of a rename screen returns here; Up here returns to the
 main Menu.
 """
@@ -7,10 +6,11 @@ main Menu.
 from hardware.lcd import LCD
 from hardware.input import KEY_QUIT, KEY_BACK
 from screens.widgets.selector import select_from_list
+from screens.widgets.format import crumbs
 import screens.rename_home_screen as rename_home_screen
 import screens.rename_device_screen as rename_device_screen
 import screens.rename_screen as rename_screen
-from app.constants import RENAME_HOME, RENAME_DEVICE, RENAME_SIGNAL
+from app.constants import MENU_TITLE, MENU_RENAME, RENAME_HOME, RENAME_DEVICE, RENAME_SIGNAL
 from app.state import AppState
 
 _SCREENS = {
@@ -22,7 +22,7 @@ _SCREENS = {
 
 def show(lcd: LCD, state: AppState) -> str | None:
     while state.running:
-        choice = select_from_list(lcd, "Rename what?", list(_SCREENS))
+        choice = select_from_list(lcd, crumbs(MENU_TITLE, MENU_RENAME), list(_SCREENS))
         if choice == KEY_QUIT:
             return KEY_QUIT
         if choice == KEY_BACK:

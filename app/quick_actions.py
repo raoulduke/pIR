@@ -253,7 +253,7 @@ def _handle_menu() -> bool:
     # reasserts the right state again on its own next loop pass regardless.
     from hardware import input as input_hw
     input_hw.use_default_keys()
-    # Same for the Fun sweep's tap/hold Enter, if Menu was pressed mid-sweep.
+    # Same for the Sweep's tap/hold Enter, if Menu was pressed mid-sweep.
     input_hw.set_hold_keys({})
 
     import screens.main_menu as main_menu
@@ -264,7 +264,7 @@ def _handle_menu() -> bool:
     import screens.network_screen as network_screen
     import screens.fun_screen as fun_screen
     from app.constants import (
-        MENU_LEARN, MENU_FUN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
+        MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
     )
 
     global _in_menu
@@ -281,7 +281,7 @@ def _handle_menu() -> bool:
 
             if choice == MENU_LEARN:
                 result = receive_screen.show(lcd, _state)
-            elif choice == MENU_FUN:
+            elif choice == MENU_SWEEP:
                 result = fun_screen.show(lcd)
             elif choice == MENU_RENAME:
                 result = rename_menu_screen.show(lcd, _state)

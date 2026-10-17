@@ -39,3 +39,15 @@ def frame(text: str) -> str:
     framing every scrolling screen uses (the app-wide navigation
     convention — see CLAUDE.md's "Navigation convention")."""
     return f"<{text[:14].center(14)}>"
+
+
+def crumbs(*names: str) -> str:
+    """Line-1 breadcrumb for a sub-menu — the path of names that led here,
+    ending with the screen you're on: "Menu > Rename". When it's longer
+    than the LCD's 16 characters, names are dropped from the left until it
+    fits ("Menu > Sweep > TV" -> "Sweep > TV"); the last one always stays.
+    Empty names (a device with no location) are skipped."""
+    parts = [n for n in names if n]
+    while len(parts) > 1 and len(" > ".join(parts)) > 16:
+        parts.pop(0)
+    return " > ".join(parts)[:16]

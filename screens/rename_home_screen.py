@@ -17,9 +17,13 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.char_input import read_dpad_text
-from screens.widgets.format import format_name, slugify
-from app.constants import PROMPT_HOME_NAME, STATEMENT_RENAMED, STATEMENT_SAVE_FAILED
+from screens.widgets.format import format_name, slugify, crumbs
+from app.constants import (
+    MENU_TITLE, MENU_RENAME, RENAME_HOME, STATEMENT_RENAMED, STATEMENT_SAVE_FAILED,
+)
 from app.state import AppState
+
+_PATH = [MENU_TITLE, MENU_RENAME, RENAME_HOME]
 
 
 def show(lcd: LCD, state: AppState) -> str | None:
@@ -29,7 +33,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
         time.sleep(1.5)
         return None
 
-    old = select_from_list(lcd, "Rename Home:", homes)
+    old = select_from_list(lcd, crumbs(*_PATH), homes)
     if old == KEY_QUIT:
         return KEY_QUIT
     if old == KEY_BACK:
@@ -39,7 +43,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     time.sleep(1)
 
     while True:
-        name = read_dpad_text(lcd, PROMPT_HOME_NAME)
+        name = read_dpad_text(lcd, crumbs(*_PATH, format_name(old)))
         if name == KEY_QUIT:
             return KEY_QUIT
         if name == KEY_BACK:

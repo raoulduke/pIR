@@ -20,13 +20,28 @@ print(f"[BOOT] PID={os.getpid()}")
 
 from app.startup import initialize
 from app import quick_actions
-from app.constants import ANDROIDTV_STATUS_CHARS
+from app.constants import ANDROIDTV_STATUS_CHARS, STATEMENT_SHUTTING_DOWN, STATEMENT_OFF_WHEN_DARK
 from hardware.lcd import lcd
 from hardware.input import (
     set_quick_action_handler, set_key_observer, set_wake_handler, close as close_input,
 )
 from services import androidtv_service, config_service, wifi_wake_service
 import screens.active_device_screen as active_device_screen
+
+
+def _powering_off() -> bool:
+    """True if this exit is part of an OS power-off/halt (shutdown button,
+    poweroff) rather than a restart, reboot or plain stop — the only case
+    where systemd/system-shutdown/shutdown-signal.sh will darken the screen."""
+    import subprocess
+    try:
+        jobs = subprocess.run(
+            ["systemctl", "list-jobs", "--no-legend", "--plain"],
+            capture_output=True, text=True, timeout=2,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "poweroff.target" in jobs or "halt.target" in jobs
 
 
 def main() -> None:
@@ -81,7 +96,10 @@ def main() -> None:
     except KeyboardInterrupt:
         print("[BOOT] interrupted")
         try:
-            lcd.write("Program stopped")
+            if _powering_off():
+                lcd.write(STATEMENT_SHUTTING_DOWN, STATEMENT_OFF_WHEN_DARK)
+            else:
+                lcd.write("Program stopped")
         except Exception:
             pass
 
@@ -96,7 +114,7 @@ def main() -> None:
 
     finally:
         try:
-            lcd.stop_idle_timer()  # backlight off; shutdown-signal.sh relights it
+            lcd.stop_idle_timer()  # keep the exit message readable
         except Exception:
             pass
         close_input()

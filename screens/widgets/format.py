@@ -35,11 +35,14 @@ def slugify(text: str) -> str:
     return "".join(c for c in text if c.isalnum() or c == "_")
 
 
-def frame(text: str) -> str:
+def frame(text: str, width: int = 16) -> str:
     """Line-2 text for an Active Device Control function/leaf you can cycle
-    away from with Left/Right — "<   name   >", cut to 14 characters so the
-    arrows always show. Menus and lists use with_arrows() instead."""
-    return f"<{text[:14].center(14)}>"
+    away from with Left/Right — "<   name   >", *width* columns with the
+    name cut to fit so the arrows always show (15 leaves line 1's last
+    column for a status character). Menus and lists use with_arrows()
+    instead."""
+    inner = width - 2
+    return f"<{text[:inner].center(inner)}>"
 
 
 # Scroll indicators in the last column of each line — "^" is in the

@@ -76,6 +76,8 @@ DEFAULT_ACTIVE_DEVICE = "google_tv"
 # Its line 1's last column: the Android TV Remote connection's status
 # (services/androidtv_service.py's set_status_listener()).
 ANDROIDTV_STATUS_CHARS = {"closed": "-", "connecting": "+", "open": "*"}
+# Same characters for a Hue light: unreachable, checking, reachable.
+HUE_STATUS_CHARS = {"unreachable": "-", "checking": "+", "reachable": "*"}
 
 # Devices whose per-location leaves collapse into a single top-level
 # < Device/Device > stop instead of appearing individually — device name

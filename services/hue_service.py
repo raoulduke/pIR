@@ -21,9 +21,9 @@ log = logging.getLogger(__name__)
 
 _TIMEOUT_SECONDS = 5
 
-# Light IDs whose last reachability check came back false — see
-# check_reachable_background().
-_unreachable: set[str] = set()
+# Last reachability check per light ID: True/False, or None if the check
+# itself failed (bridge or Wi-Fi down) — see check_reachable_background().
+_reachable: dict[str, bool | None] = {}
 
 
 def _username_path() -> Path | None:
@@ -118,25 +118,25 @@ def is_reachable(light_id: str) -> bool:
 
 
 def is_known_unreachable(light_id: str) -> bool:
-    return light_id in _unreachable
+    return _reachable.get(light_id) is False
+
+
+def last_reachable(light_id: str) -> bool | None:
+    return _reachable.get(light_id)
 
 
 def check_reachable_background(light_ids: list[str], on_done) -> None:
     """Check each light once on a background thread, update
-    is_known_unreachable(), then call *on_done()*. A failed request (bridge
-    or Wi-Fi down) leaves that light's last known state alone, so a send
-    still gets tried and reports the real error."""
+    last_reachable(), then call *on_done()*. A failed request (bridge or
+    Wi-Fi down) records None, not False, so a send still gets tried and
+    reports the real error."""
     def _run():
         for light_id in light_ids:
             try:
-                reachable = is_reachable(light_id)
+                _reachable[light_id] = is_reachable(light_id)
             except (OSError, ValueError) as e:
                 log.warning("Hue reachability check failed (light %s): %r", light_id, e)
-                continue
-            if reachable:
-                _unreachable.discard(light_id)
-            else:
-                _unreachable.add(light_id)
+                _reachable[light_id] = None
         on_done()
 
     threading.Thread(target=_run, name="hue-reachable", daemon=True).start()

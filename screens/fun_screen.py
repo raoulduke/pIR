@@ -3,6 +3,9 @@
   Sweep ─┬─ Saved → TV → <brand> → Power → <saved name>  (Enter sends it)
          └─ TV → <brand> → Power → sweep (screens/code_sweep_screen.py)
 
+The sweep's brand list starts with All Brands: every brand's codes in one
+sweep, each shared code once (fun_service.get_codes()).
+
 Every level is a select_from_list (Up/Down scroll, Enter or Right picks,
 Left goes back one level — the app-wide convention), line 1 a breadcrumb of the path
 so far ("Sweep > TV", "TV > Samsung"). Saved mirrors the sweep's path but
@@ -24,7 +27,7 @@ from services import fun_service
 from screens import code_sweep_screen
 from screens.widgets.selector import select_from_list
 from screens.widgets.format import format_name, crumbs
-from app.constants import MENU_TITLE, MENU_SWEEP, FUN_SAVED, STATEMENT_NO_SIGNALS
+from app.constants import MENU_TITLE, MENU_SWEEP, FUN_SAVED, FUN_ALL_BRANDS, STATEMENT_NO_SIGNALS
 from app.exceptions import HardwareError
 
 log = logging.getLogger(__name__)
@@ -68,7 +71,7 @@ def show(lcd: LCD) -> str | None:
             result = _browse(
                 lcd, _PATH,
                 [fun_service.list_device_types,
-                 fun_service.list_brands,
+                 lambda device_type: [FUN_ALL_BRANDS, *fun_service.list_brands(device_type)],
                  fun_service.list_signals],
                 _sweep,
                 picks=[choice],

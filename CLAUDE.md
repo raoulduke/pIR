@@ -421,7 +421,7 @@ so this can be tuned without a code change once more is learned.
 TV-B-Gone style, but one brand at a time and slow enough to see which code
 worked. `Menu → Sweep → TV → <brand> → Power` sends each of that
 brand's library codes `SWEEP_GAP_SECONDS` (1s) apart, showing the code on
-line 1 (`#3 NECx 0586:0F`). Tap Enter to pause/resume; while paused
+line 1 (`#3 NEC 0586:0F`; NECext shows as `NEC` with its 4-digit address, an explicit carrier joins the name as `RCA56k`, so every label fits 15 columns beside the paused `^`). Tap Enter to pause/resume; while paused
 Up/Down send the previous/next code (no wrapping, `^`/`v` only where
 there's one to step to), **holding Enter** (`KEYPAD_HOLD_SECONDS`, 0.7s)
 saves it under a typed name, Left goes back a level. Tap-vs-hold is opted
@@ -437,6 +437,14 @@ sends a saved code on Enter.
   user's additions A–Z; Skyworth, Sansui and Xiaomi are left out (no power
   code in either database). `services/ir_encode.py` encodes each entry to
   raw timings + carrier.
+- **All Brands** (2026-10-18): first in the sweep's brand list. Sweeps
+  every brand's codes for the chosen signal in library brand order, each
+  shared code once (`fun_service.get_codes()`, using the same first-frame +
+  carrier match as the build's dedupe): 38 of the 60 power codes, ~45-50s
+  end to end. Line 2 shows the brand of the code on screen (`|| Brand`
+  when paused), and a hold-Enter save goes under that brand. A shared code
+  is named after the first brand that lists it: the Insignia power code
+  (0586:0F) shows as Hisense #15.
 - **Same-signal dedupe** (2026-10-18): the build drops any code whose first
   frame and carrier match one earlier in that brand's list (frames compared
   with timing tolerance, `hardware/ir_transmitter.py`'s `same_frame()`).

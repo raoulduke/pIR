@@ -47,6 +47,8 @@ MENU_IP = "IP Address"
 # Sweep menu (screens/fun_screen.py, screens/code_sweep_screen.py) — the
 # TV-B-Gone style power-code sweep. See CLAUDE.md's "Fun menu" section.
 FUN_SAVED = "Saved"
+# First entry in a sweep's brand list: every brand's codes in one sweep.
+FUN_ALL_BRANDS = "All Brands"
 FUN_SIGNALS_DIR = "fun_signals"           # saves, relative to project root
 FUN_CODES_FILE = "data/fun_codes.json"    # built by scripts/build_fun_codes.py
 # Gap between codes while sweeping. Most TVs go dark 0.3-1s after a power

@@ -1,6 +1,8 @@
 """Sweep — steps through every library code for one brand's signal
 (TV-B-Gone style, but one brand at a time and slow enough to see which code
-worked), reached from screens/fun_screen.py.
+worked), reached from screens/fun_screen.py. All Brands sweeps every
+brand's codes in one go, with line 2 naming the brand of the code on
+screen; a save goes under that code's brand.
 
 Running: one code every SWEEP_GAP_SECONDS, line 1 showing the code just
 sent. Enter pauses on it, Left goes back a level (the signal list).
@@ -38,7 +40,7 @@ from screens.widgets.selector import select_from_list
 from screens.widgets.signal_entry import prompt_text
 from screens.widgets.format import format_name, with_arrows
 from app.constants import (
-    SWEEP_GAP_SECONDS, PROMPT_NAME, STATEMENT_NO_SIGNALS,
+    SWEEP_GAP_SECONDS, PROMPT_NAME, STATEMENT_NO_SIGNALS, FUN_ALL_BRANDS,
     STATEMENT_FILE_EXISTS, STATEMENT_SAVED, STATEMENT_SAVE_FAILED,
     LABEL_OVERWRITE, LABEL_CANCEL,
 )
@@ -55,7 +57,7 @@ def show(lcd: LCD, device_type: str, brand: str, signal: str) -> str | None:
         time.sleep(1)
         return None
     try:
-        return _sweep(lcd, device_type, brand, signal, codes)
+        return _sweep(lcd, device_type, signal, codes, brand == FUN_ALL_BRANDS)
     finally:
         set_hold_keys({})
 
@@ -69,18 +71,21 @@ def _use_sweep_keys() -> None:
     set_repeat_interval(None)
 
 
-def _sweep(lcd: LCD, device_type: str, brand: str, signal: str, codes: list[dict]) -> str | None:
+def _sweep(lcd: LCD, device_type: str, signal: str, codes: list[tuple[str, dict]],
+           show_brand: bool) -> str | None:
+    """*codes* are (brand, code) pairs; *show_brand* puts each code's brand
+    on line 2 (All Brands)."""
     last = len(codes) - 1
     index = 0
     _use_sweep_keys()
-    paused = not _send(lcd, brand, codes, index)
+    paused = not _send(lcd, codes, index)
     if not paused:
-        _draw_running(lcd, codes, index)
+        _draw_running(lcd, codes, index, show_brand)
 
     while True:
         _use_sweep_keys()
         if paused:
-            _draw_paused(lcd, codes, index, last)
+            _draw_paused(lcd, codes, index, last, show_brand)
             key = read_key()
             if key == KEY_QUIT:
                 return KEY_QUIT
@@ -88,22 +93,23 @@ def _sweep(lcd: LCD, device_type: str, brand: str, signal: str, codes: list[dict
                 return None
             if key == KEY_UP and index > 0:
                 index -= 1
-                _send(lcd, brand, codes, index)
+                _send(lcd, codes, index)
             elif key == KEY_DOWN and index < last:
                 index += 1
-                _send(lcd, brand, codes, index)
+                _send(lcd, codes, index)
             elif key == KEY_ENTER_HOLD:
                 set_hold_keys({})  # plain Enter while naming it
-                if _save(lcd, device_type, brand, signal, codes[index], index + 1) == KEY_QUIT:
+                brand, entry = codes[index]
+                if _save(lcd, device_type, brand, signal, entry, index + 1) == KEY_QUIT:
                     return KEY_QUIT
             elif key == KEY_ENTER and index < last:
                 index += 1
-                paused = not _send(lcd, brand, codes, index)
+                paused = not _send(lcd, codes, index)
                 if not paused:
-                    _draw_running(lcd, codes, index)
+                    _draw_running(lcd, codes, index, show_brand)
             continue
 
-        key = _wait(lcd, codes, index)
+        key = _wait(lcd, codes, index, show_brand)
         if key == KEY_QUIT:
             return KEY_QUIT
         if key == KEY_LEFT:
@@ -112,12 +118,12 @@ def _sweep(lcd: LCD, device_type: str, brand: str, signal: str, codes: list[dict
             paused = True
             continue
         index += 1
-        paused = not _send(lcd, brand, codes, index)
+        paused = not _send(lcd, codes, index)
         if not paused:
-            _draw_running(lcd, codes, index)
+            _draw_running(lcd, codes, index, show_brand)
 
 
-def _wait(lcd: LCD, codes: list[dict], index: int) -> str | None:
+def _wait(lcd: LCD, codes: list[tuple[str, dict]], index: int, show_brand: bool) -> str | None:
     """Wait out the gap after a code. Returns Enter/Left/Quit as soon as
     pressed, or None once the full gap has passed. Other keys are ignored
     without cutting the gap short."""
@@ -131,30 +137,36 @@ def _wait(lcd: LCD, codes: list[dict], index: int) -> str | None:
             return key
         if key is None and time.monotonic() < deadline:
             # A quick action (e.g. a Preset key) drew over the screen.
-            _draw_running(lcd, codes, index)
+            _draw_running(lcd, codes, index, show_brand)
 
 
-def _draw_running(lcd: LCD, codes: list[dict], index: int) -> None:
+def _draw_running(lcd: LCD, codes: list[tuple[str, dict]], index: int, show_brand: bool) -> None:
     # No key presses while it runs, but the code on screen is the whole
     # point — keep the backlight's idle timer from darkening it.
     lcd.wake()
-    lcd.write(ir_encode.label(codes[index], index + 1), "Enter=Pause")
+    brand, entry = codes[index]
+    lcd.write(ir_encode.label(entry, index + 1), brand[:16] if show_brand else "Enter=Pause")
 
 
-def _draw_paused(lcd: LCD, codes: list[dict], index: int, last: int) -> None:
+def _draw_paused(lcd: LCD, codes: list[tuple[str, dict]], index: int, last: int,
+                 show_brand: bool) -> None:
+    brand, entry = codes[index]
     line1, line2 = with_arrows(
-        ir_encode.label(codes[index], index + 1), "|| Hold=Save", index > 0, index < last,
+        ir_encode.label(entry, index + 1), f"|| {brand}" if show_brand else "|| Hold=Save",
+        index > 0, index < last,
     )
     if index == last:
-        line2 = "||Done Hold=Save"  # no "v" on the last code, so all 16 columns are free
+        # No "v" on the last code, so all 16 columns are free.
+        done = f"||Done {brand}" if show_brand else "||Done Hold=Save"
+        line2 = done if len(done) <= 16 else f"|| {brand}"
     lcd.write(line1, line2)
 
 
-def _send(lcd: LCD, brand: str, codes: list[dict], index: int) -> bool:
+def _send(lcd: LCD, codes: list[tuple[str, dict]], index: int) -> bool:
     """Transmit codes[index]. On failure, logs it, shows the error and
     returns False — the caller pauses rather than sweeping on through
     codes that aren't actually going out."""
-    entry = codes[index]
+    brand, entry = codes[index]
     try:
         ir_transmitter.transmit_pulses(*ir_encode.encode(entry))
         return True

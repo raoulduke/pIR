@@ -30,8 +30,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from hardware.ir_transmitter import same_frame, split_frames  # noqa: E402
-from services import ir_encode  # noqa: E402
+from services.ir_encode import distinct_signals  # noqa: E402
 
 OUTPUT = PROJECT_ROOT / "data" / "fun_codes.json"
 
@@ -147,21 +146,6 @@ def _key(entry: dict) -> str:
     return json.dumps(entry, sort_keys=True)
 
 
-def _drop_same_signal(codes: list[dict]) -> list[dict]:
-    """Drop each code whose first frame and carrier match one earlier in
-    *codes* — the frame is what a TV decodes; the rest is repeats or a
-    check copy. The carrier matters: a 56 kHz receiver can miss the same
-    frame at 38 kHz (ProScan's two RCA codes)."""
-    kept, seen = [], []
-    for code in codes:
-        pulses, carrier = ir_encode.encode(code)
-        frame = split_frames(pulses)[0][0]
-        if not any(c == carrier and same_frame(frame, f) for c, f in seen):
-            kept.append(code)
-            seen.append((carrier, frame))
-    return kept
-
-
 def _brand_codes(display: str, flipper_dir: Path | None, irdb_dir: Path | None) -> list[dict]:
     counts: Counter = Counter()
     first_seen: dict[str, int] = {}
@@ -194,7 +178,7 @@ def _brand_codes(display: str, flipper_dir: Path | None, irdb_dir: Path | None) 
         roku = _key(ROKU_TV_POWER)
         codes = [c for c in codes if _key(c) != roku]
         codes.insert(min(1, len(codes)), dict(ROKU_TV_POWER))
-    return _drop_same_signal(codes)
+    return [codes[i] for i in distinct_signals(codes)]
 
 
 def _git_head(path: Path) -> str:

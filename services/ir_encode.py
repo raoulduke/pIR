@@ -18,6 +18,8 @@ Each protocol sends a minimal "short press": enough frames/repeats that a
 TV registers it once (one NEC repeat code, three Sony frames, ...).
 """
 
+from hardware.ir_transmitter import same_frame, split_frames
+
 DEFAULT_CARRIER = 38000
 
 _CARRIERS = {
@@ -26,10 +28,12 @@ _CARRIERS = {
     "Kaseikyo": 37000,
 }
 
-# LCD names, short enough that "#10 NECx 7F00:0A" fits on 16 characters.
+# LCD names, short enough that "#38 NEC 7F00:0A" fits in 15 characters,
+# leaving column 16 for the paused sweep's "^". NECext shows as NEC: its
+# 4-digit address already sets it apart from NEC's 2-digit one.
 _ABBREVIATIONS = {
-    "NECext": "NECx", "Samsung32": "Sam32", "Samsung36": "Sam36",
-    "Kaseikyo": "Kasei",
+    "NECext": "NEC", "Samsung32": "Sam32", "Samsung36": "Sam36",
+    "Kaseikyo": "Kase",
 }
 
 
@@ -209,6 +213,21 @@ def encode(entry: dict) -> tuple[list[int], int]:
     return encoders[protocol](), carrier
 
 
+def distinct_signals(codes: list[dict]) -> list[int]:
+    """Indexes of the codes whose first frame and carrier match no earlier
+    code's — the frame is what a TV decodes; the rest is repeats or a
+    check copy. The carrier matters: a 56 kHz receiver can miss the same
+    frame at 38 kHz (ProScan's two RCA codes)."""
+    kept, seen = [], []
+    for i, code in enumerate(codes):
+        pulses, carrier = encode(code)
+        frame = split_frames(pulses)[0][0]
+        if not any(c == carrier and same_frame(frame, f) for c, f in seen):
+            kept.append(i)
+            seen.append((carrier, frame))
+    return kept
+
+
 def to_signal_text(pulses: list[int], carrier: int) -> str:
     """ir-ctl's +pulse -space text, with a "carrier N" first line when it
     isn't the 38 kHz default — hardware/ir_transmitter.transmit() strips
@@ -225,7 +244,8 @@ def _hex(value: int, digits: int) -> str:
 
 
 def label(entry: dict, number: int) -> str:
-    """Short LCD label: "#3 NECx 0586:0F". Raw codes: "#5 Raw 38kHz"."""
+    """Short LCD label: "#3 NEC 0586:0F", or "#2 RCA56k F:DC" for an
+    explicit carrier. Raw codes: "#5 Raw 38kHz"."""
     if "raw" in entry:
         return f"#{number} Raw {int(entry.get('carrier', DEFAULT_CARRIER)) // 1000}kHz"
 
@@ -245,7 +265,6 @@ def label(entry: dict, number: int) -> str:
         address, command = _hex(a, 2), _hex(c, 2)
 
     name = _ABBREVIATIONS.get(protocol, protocol)
-    text = f"#{number} {name} {address}:{command}"
     if "carrier" in entry:
-        text += f" {int(entry['carrier']) // 1000}k"
-    return text[:16]
+        name += f"{int(entry['carrier']) // 1000}k"
+    return f"#{number} {name} {address}:{command}"[:16]

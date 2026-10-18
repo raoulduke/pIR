@@ -16,8 +16,9 @@ import pwd
 from functools import lru_cache
 from pathlib import Path
 
-from app.constants import FUN_CODES_FILE, FUN_SIGNALS_DIR, FILE_OWNER
+from app.constants import FUN_CODES_FILE, FUN_SIGNALS_DIR, FILE_OWNER, FUN_ALL_BRANDS
 from screens.widgets.format import slugify
+from services import ir_encode
 
 _ROOT = Path(__file__).parent.parent
 _BASE = _ROOT / FUN_SIGNALS_DIR
@@ -38,11 +39,24 @@ def list_brands(device_type: str) -> list[str]:
 
 
 def list_signals(device_type: str, brand: str) -> list[str]:
-    return list(_library().get(device_type, {}).get(brand, {}))
+    """A brand's signals; for FUN_ALL_BRANDS, every brand's, in order."""
+    brands = list_brands(device_type) if brand == FUN_ALL_BRANDS else [brand]
+    signals = {}
+    for b in brands:
+        signals.update(dict.fromkeys(_library().get(device_type, {}).get(b, {})))
+    return list(signals)
 
 
-def get_codes(device_type: str, brand: str, signal: str) -> list[dict]:
-    return _library().get(device_type, {}).get(brand, {}).get(signal, [])
+@lru_cache(maxsize=8)
+def get_codes(device_type: str, brand: str, signal: str) -> list[tuple[str, dict]]:
+    """(brand, code) pairs to sweep. FUN_ALL_BRANDS: every brand's codes in
+    library order, a code shared by several brands only under the first."""
+    brands = list_brands(device_type) if brand == FUN_ALL_BRANDS else [brand]
+    pairs = [(b, code) for b in brands
+             for code in _library().get(device_type, {}).get(b, {}).get(signal, [])]
+    if brand != FUN_ALL_BRANDS:
+        return pairs
+    return [pairs[i] for i in ir_encode.distinct_signals([code for _, code in pairs])]
 
 
 # --- Saves ---------------------------------------------------------------

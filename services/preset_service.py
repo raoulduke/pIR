@@ -182,6 +182,19 @@ def describe_step(step: dict) -> str:
     return step.get("button", "Signal").replace("_", " ").title()
 
 
+def hue_light_ids(steps: list[dict]) -> list[str]:
+    return [step["light_id"] for step in steps if step.get("type") == "hue" and "light_id" in step]
+
+
+def all_unreachable(steps: list[dict]) -> bool:
+    """True if every step is a Hue step on a light the last check found
+    unreachable (off at the wall) — nothing in *steps* could do anything."""
+    return bool(steps) and all(
+        step.get("type") == "hue" and hue_service.is_known_unreachable(step.get("light_id", ""))
+        for step in steps
+    )
+
+
 def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
     """Fire every step in *steps* in order — the shared voice/androidtv/
     androidtv_app/IR step-execution engine. Returns (steps actually sent,
@@ -214,6 +227,8 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
             success, error = androidtv_service.launch_app(step["app_link"])
             if success:
                 sent += 1
+        elif step.get("type") == "hue" and hue_service.is_known_unreachable(step.get("light_id", "")):
+            error = f"light {step.get('light_id')} unreachable"
         elif step.get("type") == "hue":
             try:
                 light_id = step["light_id"]

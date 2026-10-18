@@ -25,7 +25,7 @@ from hardware.input import (
 from services import (
     device_slot_service, preset_service, signal_service, config_service, home_service,
 )
-from app.constants import ASYNC_SEND_FLASH_SECONDS
+from app.constants import ASYNC_SEND_FLASH_SECONDS, STATEMENT_LIGHT_OFF
 from app.exceptions import HardwareError
 from app.state import AppState
 
@@ -194,6 +194,11 @@ def _handle_preset(number: int) -> None:
 
     if not steps:
         lcd.write(label, "Not configured")
+        time.sleep(1)
+        return
+
+    if preset_service.all_unreachable(steps):
+        lcd.write(label, STATEMENT_LIGHT_OFF)
         time.sleep(1)
         return
 

@@ -26,6 +26,8 @@ STATEMENT_SENT = "Done!"
 STATEMENT_FAILED = "Failed!"
 STATEMENT_RENAMED = "Renamed!"
 STATEMENT_NO_SIGNALS = "No signals"
+# A Hue bulb the bridge can't reach — almost always cut at the wall switch.
+STATEMENT_LIGHT_OFF = "Off at switch"
 
 # Menu options (screens/main_menu.py — the escape-hatch reached via the
 # physical Menu key; see docs/active-device-control-plan.md)

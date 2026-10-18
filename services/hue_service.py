@@ -11,11 +11,19 @@ than in settings.json.
 """
 
 import json
+import logging
+import threading
 from pathlib import Path
 
 from services import config_service
 
+log = logging.getLogger(__name__)
+
 _TIMEOUT_SECONDS = 5
+
+# Light IDs whose last reachability check came back false — see
+# check_reachable_background().
+_unreachable: set[str] = set()
 
 
 def _username_path() -> Path | None:
@@ -107,3 +115,28 @@ def is_reachable(light_id: str) -> bool:
     contact (confirmed 2026-09-01: wall switch off -> reachable false
     within one poll, "on" stayed true)."""
     return bool(get_light(light_id).get("state", {}).get("reachable"))
+
+
+def is_known_unreachable(light_id: str) -> bool:
+    return light_id in _unreachable
+
+
+def check_reachable_background(light_ids: list[str], on_done) -> None:
+    """Check each light once on a background thread, update
+    is_known_unreachable(), then call *on_done()*. A failed request (bridge
+    or Wi-Fi down) leaves that light's last known state alone, so a send
+    still gets tried and reports the real error."""
+    def _run():
+        for light_id in light_ids:
+            try:
+                reachable = is_reachable(light_id)
+            except (OSError, ValueError) as e:
+                log.warning("Hue reachability check failed (light %s): %r", light_id, e)
+                continue
+            if reachable:
+                _unreachable.discard(light_id)
+            else:
+                _unreachable.add(light_id)
+        on_done()
+
+    threading.Thread(target=_run, name="hue-reachable", daemon=True).start()

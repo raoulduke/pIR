@@ -312,6 +312,15 @@ back out on any key press while that screen is active, deliberately
 scoped to that screen only (not any keypress app-wide) so browsing
 Wi-Fi/Menu/Lights elsewhere still lets the TV connection drop normally.
 
+**Connection status box** (2026-10-18): the Google TV screen's line 1 ends
+in a two-cell box: `*` inside when the connection is open, `…` while
+connecting, blank when closed. It's CGRAM slots 6-7 (`hardware/lcd.py`'s
+`GLYPH_STATUS_LEFT`/`RIGHT`), always drawn by that screen. On each change,
+`androidtv_service`'s `set_status_listener()` (wired in `main.py`) only
+redefines the glyphs' pixels, so a background connection change never
+draws over another screen. YouTube's preset shows as plain `YT` text to
+free those two slots.
+
 The library is asyncio-only; the rest of the app is fully synchronous.
 Bridged via a single dedicated event loop run in a background thread,
 started lazily on first use — every public function in the module is a

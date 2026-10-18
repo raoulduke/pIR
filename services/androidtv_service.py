@@ -67,6 +67,30 @@ _loop: asyncio.AbstractEventLoop | None = None
 _remote: AndroidTVRemote | None = None
 _connected = False
 _idle_handle: asyncio.TimerHandle | None = None
+_status = "closed"  # "closed" | "connecting" | "open" — see set_status_listener()
+_status_listener = None
+
+
+def set_status_listener(listener) -> None:
+    """Register *listener(status)*, called with "connecting", "open" or
+    "closed" whenever the connection changes — main.py wires it to
+    hardware/lcd.py's set_status_glyph(), the Google TV screen's status
+    box. Called on the background loop's thread, so it must be quick and
+    must not raise."""
+    global _status_listener
+    _status_listener = listener
+
+
+def _set_status(status: str) -> None:
+    global _status
+    if status == _status:
+        return
+    _status = status
+    if _status_listener is not None:
+        try:
+            _status_listener(status)
+        except Exception:
+            log.exception("Status listener failed (%s)", status)
 
 
 def _ensure_loop() -> asyncio.AbstractEventLoop:
@@ -129,6 +153,7 @@ def _reset_connection() -> None:
     if _remote is not None:
         _remote.disconnect()
     _connected = False
+    _set_status("closed")
 
 
 def keepalive() -> None:
@@ -167,8 +192,10 @@ async def _ensure_connected() -> AndroidTVRemote:
 
     if not _connected:
         started = time.monotonic()
+        _set_status("connecting")
         await _remote.async_connect()
         _connected = True
+        _set_status("open")
         log.info("Connected to Google TV at %s in %.1fs", _remote.host, time.monotonic() - started)
 
     _arm_idle_timer()

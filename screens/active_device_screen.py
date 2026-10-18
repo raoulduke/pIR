@@ -60,7 +60,7 @@ import logging
 import time
 from hardware.lcd import (
     LCD, GLYPH_HOME, GLYPH_CC_LEFT, GLYPH_CC_RIGHT, GLYPH_BACK_ARROW,
-    GLYPH_BACK_SHAFT, GLYPH_YT_Y, GLYPH_YT_T,
+    GLYPH_BACK_SHAFT, GLYPH_STATUS_LEFT, GLYPH_STATUS_RIGHT,
 )
 from hardware import ir_transmitter
 from hardware import input as input_hw
@@ -331,6 +331,15 @@ def _device_label(device: str, location: str) -> str:
     return f"{format_name(location)} {name}" if location else name
 
 
+def _google_tv_line1(device: str, location: str) -> str:
+    """The device label with the Android TV Remote connection's status box
+    in the last two columns — drawn as two custom glyphs whose look
+    androidtv_service changes on its own as the connection opens/closes
+    (hardware/lcd.py's set_status_glyph()), so this never needs redrawing
+    just for a status change."""
+    return _device_label(device, location)[:13].ljust(14) + GLYPH_STATUS_LEFT + GLYPH_STATUS_RIGHT
+
+
 def _menu_leaf_label(home: str, device: str, location: str) -> str:
     """Line-1 title for a MENU_DEVICE_LABELS leaf (light/tv) — same as
     _device_label(), but framed in <> when there's more than one leaf in
@@ -355,7 +364,7 @@ _PRESET_ABBREVIATIONS = {
     "home": GLYPH_HOME,
     "mute": "Ssh",
     "power": "Pwr",
-    "youtube": GLYPH_YT_Y + GLYPH_YT_T,
+    "youtube": "YT",
     "captions": GLYPH_CC_LEFT + GLYPH_CC_RIGHT,
     "candlelight": "Cdl",
     "warm white": "Wrm",
@@ -516,7 +525,7 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
         input_hw.set_repeatable_keys(_GOOGLE_TV_REPEAT_KEYS)
         input_hw.set_repeat_interval(_GOOGLE_TV_REPEAT_INTERVAL_SECONDS)
         frames = _preset_entries(device, location)
-        lcd.write(_device_label(device, location), frames[0] if len(frames) == 1 else "Remote Control")
+        lcd.write(_google_tv_line1(device, location), frames[0] if len(frames) == 1 else "Remote Control")
         return
 
     if device in MENU_SENTINEL_TO_DEVICE:
@@ -601,7 +610,7 @@ def show(lcd: LCD, state: AppState) -> None:
                 persistent = len(preset_entries) == 1
                 remote_label = preset_entries[0] if persistent else "Remote Control"
                 if leaf_changed or dpad_needs_redraw:
-                    lcd.write(_device_label(device, location), remote_label)
+                    lcd.write(_google_tv_line1(device, location), remote_label)
                     dpad_needs_redraw = False
                 key = _reveal_presets(lcd, state, device, location, remote_label, preset_entries) \
                     if reveal_presets and not persistent else read_key()

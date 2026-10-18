@@ -24,7 +24,7 @@ from hardware.lcd import lcd
 from hardware.input import (
     set_quick_action_handler, set_key_observer, set_wake_handler, close as close_input,
 )
-from services import config_service, wifi_wake_service
+from services import androidtv_service, config_service, wifi_wake_service
 import screens.active_device_screen as active_device_screen
 
 
@@ -44,6 +44,9 @@ def main() -> None:
     # dark screen does nothing else — see hardware/lcd.py's wake().
     set_wake_handler(lambda key: lcd.wake())
     lcd.set_idle_seconds(config_service.get_backlight_timeout_seconds())
+    # Google TV screen's connection status box — see hardware/lcd.py's
+    # GLYPH_STATUS_LEFT/RIGHT.
+    androidtv_service.set_status_listener(lcd.set_status_glyph)
 
     def _handle_signal(signum, frame):
         print(f"[BOOT] signal {signum}")

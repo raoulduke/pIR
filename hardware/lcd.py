@@ -32,15 +32,45 @@ _BAR_FULL_CELL = chr(5)
 # Preset-line glyphs (screens/active_device_screen.py's
 # _PRESET_ABBREVIATIONS). The progress bar only runs during startup, so
 # once it's done load_preset_glyphs() reuses its CGRAM slots 1-5 for these
-# — never loaded alongside the bar, so no slot conflict. Slots 6-7 the bar
-# never uses.
+# — never loaded alongside the bar, so no slot conflict.
 GLYPH_HOME = chr(1)
 GLYPH_CC_LEFT = chr(2)
 GLYPH_CC_RIGHT = chr(3)
 GLYPH_BACK_ARROW = chr(4)
 GLYPH_BACK_SHAFT = chr(5)
-GLYPH_YT_Y = chr(6)
-GLYPH_YT_T = chr(7)
+
+# Two-cell status box (slots 6-7, which nothing else uses): the Google TV
+# screen always draws these two at the end of line 1, and
+# set_status_glyph() only redefines what they look like — a boxed "*"
+# (open), a boxed "..." (connecting), or blank (closed). Never writes
+# DDRAM, so a status change from a background thread can't draw over
+# whatever other screen is up; it only shows where the glyphs are drawn.
+GLYPH_STATUS_LEFT = chr(6)
+GLYPH_STATUS_RIGHT = chr(7)
+_BOX_LEFT_EDGE, _BOX_RIGHT_EDGE = 0b10000, 0b00010
+
+
+def _boxed(left_rows: list[int], right_rows: list[int]) -> tuple[list[int], list[int]]:
+    """Wrap 5 interior rows (left cell cols 1-4, right cell cols 0-2) in a
+    1px box: rows 0 and 6 solid, row 7 empty like the ROM's letters."""
+    left = [0b11111] + [_BOX_LEFT_EDGE | r for r in left_rows] + [0b11111, 0]
+    right = [0b11110] + [_BOX_RIGHT_EDGE | r for r in right_rows] + [0b11110, 0]
+    return left, right
+
+
+# Interior is 7px wide (left cols 1-4, right cols 0-2), centered on the
+# left cell's last column; the LCD's gap between cells runs through it.
+_STATUS_GLYPHS = {
+    "open": _boxed(  # asterisk
+        [0, 0b00101, 0b00011, 0b00101, 0],
+        [0, 0b01000, 0b10000, 0b01000, 0],
+    ),
+    "connecting": _boxed(  # ellipsis
+        [0, 0, 0b00101, 0, 0],
+        [0, 0, 0b01000, 0, 0],
+    ),
+    "closed": ([0] * 8, [0] * 8),
+}
 
 # Down arrow for list screens (screens/widgets/format.py's with_arrows()):
 # the ROM's "^" (A00 0x5E: rows 0-2) mirrored top to bottom within the
@@ -115,28 +145,6 @@ _PRESET_GLYPHS = {
         0b00000,
         0b00000,
     ],
-    # "YT": the ROM letters one pixel shorter (stem trimmed), so each has
-    # an empty row above and below.
-    6: [
-        0b00000,
-        0b10001,
-        0b10001,
-        0b01010,
-        0b00100,
-        0b00100,
-        0b00100,
-        0b00000,
-    ],
-    7: [
-        0b00000,
-        0b11111,
-        0b00100,
-        0b00100,
-        0b00100,
-        0b00100,
-        0b00100,
-        0b00000,
-    ],
 }
 
 
@@ -162,6 +170,7 @@ class LCD:
         for location, bits in _BAR_PARTIAL_BITS.items():
             self._lcd.create_char(location, [bits] * 8)
         self._lcd.create_char(0, _ARROW_DOWN_ROWS)
+        self.set_status_glyph("closed")
         # Backlight idle-off. The backpack's PCF8574 P3 switches the
         # backlight (confirmed by eye 2026-10-18), which RPLCD drives as
         # backlight_enabled and re-sends with every write, so writes made
@@ -250,6 +259,15 @@ class LCD:
         with self._lock:
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(text[:16].ljust(16))
+
+    def set_status_glyph(self, status: str) -> None:
+        """Redefine the status box (GLYPH_STATUS_LEFT/RIGHT) as "open",
+        "connecting" or "closed". Wired to services/androidtv_service.py's
+        set_status_listener() in main.py."""
+        left, right = _STATUS_GLYPHS[status]
+        with self._lock:
+            self._lcd.create_char(6, left)
+            self._lcd.create_char(7, right)
 
     def load_preset_glyphs(self) -> None:
         """Replace the progress bar's CGRAM slots with the preset-line

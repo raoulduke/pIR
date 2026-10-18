@@ -72,7 +72,7 @@ from services import home_service, signal_service, step_device_service, preset_s
 from screens.widgets.format import format_name, frame
 from app.constants import (
     DEFAULT_ACTIVE_DEVICE, MENU_DEVICE_LABELS, MENU_DEVICE_SENTINELS, MENU_SENTINEL_TO_DEVICE,
-    ASYNC_SEND_FLASH_SECONDS, HUE_STATUS_CHARS,
+    ASYNC_SEND_FLASH_SECONDS, STATEMENT_LIGHT_OFF,
 )
 from app.state import AppState
 from app.exceptions import HardwareError
@@ -432,7 +432,8 @@ def _preset_entries(device: str, location: str) -> list[str]:
     return frames
 
 
-def _reveal_presets(lcd: LCD, state: AppState, device: str, location: str, normal_line2: str, frames: list[str]) -> str | None:
+def _reveal_presets(lcd: LCD, state: AppState, device: str, location: str, normal_line2: str, frames: list[str],
+                    override=None) -> str | None:
     """Line 2, showing this leaf's Preset Function display frames
     (*frames* — see _preset_entries(), which packs more than one preset
     onto a frame when they fit together) one at a time, right after
@@ -478,10 +479,17 @@ def _reveal_presets(lcd: LCD, state: AppState, device: str, location: str, norma
     None-means-redraw-everything contract the caller (show()'s
     DEFAULT_ACTIVE_DEVICE branch) already honors for every other quick
     action — fixes it without needing frame timing changes for the
-    ordinary case."""
+    ordinary case.
+
+    *override*, if given, is called before each frame; a non-None result
+    (e.g. a Hue light found off at the wall mid-reveal) replaces the rest of
+    the reveal."""
     for frame in frames:
         if (state.active_device, state.active_location) != (device, location):
             return None
+        if override is not None and (text := override()) is not None:
+            lcd.write_line2(text)
+            return read_key()
         lcd.write_line2(frame)
         frame_start = time.monotonic()
         key = read_key(timeout=_PRESET_REVEAL_FRAME_SECONDS)
@@ -507,46 +515,27 @@ def _hue_ids(functions: list[dict]) -> list[str]:
     return ids
 
 
-def _light_off(hue_ids: list[str]) -> bool:
-    """True when every Hue light on this leaf was last found unreachable
-    (off at the wall) — Enter/Up/Down and its presets send nothing then. A
-    leaf with only some lights off (Kitchen) still sends to the rest."""
-    return bool(hue_ids) and all(hue_service.is_known_unreachable(i) for i in hue_ids)
+def _light_off_label(hue_ids: list[str]) -> str | None:
+    """STATEMENT_LIGHT_OFF when every Hue light on this leaf was last found
+    unreachable — Enter/Up/Down and its presets send nothing then. A leaf
+    with only some lights off (Kitchen) still sends to the rest."""
+    if hue_ids and all(hue_service.is_known_unreachable(i) for i in hue_ids):
+        return STATEMENT_LIGHT_OFF
+    return None
 
 
-def _hue_status_char(hue_ids: list[str]) -> str:
-    if any(hue_service.last_reachable(i) for i in hue_ids):
-        return HUE_STATUS_CHARS["reachable"]
-    return HUE_STATUS_CHARS["unreachable"]
-
-
-def _check_hue(lcd: LCD, state: AppState, device: str, location: str, hue_ids: list[str]) -> None:
+def _check_hue(lcd: LCD, state: AppState, device: str, location: str, hue_ids: list[str], normal_line2: str) -> None:
     """Ask the bridge once whether this leaf's lights are reachable, in the
-    background so moving between lights never waits on it. Line 1's status
-    character shows "+" until the answer, then "*" or "-" if the leaf is
-    still up."""
-    lcd.set_status_char(HUE_STATUS_CHARS["checking"], "hue")
+    background so moving between lights never waits on it. Redraws line 2
+    if the answer changes what it should show and the leaf is still up."""
+    was_off = _light_off_label(hue_ids)
 
     def _on_done():
-        if (state.active_device, state.active_location) == (device, location):
-            lcd.set_status_char(_hue_status_char(hue_ids), "hue")
+        off = _light_off_label(hue_ids)
+        if off != was_off and (state.active_device, state.active_location) == (device, location):
+            lcd.write_line2((off or normal_line2)[:16])
 
     hue_service.check_reachable_background(hue_ids, _on_done)
-
-
-# Stands in for the status character while laying out line 1; never drawn.
-_STATUS_SLOT = "\x00"
-
-
-def _draw_menu_leaf(lcd: LCD, home: str, device: str, location: str, hue_ids: list[str], line2: str) -> None:
-    """A Hue light's reachability status character goes right after its
-    name ("<  Bedroom*   >"), inside the frame, so the arrows stay put."""
-    if not hue_ids:
-        lcd.write(_menu_leaf_label(home, device, location), line2)
-        return
-    name = _device_label(device, location)[:13] + _STATUS_SLOT
-    line1 = frame(name) if len(menu_leaves(home, device)) > 1 else name
-    lcd.write_with_status(line1.replace(_STATUS_SLOT, " "), line2, source="hue", col=line1.index(_STATUS_SLOT))
 
 
 def render_after_cycle(lcd: LCD, state: AppState) -> None:
@@ -587,8 +576,9 @@ def render_after_cycle(lcd: LCD, state: AppState) -> None:
         input_hw.set_repeatable_keys(set())
         input_hw.set_repeat_interval(None)
         frames = _preset_entries(device, location)
-        _draw_menu_leaf(lcd, home, device, location, _hue_ids(_functions_for(home, device, location)),
-                        frames[0] if len(frames) == 1 else "" if not frames else _MENU_CONTROL_LABEL[device])
+        off_label = _light_off_label(_hue_ids(_functions_for(home, device, location)))
+        lcd.write(_menu_leaf_label(home, device, location),
+                  off_label or (frames[0] if len(frames) == 1 else "" if not frames else _MENU_CONTROL_LABEL[device]))
         return
 
     input_hw.set_repeatable_keys(set())
@@ -748,14 +738,16 @@ def show(lcd: LCD, state: AppState) -> None:
                 # Checked once on arrival; until the answer comes back the
                 # last known state shows.
                 if leaf_changed and hue_ids:
-                    _check_hue(lcd, state, device, location, hue_ids)
+                    _check_hue(lcd, state, device, location, hue_ids, control_label)
+                off_label = _light_off_label(hue_ids)
                 input_hw.set_repeatable_keys(set())
                 input_hw.set_repeat_interval(None)
                 if leaf_changed or dpad_needs_redraw:
-                    _draw_menu_leaf(lcd, home, device, location, hue_ids, control_label)
+                    lcd.write(_menu_leaf_label(home, device, location), off_label or control_label)
                     dpad_needs_redraw = False
-                key = _reveal_presets(lcd, state, device, location, control_label, preset_entries) \
-                    if reveal_presets and not persistent else read_key()
+                key = _reveal_presets(lcd, state, device, location, control_label, preset_entries,
+                                      override=lambda: _light_off_label(hue_ids)) \
+                    if reveal_presets and not persistent and not off_label else read_key()
                 if key is None:
                     # See the google_tv branch above's identical handling.
                     dpad_needs_redraw = True
@@ -773,10 +765,10 @@ def show(lcd: LCD, state: AppState) -> None:
                 if key == KEY_RIGHT:
                     state.active_device, state.active_location = cycle_menu_leaf(home, device, (device, location), 1)
                     continue
-                if _light_off(hue_ids) and key in (KEY_ENTER, KEY_UP, KEY_DOWN):
+                if _light_off_label(hue_ids) and key in (KEY_ENTER, KEY_UP, KEY_DOWN):
                     # Off at the wall: send nothing, but check again in
                     # case it's since been switched back on.
-                    _check_hue(lcd, state, device, location, hue_ids)
+                    _check_hue(lcd, state, device, location, hue_ids, control_label)
                     continue
                 power, paired = _menu_power_paired(functions)
                 if key == KEY_ENTER and power:

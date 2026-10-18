@@ -121,13 +121,9 @@ def is_known_unreachable(light_id: str) -> bool:
     return _reachable.get(light_id) is False
 
 
-def last_reachable(light_id: str) -> bool | None:
-    return _reachable.get(light_id)
-
-
 def check_reachable_background(light_ids: list[str], on_done) -> None:
     """Check each light once on a background thread, update
-    last_reachable(), then call *on_done()*. A failed request (bridge or
+    is_known_unreachable(), then call *on_done()*. A failed request (bridge or
     Wi-Fi down) records None, not False, so a send still gets tried and
     reports the real error."""
     def _run():

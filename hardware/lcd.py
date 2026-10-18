@@ -137,15 +137,13 @@ class LCD:
         for location, bits in _BAR_PARTIAL_BITS.items():
             self._lcd.create_char(location, [bits] * 8)
         self._lcd.create_char(0, _ARROW_DOWN_ROWS)
-        # Status character in line 1's last column (write_with_status()),
-        # one per source ("androidtv", "hue"). _status_shown names the
-        # source whose screen is still up, None otherwise: every other
-        # write that touches line 1 clears it, so set_status_char() from a
-        # background thread never draws over another screen, or over
-        # another source's character.
-        self._status_chars: dict[str, str] = {}
-        self._status_shown: str | None = None
-        self._status_col = 15
+        # Status character in line 1's last column (write_with_status()).
+        # _status_shown is True only while the screen that drew it is
+        # still up: every other write that touches line 1 clears it, so
+        # set_status_char() from a background thread never draws over
+        # another screen.
+        self._status_char = " "
+        self._status_shown = False
         # Backlight idle-off. The backpack's PCF8574 P3 switches the
         # backlight (confirmed by eye 2026-10-18), which RPLCD drives as
         # backlight_enabled and re-sends with every write, so writes made
@@ -219,12 +217,12 @@ class LCD:
 
     def clear(self) -> None:
         with self._lock:
-            self._status_shown = None
+            self._status_shown = False
             self._lcd.clear()
 
     def write(self, line1: str = "", line2: str = "") -> None:
         with self._lock:
-            self._status_shown = None
+            self._status_shown = False
             self._lcd.clear()
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(line1[:16].ljust(16))
@@ -238,7 +236,7 @@ class LCD:
         screens/network_screen.py's background rescan not disturbing the
         network currently highlighted."""
         with self._lock:
-            self._status_shown = None
+            self._status_shown = False
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(text[:16].ljust(16))
 
@@ -252,29 +250,27 @@ class LCD:
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(text[:16].ljust(16))
 
-    def write_with_status(self, line1: str = "", line2: str = "", source: str = "androidtv", col: int = 15) -> None:
-        """write(), with *source*'s current status character
-        (set_status_char()) at line 1's column *col* (default the last),
-        kept up to date there until something else redraws line 1. Used by
-        screens/active_device_screen.py: the Google TV screen's connection
-        status and a Hue light's reachability, right after its name."""
-        line1 = line1[:16].ljust(16)
+    def write_with_status(self, line1: str = "", line2: str = "") -> None:
+        """write(), with *line1* cut to 15 columns and the current status
+        character (set_status_char()) in the 16th, kept up to date there
+        until something else redraws line 1. Used by the Google TV screen
+        (screens/active_device_screen.py) for its connection status."""
         with self._lock:
             self._lcd.clear()
             self._lcd.cursor_pos = (0, 0)
-            self._lcd.write_string(line1[:col] + self._status_chars.get(source, " ") + line1[col + 1:])
+            self._lcd.write_string(line1[:15].ljust(15) + self._status_char)
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(line2[:16].ljust(16))
-            self._status_shown = source
-            self._status_col = col
+            self._status_shown = True
 
-    def set_status_char(self, char: str, source: str = "androidtv") -> None:
-        """Change *source*'s status character, redrawing it in place only
-        if write_with_status()'s screen for that source is still up."""
+    def set_status_char(self, char: str) -> None:
+        """Change the status character, redrawing it in place only if
+        write_with_status()'s screen is still up. Wired to services/
+        androidtv_service.py's set_status_listener() in main.py."""
         with self._lock:
-            self._status_chars[source] = char
-            if self._status_shown == source:
-                self._lcd.cursor_pos = (0, self._status_col)
+            self._status_char = char
+            if self._status_shown:
+                self._lcd.cursor_pos = (0, 15)
                 self._lcd.write_string(char)
 
     def load_preset_glyphs(self) -> None:
@@ -302,7 +298,7 @@ class LCD:
         bar = bar.ljust(16)
 
         with self._lock:
-            self._status_shown = None
+            self._status_shown = False
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(line1[:16].ljust(16))
             self._lcd.cursor_pos = (1, 0)

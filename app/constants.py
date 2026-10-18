@@ -27,7 +27,7 @@ STATEMENT_FAILED = "Failed!"
 STATEMENT_RENAMED = "Renamed!"
 STATEMENT_NO_SIGNALS = "No signals"
 # A Hue bulb the bridge can't reach — almost always cut at the wall switch.
-STATEMENT_LIGHT_OFF = "Off at switch"
+STATEMENT_LIGHT_OFF = "* Not connected"
 
 # Menu options (screens/main_menu.py — the escape-hatch reached via the
 # physical Menu key; see docs/active-device-control-plan.md)
@@ -76,8 +76,6 @@ DEFAULT_ACTIVE_DEVICE = "google_tv"
 # Its line 1's last column: the Android TV Remote connection's status
 # (services/androidtv_service.py's set_status_listener()).
 ANDROIDTV_STATUS_CHARS = {"closed": "-", "connecting": "+", "open": "*"}
-# Same characters for a Hue light: unreachable, checking, reachable.
-HUE_STATUS_CHARS = {"unreachable": "-", "checking": "+", "reachable": "*"}
 
 # Devices whose per-location leaves collapse into a single top-level
 # < Device/Device > stop instead of appearing individually — device name

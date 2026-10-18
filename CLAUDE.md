@@ -476,18 +476,17 @@ one that's on, but `reachable` can (`services/hue_service.py`'s
 `is_reachable()`). Landing on a Hue light in Lights (Bedroom, Kitchen
 South, Kitchen North, Kitchen) checks each of its bulbs once in the
 background (`check_reachable_background()`), so cycling never waits on
-the bridge. The light's name on line 1 gets the same status characters
-as Google TV appended (`app/constants.py`'s `HUE_STATUS_CHARS`): `+`
-while checking, `*` reachable, `-` not — `<   Bedroom*   >`, inside the
-frame so the `<>` arrows stay at the edges (`hardware/lcd.py`'s
-`write_with_status()` takes the column). `hardware/lcd.py` keeps one
-status character per source (`"androidtv"`, `"hue"`), so a Google TV
-connection change never draws over a Hue light's. If every bulb on the leaf is unreachable nothing is sent:
-Enter/Up/Down only re-check (in case it's back on), and its presets show
-"Off at switch". Kitchen with one bulb off still sends to the other (that
-bulb's step fails as "Failed: Light"). A failed check (bridge or Wi-Fi
-down) shows `-` but doesn't block sending, so the real error surfaces.
-Battery: one LAN request per arrival on a Hue light, no polling.
+the bridge. If every bulb on that leaf is unreachable, line 2 shows
+**`* Not connected`** (`STATEMENT_LIGHT_OFF`) in place of the presets,
+and nothing is sent: Enter/Up/Down only re-check (in case it's back on),
+and its presets flash the same message. Until a check answers, the last
+known state shows. Kitchen with one bulb off still sends to the other
+(that bulb's step fails as "Failed: Light"). A failed check (bridge or
+Wi-Fi down) records unknown, not off, so sending isn't blocked and the
+real error surfaces. A `-`/`+`/`*` line-1 indicator like Google TV's was
+tried and dropped the same day: line 2 is where the presets that stop
+working are. Battery: one LAN request per arrival on a Hue light, no
+polling.
 
 ## IR Tools & Integrations
 

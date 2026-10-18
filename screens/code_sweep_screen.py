@@ -7,16 +7,19 @@ screen.
 Line 1 is that brand and the position in the sweep ("Hisense  15/38^"),
 the count right against the "^" column.
 
-Running: one code every SWEEP_GAP_SECONDS, line 1 naming the code just
-sent. Enter pauses on it, Left goes back a level (the signal list).
+Running: one code per gap (Menu > Settings > Sweep Speed: 1s, 0.5s or
+0.25s), line 1 naming the code just sent. Enter pauses on it, Left goes
+back a level (the signal list).
 
 Paused ("||" on line 2):
-  Up / Down     send the previous / next code and stay paused on it (no
+  Up / Down     move to the previous / next code without sending it (no
                 wrapping — they stop at the first / last code; "^"/"v"
-                only show where there's a code to step to)
-  Enter (tap)   resume: the code on screen stays up for the usual gap
-                (not resent — it went out when paused on or stepped to),
-                then the sweep carries on from the next
+                only show where there's a code to step to). They
+                auto-repeat when held, since nothing fires.
+  Right         send the code on screen, once per press
+  Enter (tap)   resume from the code on screen: sent first unless it
+                already went out since landing on it (paused on it, or
+                fired with Right), so a code never goes out twice in a row
   Enter (hold)  save the code under a typed name (fun_service.save())
   Left          back a level
 Running off the end pauses on the last code, so Up can still step back.
@@ -38,14 +41,14 @@ from hardware.lcd import LCD
 from hardware import ir_transmitter
 from hardware.input import (
     read_key, set_repeatable_keys, set_repeat_interval, set_hold_keys,
-    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_ENTER, KEY_ENTER_HOLD, KEY_QUIT, KEY_BACK,
+    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_ENTER_HOLD, KEY_QUIT, KEY_BACK,
 )
-from services import fun_service, ir_encode
+from services import config_service, fun_service, ir_encode
 from screens.widgets.selector import select_from_list
 from screens.widgets.signal_entry import prompt_text
 from screens.widgets.format import format_name, with_arrows, fit_with_suffix
 from app.constants import (
-    SWEEP_GAP_SECONDS, PROMPT_NAME, STATEMENT_NO_SIGNALS,
+    PROMPT_NAME, STATEMENT_NO_SIGNALS,
     STATEMENT_FILE_EXISTS, STATEMENT_SAVED, STATEMENT_SAVE_FAILED,
     LABEL_OVERWRITE, LABEL_CANCEL,
 )
@@ -62,26 +65,35 @@ def show(lcd: LCD, device_type: str, brand: str, signal: str) -> str | None:
         time.sleep(1)
         return None
     try:
-        return _sweep(lcd, device_type, signal, codes)
+        return _sweep(lcd, device_type, signal, codes, config_service.get_sweep_gap_seconds())
     finally:
         set_hold_keys({})
 
 
 def _use_sweep_keys() -> None:
-    """Enter: tap/hold. Nothing repeats — a held Up/Down would
-    rapid-fire IR codes, and Left is Back. Re-asserted every pass, since the
-    save prompt's text entry and list switch to their own."""
+    """Enter: tap/hold. Up/Down repeat (they only move, never send);
+    Right doesn't, so a hold can't rapid-fire codes. Re-asserted every
+    pass, since the save prompt's text entry and list switch to their own."""
     set_hold_keys({KEY_ENTER: KEY_ENTER_HOLD})
-    set_repeatable_keys(set(), exclude={KEY_UP, KEY_DOWN})
+    set_repeatable_keys(set())
     set_repeat_interval(None)
 
 
-def _sweep(lcd: LCD, device_type: str, signal: str, codes: list[tuple[str, dict]]) -> str | None:
-    """*codes* are (brand, code) pairs."""
+def _sweep(lcd: LCD, device_type: str, signal: str, codes: list[tuple[str, dict]],
+           gap: float) -> str | None:
+    """*codes* are (brand, code) pairs; *gap* is seconds between codes."""
     last = len(codes) - 1
     index = 0
+    sent = None  # the code that last went out, while still on it
+
+    def fire() -> bool:
+        nonlocal sent
+        ok = _send(lcd, codes, index)
+        sent = index if ok else None
+        return ok
+
     _use_sweep_keys()
-    paused = not _send(lcd, codes, index)
+    paused = not fire()
     if not paused:
         _draw_running(lcd, codes, index)
 
@@ -96,21 +108,22 @@ def _sweep(lcd: LCD, device_type: str, signal: str, codes: list[tuple[str, dict]
                 return None
             if key == KEY_UP and index > 0:
                 index -= 1
-                _send(lcd, codes, index)
             elif key == KEY_DOWN and index < last:
                 index += 1
-                _send(lcd, codes, index)
+            elif key == KEY_RIGHT:
+                fire()
             elif key == KEY_ENTER_HOLD:
                 set_hold_keys({})  # plain Enter while naming it
                 brand, entry = codes[index]
                 if _save(lcd, device_type, brand, signal, entry, index + 1) == KEY_QUIT:
                     return KEY_QUIT
-            elif key == KEY_ENTER and index < last:
-                paused = False
-                _draw_running(lcd, codes, index)
+            elif key == KEY_ENTER:
+                paused = sent != index and not fire()
+                if not paused:
+                    _draw_running(lcd, codes, index)
             continue
 
-        key = _wait(lcd, codes, index)
+        key = _wait(lcd, codes, index, gap)
         if key == KEY_QUIT:
             return KEY_QUIT
         if key == KEY_LEFT:
@@ -119,16 +132,16 @@ def _sweep(lcd: LCD, device_type: str, signal: str, codes: list[tuple[str, dict]
             paused = True
             continue
         index += 1
-        paused = not _send(lcd, codes, index)
+        paused = not fire()
         if not paused:
             _draw_running(lcd, codes, index)
 
 
-def _wait(lcd: LCD, codes: list[tuple[str, dict]], index: int) -> str | None:
+def _wait(lcd: LCD, codes: list[tuple[str, dict]], index: int, gap: float) -> str | None:
     """Wait out the gap after a code. Returns Enter/Left/Quit as soon as
     pressed, or None once the full gap has passed. Other keys are ignored
     without cutting the gap short."""
-    deadline = time.monotonic() + SWEEP_GAP_SECONDS
+    deadline = time.monotonic() + gap
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:

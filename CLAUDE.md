@@ -420,14 +420,22 @@ so this can be tuned without a code change once more is learned.
 
 TV-B-Gone style, but one brand at a time and slow enough to see which code
 worked. `Menu → Sweep → TV → <brand> → Power` sends each of that
-brand's library codes `SWEEP_GAP_SECONDS` (1s) apart. Line 1 is the
+brand's library codes one gap apart: **Menu > Settings > Sweep Speed**
+sets it to 1s (default, `SWEEP_GAP_SECONDS`), 0.5s or 0.25s, saved as
+`config/settings.json`'s `sweep_gap_seconds`. 1s keeps the code on screen
+when the TV reacts (0.3-1s after a power code); faster means pausing a
+code or more past it and stepping back. Line 1 is the
 code's brand and its position in the sweep (`Hisense    4/5`), the count
 right against the paused `^`; a brand too long for that is cut with an
 ellipsis glyph (`Westingho…38/38^`, CGRAM slot 6, `format.py`'s
 `fit_with_suffix()`). The code itself (protocol/address) isn't shown —
-changed 2026-10-18, it meant nothing at a glance. Tap Enter to pause/resume; while paused
-Up/Down send the previous/next code (no wrapping, `^`/`v` only where
-there's one to step to), **holding Enter** (`KEYPAD_HOLD_SECONDS`, 0.7s)
+changed 2026-10-18, it meant nothing at a glance. Tap Enter to pause/resume. While paused,
+Up/Down only move to the previous/next code, sending nothing (no wrapping,
+`^`/`v` only where there's one to step to; they auto-repeat when held),
+**Right** sends the code on screen once per press, and Enter resumes from
+the code on screen, sending it first unless it already went out since
+landing on it, so no code goes out twice in a row (2026-10-18; Up/Down
+used to send as they stepped). **Holding Enter** (`KEYPAD_HOLD_SECONDS`, 0.7s)
 saves it under a typed name, Left goes back a level. Tap-vs-hold is opted
 into by this screen only (`hardware.input.set_hold_keys()`) — a tap acts
 on release there; Enter acts on press everywhere else (Google TV's D-pad

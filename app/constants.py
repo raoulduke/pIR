@@ -54,6 +54,8 @@ FUN_CODES_FILE = "data/fun_codes.json"    # built by scripts/build_fun_codes.py
 # Gap between codes while sweeping. Most TVs go dark 0.3-1s after a power
 # code, so at 1s the screen is usually still showing the code that worked
 # when the TV reacts; Up while paused resends the previous one to check.
+# The default; Menu > Settings > Sweep Speed overrides it
+# (config/settings.json's sweep_gap_seconds).
 SWEEP_GAP_SECONDS = 1.0
 
 # Rename submenu options (screens/rename_menu_screen.py)
@@ -172,6 +174,9 @@ BACKLIGHT_IDLE_SECONDS = 30
 # seconds; None is "Never" (always on), listed first.
 SETTINGS_BACKLIGHT = "Backlight"
 BACKLIGHT_TIMEOUT_CHOICES = [None, 5, 10, 15, 20, 25, 30]
+# Sweep Speed's choices: seconds between codes.
+SETTINGS_SWEEP_SPEED = "Sweep Speed"
+SWEEP_GAP_CHOICES = [1.0, 0.5, 0.25]
 
 # Debounce / scan timing
 # Kept deliberately light: a full sweep already drives every one of the 12

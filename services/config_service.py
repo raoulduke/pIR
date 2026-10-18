@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 
-from app.constants import BACKLIGHT_IDLE_SECONDS
+from app.constants import BACKLIGHT_IDLE_SECONDS, SWEEP_GAP_SECONDS
 
 _CONFIG_FILE = Path(__file__).parent.parent / "config" / "settings.json"
 _DEFAULT_HOME = "home"
@@ -111,4 +111,15 @@ def get_backlight_timeout_seconds() -> int | None:
 def set_backlight_timeout_seconds(seconds: int | None) -> None:
     data = _load()
     data["backlight_timeout_seconds"] = seconds
+    _save(data)
+
+
+def get_sweep_gap_seconds() -> float:
+    """Menu > Settings > Sweep Speed: seconds between codes in a sweep."""
+    return _load().get("sweep_gap_seconds", SWEEP_GAP_SECONDS)
+
+
+def set_sweep_gap_seconds(seconds: float) -> None:
+    data = _load()
+    data["sweep_gap_seconds"] = seconds
     _save(data)

@@ -21,8 +21,10 @@ print(f"[BOOT] PID={os.getpid()}")
 from app.startup import initialize
 from app import quick_actions
 from hardware.lcd import lcd
-from hardware.input import set_quick_action_handler, set_key_observer, close as close_input
-from services import wifi_wake_service
+from hardware.input import (
+    set_quick_action_handler, set_key_observer, set_wake_handler, close as close_input,
+)
+from services import config_service, wifi_wake_service
 import screens.active_device_screen as active_device_screen
 
 
@@ -38,6 +40,10 @@ def main() -> None:
     # Speculative Wi-Fi radio wake on every keypress — see
     # services/wifi_wake_service.py's docstring for why.
     set_key_observer(wifi_wake_service.wake)
+    # Backlight idle-off: any key relights it, and the press that lights a
+    # dark screen does nothing else — see hardware/lcd.py's wake().
+    set_wake_handler(lambda key: lcd.wake())
+    lcd.set_idle_seconds(config_service.get_backlight_timeout_seconds())
 
     def _handle_signal(signum, frame):
         print(f"[BOOT] signal {signum}")
@@ -79,6 +85,10 @@ def main() -> None:
             pass
 
     finally:
+        try:
+            lcd.stop_idle_timer()  # keep "Program stopped" readable
+        except Exception:
+            pass
         close_input()
         sys.exit(0)
 

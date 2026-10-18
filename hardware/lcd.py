@@ -9,6 +9,8 @@ import threading
 
 from RPLCD.i2c import CharLCD
 
+from app.constants import BACKLIGHT_IDLE_SECONDS
+
 # Custom CGRAM characters for a sub-cell-resolution progress bar: each 5px-
 # wide cell gets 1-5 columns filled from the left (slots 1-5) — 5 fill
 # levels per cell, 80 discrete positions across 16 cells. The fully-filled
@@ -160,7 +162,62 @@ class LCD:
         for location, bits in _BAR_PARTIAL_BITS.items():
             self._lcd.create_char(location, [bits] * 8)
         self._lcd.create_char(0, _ARROW_DOWN_ROWS)
+        # Backlight idle-off. The backpack's PCF8574 P3 switches the
+        # backlight (confirmed by eye 2026-10-18), which RPLCD drives as
+        # backlight_enabled and re-sends with every write, so writes made
+        # while it's off don't turn it back on. _idle_gen invalidates a
+        # timer that already fired but is still waiting on _lock when
+        # wake() re-arms.
+        self._idle_timer: threading.Timer | None = None
+        self._idle_gen = 0
+        self._idle_seconds: float | None = BACKLIGHT_IDLE_SECONDS
         self.clear()
+        self.wake()
+
+    def set_idle_seconds(self, seconds: float | None) -> None:
+        """Change the backlight timeout (None = never off) and restart the
+        countdown with it. main.py applies config/settings.json's value at
+        startup; screens/settings_screen.py on save."""
+        with self._lock:
+            self._idle_seconds = seconds
+        self.wake()
+
+    def wake(self) -> bool:
+        """Backlight on and restart the idle countdown (set_idle_seconds()).
+        Returns True if it was off — hardware/input.py's wake handler
+        swallows that key, so a press in the dark only lights the screen.
+        Also called by screens that change without key presses and need
+        to stay readable (the running Sweep)."""
+        with self._lock:
+            was_off = not self._lcd.backlight_enabled
+            if was_off:
+                self._lcd.backlight_enabled = True
+            self._idle_gen += 1
+            if self._idle_timer is not None:
+                self._idle_timer.cancel()
+                self._idle_timer = None
+            if self._idle_seconds is not None:
+                self._idle_timer = threading.Timer(
+                    self._idle_seconds, self._idle_off, args=(self._idle_gen,),
+                )
+                self._idle_timer.daemon = True
+                self._idle_timer.start()
+        return was_off
+
+    def _idle_off(self, gen: int) -> None:
+        with self._lock:
+            if gen == self._idle_gen:
+                self._lcd.backlight_enabled = False
+
+    def stop_idle_timer(self) -> None:
+        """Backlight on for good — on exit, so "Program stopped" stays
+        readable after the app (and its timer) is gone."""
+        with self._lock:
+            self._idle_gen += 1
+            if self._idle_timer is not None:
+                self._idle_timer.cancel()
+                self._idle_timer = None
+            self._lcd.backlight_enabled = True
 
     def clear(self) -> None:
         with self._lock:

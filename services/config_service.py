@@ -1,6 +1,8 @@
 from pathlib import Path
 import json
 
+from app.constants import BACKLIGHT_IDLE_SECONDS
+
 _CONFIG_FILE = Path(__file__).parent.parent / "config" / "settings.json"
 _DEFAULT_HOME = "home"
 
@@ -98,3 +100,15 @@ def get_wifi_wake_target() -> str | None:
     """Ping target for services.wifi_wake_service.wake() — None (the
     default) auto-detects the LAN default gateway at runtime instead."""
     return _load().get("wifi_wake_target")
+
+
+def get_backlight_timeout_seconds() -> int | None:
+    """Menu > Settings > Backlight. None means Never (always on); an
+    absent key falls back to BACKLIGHT_IDLE_SECONDS."""
+    return _load().get("backlight_timeout_seconds", BACKLIGHT_IDLE_SECONDS)
+
+
+def set_backlight_timeout_seconds(seconds: int | None) -> None:
+    data = _load()
+    data["backlight_timeout_seconds"] = seconds
+    _save(data)

@@ -135,6 +135,9 @@ def _wait(lcd: LCD, codes: list[dict], index: int) -> str | None:
 
 
 def _draw_running(lcd: LCD, codes: list[dict], index: int) -> None:
+    # No key presses while it runs, but the code on screen is the whole
+    # point — keep the backlight's idle timer from darkening it.
+    lcd.wake()
     lcd.write(ir_encode.label(codes[index], index + 1), "Enter=Pause")
 
 

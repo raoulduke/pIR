@@ -11,7 +11,7 @@ DeviceCycledAway) also unwinds out of the menu back to Active Device
 Control.
 
 Returns one of: MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME,
-MENU_NETWORK, KEY_QUIT, or None (Up — closed).
+MENU_NETWORK, MENU_SETTINGS, KEY_QUIT, or None (Up — closed).
 Selecting "Quit" also returns KEY_QUIT. MENU_IP is handled
 inline here rather than returned — it's display-only. MENU_NETWORK
 (labeled "WiFi") is disabled — Enter is a no-op — while
@@ -26,7 +26,7 @@ docs/active-device-control-plan.md's "Superseded" notes.
 
 from app.constants import (
     MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
-    MENU_QUIT, MENU_IP, MENU_TITLE, MENU_WIFI_POLL_INTERVAL_SECONDS,
+    MENU_SETTINGS, MENU_QUIT, MENU_IP, MENU_TITLE, MENU_WIFI_POLL_INTERVAL_SECONDS,
 )
 from app.state import AppState
 from hardware.lcd import LCD
@@ -39,8 +39,8 @@ from screens.widgets.format import with_arrows
 
 
 _OPTIONS = [
-    MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_QUIT,
-    MENU_IP,
+    MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_SETTINGS,
+    MENU_QUIT, MENU_IP,
 ]
 
 

@@ -273,6 +273,7 @@ class InputReader:
 _reader: InputReader | None = None
 _quick_handler = None
 _key_observer = None
+_wake_handler = None
 
 
 def _get_reader() -> InputReader:
@@ -366,6 +367,17 @@ def set_key_observer(observer) -> None:
     _key_observer = observer
 
 
+def set_wake_handler(handler) -> None:
+    """Register a callback fired on every real key, after the key
+    observer and before quick-action dispatch. *handler(key)* returns a
+    bool: True swallows the key — read_key() keeps waiting as if it never
+    arrived. See main.py: the LCD backlight's idle-off (hardware/lcd.py's
+    wake()), so the press that lights a dark screen doesn't also act on
+    whatever the user couldn't see."""
+    global _wake_handler
+    _wake_handler = handler
+
+
 def read_key(timeout: float | None = None) -> str | None:
     """*timeout* (seconds): return None if no key arrives in time, instead
     of blocking forever. A quick action key doesn't consume the caller's
@@ -381,6 +393,8 @@ def read_key(timeout: float | None = None) -> str | None:
             return None
         if _key_observer is not None:
             _key_observer(key)
+        if _wake_handler is not None and _wake_handler(key):
+            continue
         if _quick_handler is not None and key in QUICK_ACTION_KEYS:
             if _quick_handler(key):
                 return None

@@ -263,8 +263,10 @@ def _handle_menu() -> bool:
     import screens.rename_menu_screen as rename_menu_screen
     import screens.network_screen as network_screen
     import screens.fun_screen as fun_screen
+    import screens.settings_screen as settings_screen
     from app.constants import (
         MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
+        MENU_SETTINGS,
     )
 
     global _in_menu
@@ -291,6 +293,8 @@ def _handle_menu() -> bool:
                 result = home_screen.show(lcd, _state)
             elif choice == MENU_NETWORK:
                 result = network_screen.show(lcd)
+            elif choice == MENU_SETTINGS:
+                result = settings_screen.show(lcd)
             else:
                 result = None
 

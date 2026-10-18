@@ -34,6 +34,7 @@ MENU_SWEEP = "Sweep"
 MENU_RENAME = "Rename"
 MENU_COMMAND = "Command"
 MENU_HOME = "Change Home"
+MENU_SETTINGS = "Settings"
 MENU_NETWORK = "WiFi"
 MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
@@ -147,6 +148,19 @@ PRESET_DEFAULT_DELAY_SECONDS = 0.3
 # very next screen redraw overwrites "Sending..." before it's had a chance
 # to actually be seen, effectively skipping it).
 ASYNC_SEND_FLASH_SECONDS = 0.4
+
+# LCD backlight turns off after this long with no key press (hardware/
+# lcd.py's wake()) — the default; Menu > Settings > Backlight overrides it
+# (config/settings.json's backlight_timeout_seconds, null = Never). The
+# backlight draws 80-120mA, roughly as much as the Pi itself idling, so
+# this is the biggest single battery lever on the device. The first press after it goes dark only turns it back on — see
+# hardware/input.py's set_wake_handler().
+BACKLIGHT_IDLE_SECONDS = 30
+
+# Settings menu (screens/settings_screen.py). Backlight's choices, in
+# seconds; None is "Never" (always on).
+SETTINGS_BACKLIGHT = "Backlight"
+BACKLIGHT_TIMEOUT_CHOICES = [10, 15, 30, 60, 120, 300, None]
 
 # Debounce / scan timing
 # Kept deliberately light: a full sweep already drives every one of the 12

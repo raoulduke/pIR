@@ -566,6 +566,9 @@ def show(lcd: LCD, state: AppState) -> None:
                 state.active_device, state.active_location = signal_service.default_leaf_device(home)
 
             device, location = state.active_device, state.active_location
+            # Holds the Google TV connection open while it's the active
+            # device (and the backlight is on) — see androidtv_service.
+            androidtv_service.set_on_tv_screen(device == DEFAULT_ACTIVE_DEVICE)
             leaf_changed = (device, location) != previous_leaf
             if leaf_changed:
                 function_index = 0

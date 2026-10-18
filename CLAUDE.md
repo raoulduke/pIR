@@ -312,6 +312,24 @@ back out on any key press while that screen is active, deliberately
 scoped to that screen only (not any keypress app-wide) so browsing
 Wi-Fi/Menu/Lights elsewhere still lets the TV connection drop normally.
 
+**Held open on the Google TV screen** (2026-10-18): while Google TV is
+Active Device Control's active device **and** the backlight is on, the
+connection opens right away and stays open with no idle timeout
+(`androidtv_service`'s `set_on_tv_screen()`, called from
+`active_device_screen.py`'s loop, and `set_screen_lit()`, wired to
+`hardware/lcd.py`'s `set_backlight_listener()` in `main.py`). Switching
+away or the backlight turning off closes it at once; backlight-off also
+closes an on-demand connection from another screen. The wake press relights
+the backlight, which re-holds if you're on Google TV. Connecting sends no
+key, so playback isn't touched. A dropped connection (TV standby, Wi-Fi,
+missed pings) is noticed via the library protocol's `on_con_lost`
+(`_watch_connection()`, reading androidtvremote2 0.3.2's private
+`_remote_message_protocol`) and retried at 0/5/10/30/60s gaps while held.
+`_connect_lock` keeps that connect and a real send from both connecting at
+once. Elsewhere it's still connect-on-demand with the 30s idle timeout.
+Battery: the TV's ~5s keepalive ping now runs whenever you're looking at
+the Google TV screen, bounded by the backlight timeout.
+
 **Connection status** (2026-10-18): the Google TV screen's line 1 ends in
 `-` when the connection is closed, `+` while connecting and `*` when open
 (`app/constants.py`'s `ANDROIDTV_STATUS_CHARS`, plain ROM characters).

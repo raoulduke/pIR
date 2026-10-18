@@ -33,6 +33,14 @@ D-pad/Back press too (2026-09-09), even though those are plain IR and
 never call into this module otherwise, so navigating the TV by any input
 keeps an open connection warm instead of it dropping mid-session.
 
+Held open on the Google TV screen (2026-10-18): while that screen is the
+active device *and* the LCD backlight is on, the connection is opened
+right away and kept open with no idle timeout, reconnecting with backoff
+if the TV drops it — so a Home/YouTube press there never waits for a
+connect. Switching away or the backlight turning off closes it at once
+(set_on_tv_screen()/set_screen_lit()); the battery cost is bounded to
+time spent actually looking at that screen.
+
 The library is asyncio-only; the rest of this app is fully synchronous
 (hardware.input's blocking read_key() loop). Bridged here with a single
 dedicated event loop run forever in a background thread, started lazily on
@@ -62,6 +70,9 @@ _CALL_TIMEOUT_SECONDS = 5
 # and _send()'s own timeout can never fire.
 _CALL_BACKSTOP_SECONDS = _CALL_TIMEOUT_SECONDS + 2
 _IDLE_DISCONNECT_SECONDS = 30
+# Gaps between reconnect attempts while held, the last one repeating —
+# bounded anyway, since the hold ends with the backlight timeout.
+_HOLD_RETRY_SECONDS = (0, 5, 10, 30, 60)
 
 _loop: asyncio.AbstractEventLoop | None = None
 _remote: AndroidTVRemote | None = None
@@ -69,6 +80,15 @@ _connected = False
 _idle_handle: asyncio.TimerHandle | None = None
 _status = "closed"  # "closed" | "connecting" | "open" — see set_status_listener()
 _status_listener = None
+# Serializes connecting, so the hold's own connect and a real send
+# arriving mid-connect don't both call async_connect() on the same
+# AndroidTVRemote.
+_connect_lock = asyncio.Lock()
+# Held open while both are true — see the module docstring. Only touched
+# on the background loop.
+_on_tv_screen = False
+_screen_lit = True
+_hold_task: asyncio.Task | None = None
 
 
 def set_status_listener(listener) -> None:
@@ -131,6 +151,8 @@ def _arm_idle_timer() -> None:
     out rather than just the moment of connecting."""
     global _idle_handle
     _cancel_idle_timer()
+    if _held():
+        return  # no idle timeout while held
     _idle_handle = _ensure_loop().call_later(_IDLE_DISCONNECT_SECONDS, _disconnect_idle)
 
 
@@ -175,28 +197,114 @@ def keepalive() -> None:
         _loop.call_soon_threadsafe(_arm_idle_timer)
 
 
+def set_on_tv_screen(on: bool) -> None:
+    """Whether the Google TV screen is the active device — screens/
+    active_device_screen.py calls this on every pass of its loop.
+    Non-blocking."""
+    _ensure_loop().call_soon_threadsafe(_update_hold, on, None)
+
+
+def set_screen_lit(lit: bool) -> None:
+    """Whether the LCD backlight is on — wired to hardware/lcd.py's
+    set_backlight_listener() in main.py. Off also closes a connection
+    opened on demand from another screen. Non-blocking."""
+    _ensure_loop().call_soon_threadsafe(_update_hold, None, lit)
+
+
+def _held() -> bool:
+    return _on_tv_screen and _screen_lit
+
+
+def _update_hold(on_tv_screen: bool | None, screen_lit: bool | None) -> None:
+    global _on_tv_screen, _screen_lit, _hold_task
+    was_held = _held()
+    if on_tv_screen is not None:
+        _on_tv_screen = on_tv_screen
+    if screen_lit is not None:
+        _screen_lit = screen_lit
+    if _held() == was_held:
+        if screen_lit is False:
+            _reset_connection()
+        return
+    if _held():
+        _cancel_idle_timer()
+        _start_hold_connect()
+    else:
+        if _hold_task is not None:
+            _hold_task.cancel()
+            _hold_task = None
+        _reset_connection()
+
+
+def _start_hold_connect() -> None:
+    global _hold_task
+    if _hold_task is None or _hold_task.done():
+        _hold_task = _ensure_loop().create_task(_hold_connect())
+
+
+async def _hold_connect() -> None:
+    """Connect, retrying at _HOLD_RETRY_SECONDS gaps, for as long as the
+    hold lasts and the connection isn't open. Connecting is just the TLS
+    handshake and the protocol's own configuration exchange — no key
+    press — so it doesn't touch what's playing."""
+    attempt = 0
+    while _held() and not _connected:
+        delay = _HOLD_RETRY_SECONDS[min(attempt, len(_HOLD_RETRY_SECONDS) - 1)]
+        if delay:
+            await asyncio.sleep(delay)
+            if not _held() or _connected:
+                return
+        attempt += 1
+        try:
+            async with asyncio.timeout(_CALL_TIMEOUT_SECONDS):
+                await _ensure_connected()
+        except Exception as e:
+            _reset_connection()
+            log.warning("Hold connect failed (attempt %d): %s", attempt, _describe_chain(e))
+
+
+async def _watch_connection(protocol) -> None:
+    """Notices the TV dropping the connection (standby, Wi-Fi, or the
+    library closing it after missed pings) instead of leaving "open" up
+    until the next send fails — and reconnects if held. androidtvremote2
+    only exposes the drop through its protocol's on_con_lost future, so
+    this reads its private _remote_message_protocol (androidtvremote2
+    0.3.2): a mismatch means we closed or replaced it ourselves."""
+    await protocol.on_con_lost
+    if _remote is None or _remote._remote_message_protocol is not protocol:
+        return
+    log.info("Google TV connection lost")
+    _reset_connection()
+    if _held():
+        _start_hold_connect()
+
+
 async def _ensure_connected() -> AndroidTVRemote:
     """Returns an open, ready-to-send AndroidTVRemote, connecting first if
     idle-disconnected or this is the first call. Runs entirely on the
     background loop (called only from coroutines passed to _call())."""
     global _remote, _connected
 
-    if _remote is None:
-        ip = config_service.get_androidtv_ip()
-        certfile = config_service.get_androidtv_certfile()
-        keyfile = config_service.get_androidtv_keyfile()
-        if not ip or not certfile or not keyfile:
-            raise CannotConnect("androidtv not configured")
-        _remote = AndroidTVRemote(client_name="pi-ir", certfile=certfile, keyfile=keyfile, host=ip)
-        await _remote.async_generate_cert_if_missing()
+    async with _connect_lock:
+        if _remote is None:
+            ip = config_service.get_androidtv_ip()
+            certfile = config_service.get_androidtv_certfile()
+            keyfile = config_service.get_androidtv_keyfile()
+            if not ip or not certfile or not keyfile:
+                raise CannotConnect("androidtv not configured")
+            _remote = AndroidTVRemote(client_name="pi-ir", certfile=certfile, keyfile=keyfile, host=ip)
+            await _remote.async_generate_cert_if_missing()
 
-    if not _connected:
-        started = time.monotonic()
-        _set_status("connecting")
-        await _remote.async_connect()
-        _connected = True
-        _set_status("open")
-        log.info("Connected to Google TV at %s in %.1fs", _remote.host, time.monotonic() - started)
+        if not _connected:
+            started = time.monotonic()
+            _set_status("connecting")
+            await _remote.async_connect()
+            _connected = True
+            _set_status("open")
+            log.info("Connected to Google TV at %s in %.1fs", _remote.host, time.monotonic() - started)
+            asyncio.get_running_loop().create_task(
+                _watch_connection(_remote._remote_message_protocol)
+            )
 
     _arm_idle_timer()
     return _remote

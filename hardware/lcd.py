@@ -152,9 +152,18 @@ class LCD:
         # wake() re-arms.
         self._idle_timer: threading.Timer | None = None
         self._idle_gen = 0
+        self._backlight_listener = None
         self._idle_seconds: float | None = BACKLIGHT_IDLE_SECONDS
         self.clear()
         self.wake()
+
+    def set_backlight_listener(self, listener) -> None:
+        """Register *listener(lit)*, called when the idle timer turns the
+        backlight off (False) and when wake() turns it back on (True) —
+        main.py wires it to services/androidtv_service.py's
+        set_screen_lit(). Called outside the lock, from the timer's thread
+        or wake()'s caller, so it must be quick and must not raise."""
+        self._backlight_listener = listener
 
     def set_idle_seconds(self, seconds: float | None) -> None:
         """Change the backlight timeout (None = never off) and restart the
@@ -184,12 +193,17 @@ class LCD:
                 )
                 self._idle_timer.daemon = True
                 self._idle_timer.start()
+        if was_off and self._backlight_listener is not None:
+            self._backlight_listener(True)
         return was_off
 
     def _idle_off(self, gen: int) -> None:
         with self._lock:
-            if gen == self._idle_gen:
-                self._lcd.backlight_enabled = False
+            if gen != self._idle_gen:
+                return
+            self._lcd.backlight_enabled = False
+        if self._backlight_listener is not None:
+            self._backlight_listener(False)
 
     def stop_idle_timer(self) -> None:
         """Backlight on for good — on exit, so "Program stopped" stays

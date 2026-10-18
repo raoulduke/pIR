@@ -44,6 +44,9 @@ def main() -> None:
     # Backlight idle-off: any key relights it, and the press that lights a
     # dark screen does nothing else — see hardware/lcd.py's wake().
     set_wake_handler(lambda key: lcd.wake())
+    # The Google TV connection is held open on its screen only while the
+    # backlight is on — see services/androidtv_service.py's docstring.
+    lcd.set_backlight_listener(androidtv_service.set_screen_lit)
     lcd.set_idle_seconds(config_service.get_backlight_timeout_seconds())
     # Google TV screen's connection status, in its line 1's last column —
     # see hardware/lcd.py's write_with_status().

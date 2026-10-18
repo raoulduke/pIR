@@ -20,7 +20,7 @@ print(f"[BOOT] PID={os.getpid()}")
 
 from app.startup import initialize
 from app import quick_actions
-from app.constants import ANDROIDTV_STATUS_CHARS, STATEMENT_SHUTTING_DOWN, STATEMENT_OFF_WHEN_DARK
+from app.constants import ANDROIDTV_STATUS_CHARS, STATEMENT_SHUTTING_DOWN
 from hardware.lcd import lcd
 from hardware.input import (
     set_quick_action_handler, set_key_observer, set_wake_handler, close as close_input,
@@ -97,7 +97,7 @@ def main() -> None:
         print("[BOOT] interrupted")
         try:
             if _powering_off():
-                lcd.write(STATEMENT_SHUTTING_DOWN, STATEMENT_OFF_WHEN_DARK)
+                lcd.write(STATEMENT_SHUTTING_DOWN)
             else:
                 lcd.write("Program stopped")
         except Exception:

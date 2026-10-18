@@ -16,8 +16,9 @@
 #
 # Two signals: the ACT LED goes dark, and the LCD is cleared with its
 # backlight switched off. main.py leaves the backlight on with "Shutting
-# down... / Off when dark" when the app exits during a power-off, so the
-# screen going dark here is the cue. Neither comes back on its own — the
+# down..." when the app exits during a power-off, so the screen going dark
+# here marks the end of teardown (the ACT LED still blinks a few times
+# after, before the halt is complete). Neither comes back on its own — the
 # Pi's 5V header pins (which feed the LCD) are hard-wired to the
 # PowerBoost's PWR IN feed, nothing software can gate — so both stay dark
 # until the battery switch is flipped.

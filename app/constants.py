@@ -29,7 +29,6 @@ STATEMENT_NO_SIGNALS = "No signals"
 # Exit message during an OS power-off: the backlight stays on until
 # systemd/system-shutdown/shutdown-signal.sh turns it off at the last moment.
 STATEMENT_SHUTTING_DOWN = "Shutting down..."
-STATEMENT_OFF_WHEN_DARK = "Off when dark"
 # A Hue bulb the bridge can't reach — almost always cut at the wall switch.
 STATEMENT_LIGHT_OFF = "* Not connected"
 

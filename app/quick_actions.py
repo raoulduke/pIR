@@ -20,7 +20,7 @@ from hardware.input import (
     KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
     KEY_DEVICE_PREV, KEY_DEVICE_NEXT, KEY_MENU, KEY_QUIT,
-    DeviceCycledAway,
+    DeviceCycledAway, is_key_held,
 )
 from services import (
     device_slot_service, preset_service, signal_service, config_service, home_service,
@@ -117,6 +117,10 @@ def _handle_device(key: str) -> None:
         time.sleep(1)
         return
 
+    if slot.get("smooth"):
+        _stream_device(key, label, button, path)
+        return
+
     try:
         ir_transmitter.transmit(path)
         lcd.write(label, button.replace("_", " ").title())
@@ -124,6 +128,26 @@ def _handle_device(key: str) -> None:
         log.error("IR transmit failed (%s): %s", path, e)
         lcd.write("TX Error", str(e)[:16])
     time.sleep(0.6)
+
+
+def _stream_device(key: str, label: str, button: str, path) -> None:
+    """A "smooth" slot (config/keypad_devices.json): send the signal like
+    its own remote does while held — one frame, repeated at the remote's
+    pace until release (hardware/ir_transmitter.py's stream()) — so e.g.
+    receiver volume ramps smoothly instead of one step per press. Blocks
+    for the hold, showing the button meanwhile; a tap is one frame, shown
+    for at least ASYNC_SEND_FLASH_SECONDS."""
+    lcd.write(label, button.replace("_", " ").title())
+    started = time.monotonic()
+    try:
+        ir_transmitter.stream(path, lambda: is_key_held(key))
+    except HardwareError as e:
+        log.error("IR stream failed (%s): %s", path, e)
+        lcd.write("TX Error", str(e)[:16])
+        time.sleep(1)
+        return
+    lcd.wake()  # a long hold mustn't leave the backlight timed out
+    time.sleep(max(0.0, ASYNC_SEND_FLASH_SECONDS - (time.monotonic() - started)))
 
 
 def _handle_voice_device(label: str, slot: dict, direction: str) -> None:

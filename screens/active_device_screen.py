@@ -324,11 +324,16 @@ def _device_label(device: str, location: str) -> str:
     every individual leaf's label is redundant rather than disambiguating
     — unlike a non-grouped device (e.g. "Bedroom AC" if there were ever
     more than one AC) where dropping the suffix would lose real
-    information."""
+    information.
+
+    Falls back to just the device name when location + name won't fit
+    line 1's 16 columns ("Living Room Receiver" → "Receiver") rather than
+    cutting the name off mid-word."""
     if device in MENU_DEVICE_LABELS:
         return format_name(location) if location else MENU_DEVICE_LABELS[device]
     name = format_name(device)
-    return f"{format_name(location)} {name}" if location else name
+    label = f"{format_name(location)} {name}" if location else name
+    return label if len(label) <= 16 else name
 
 
 def _menu_leaf_label(home: str, device: str, location: str) -> str:

@@ -3,9 +3,10 @@
     "label": "Receiver",
     "home": "home",
     "device": "receiver",
-    "location": "",
+    "location": "living_room",
     "up_button": "volume_up",
-    "down_button": "volume_down"
+    "down_button": "volume_down",
+    "smooth": true
   },
   {
     "label": "AC",

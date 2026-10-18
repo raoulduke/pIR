@@ -110,6 +110,7 @@ config/
 - **Exit behavior**: on error, LCD line 1 shows the error message, line 2 shows "Program stopped". On clean exit, line 1 shows "Program stopped". LCD is **never** cleared on exit.
 - **Menu-device grouping** (2026-09-09): `< Device/Device >` collapses a device's per-location leaves into a single top-level stop instead of listing each one — originally light-only, generalized to `app/constants.py`'s `MENU_DEVICE_LABELS = {"light": "Lights", "tv": "TVs"}` when Living Room TV/Bedroom TV joined the light devices under this scheme. Enter drills into the group's first leaf; Left/Right (otherwise unused on a fixed-mapping-shaped leaf) cycles between the rest, since they never appear as separate top-level stops. `screens/active_device_screen.py`'s `_device_label()` drops the device-name suffix for any grouped leaf ("Lamp", "Living Room", not "Lamp Light"/"Living Room TV") and frames the label in `<>` on line 1 whenever the group has more than one leaf to cycle to — same convention the plain multi-function cycling branch already used on line 2. See `docs/active-device-control-plan.md`'s "Extended 2026-09-09" notes for the full mechanics, including why a grouped leaf that isn't itself fixed-mapping-shaped (a lone function not named "power", e.g. Living Room TV's "Picture" before it also got a "Power" signal) still needs its own resolution logic distinct from `_fixed_mapping_functions()`.
 - **Learn picks from existing devices/locations instead of typing** (2026-09-09): `screens/receive_screen.py`'s device and location steps show a list (`services/signal_service.py`'s `list_devices()`/`list_locations()`), `New Device`/`New Location` first, when anything already exists — adding another button to an already-learned device no longer means re-typing e.g. "tv"/"living_room" on the D-pad composer every time. A device with no locations at all (buttons directly under it, e.g. `ac`) skips the location step entirely, same as always. Typing is still how you name the button itself (the one genuinely new piece of information) and how you add a brand-new device/location.
+- **Preset slots fill from 1, no gaps** (2026-10-18): each device's presets in `config/keypad_presets.json`'s `by_device` start at slot `"1"` and run left to right with none skipped. The preset line packs configured slots left to right, so a device with only `"2"`/`"4"` would show them in display positions that don't match the physical Preset buttons.
 - **Non-blocking voice/hue/IR step execution** (2026-09-09): `services/preset_service.py`'s `run_steps_background()` queues steps onto a single dedicated background worker thread (mirrors `androidtv_service.py`'s event-loop-thread bridge) instead of the caller blocking on `run_steps()` directly — a voice or Hue step is a real network round-trip (`voice_service.send_command()`'s timeout is up to 15s), and blocking used to leave the keypad unresponsive for however long that took. Every call site (Active Device Control's per-leaf functions, Preset Function 1-4, the voice Command screen) shows "Sending..."/"Running..." for a brief fixed flash (`app/constants.py`'s `ASYNC_SEND_FLASH_SECONDS`) — long enough to actually be seen before the next screen redraw would otherwise overwrite it — then returns; a failure overwrites the message once the background call actually finishes, which may be after the screen has already moved on. One worker thread, not one per call, so two quick presses run in order rather than racing each other through the in-memory assumed-state dicts (`_ir_toggle_state`/`_voice_toggle_state`) `ir_toggle`/`voice_toggle` steps use. `hardware/lcd.py` gained a lock around every write for this reason — a background thread reporting a late failure can now race the main loop's own writes.
 
 ## Python Environment
@@ -448,6 +449,25 @@ sends a saved code on Enter.
   in Learn, Rename or Active Device Control. Tracked in git like
   `signals/`: commit and push saves made on the Pi from the Pi, then pull
   on WSL2.
+
+## Smooth hold for Device keys (2026-10-18)
+
+A Device slot with `"smooth": true` in `config/keypad_devices.json`
+(currently just Device 1, the Receiver's volume) behaves like its own
+remote while held: `hardware/ir_transmitter.py`'s `stream()` sends one
+frame of the signal, then repeats it at the capture's own frame period
+(~85ms for the receiver) until release, so the receiver ramps volume
+smoothly; a tap is exactly one frame. It writes straight to `/dev/lirc0`
+(carrier via the `LIRC_SET_SEND_CARRIER` ioctl) rather than spawning
+`ir-ctl` per frame, which takes ~103ms on its own. Release comes from the
+keypad scanner directly (`hardware.input.is_key_held()`), not the event
+queue, so it stops on time even if the main loop is busy. USB/SSH input
+has no release, so it sends one frame per press. Other slots (AC
+temperature, light brightness) keep the one-step-per-press `ir-ctl` path.
+
+The Receiver's signals live under `signals/home/receiver/living_room/`
+(moved 2026-10-18); its line-1 label falls back to just `Receiver`, since
+"Living Room Receiver" doesn't fit 16 columns.
 
 ## IR Tools & Integrations
 

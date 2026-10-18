@@ -278,6 +278,8 @@ class KeypadScanner:
         self._repeatable_keys = set(_REPEATABLE_KEYS)
         self._repeat_interval = KEYPAD_REPEAT_INTERVAL_SECONDS
         self._hold_keys: dict[str, str] = {}
+        # The key physically held right now, or None — see is_held().
+        self._held_key: str | None = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -308,6 +310,14 @@ class KeypadScanner:
         docs/active-device-control-plan.md's "Rejected: long-press
         Enter"). Same lock-free reasoning as set_repeatable_keys()."""
         self._hold_keys = dict(holds)
+
+    def is_held(self, key: str) -> bool:
+        """True while *key* is still physically held — set just before its
+        press is emitted and cleared on release, so a tap released before
+        its consumer even looks reads as not held. For hold-to-stream IR
+        (hardware/ir_transmitter.py's stream()), which needs the release
+        directly rather than through the event queue."""
+        return self._held_key == key
 
     def set_repeat_interval(self, seconds: float | None) -> None:
         """Runtime override of the pace once a repeatable key is held past
@@ -404,17 +414,21 @@ class KeypadScanner:
                 continue
 
             key = resolve_label(label)
-            hold_event = self._hold_keys.get(key)
-            if hold_event is not None:
-                self._tap_or_hold(reading, key, hold_event)
-                continue
+            self._held_key = key
+            try:
+                hold_event = self._hold_keys.get(key)
+                if hold_event is not None:
+                    self._tap_or_hold(reading, key, hold_event)
+                    continue
 
-            self._emit(key)
+                self._emit(key)
 
-            if key in self._repeatable_keys:
-                self._repeat_while_held(reading, key)
-            else:
-                _wait_for_release(self._stop, self._scan)
+                if key in self._repeatable_keys:
+                    self._repeat_while_held(reading, key)
+                else:
+                    _wait_for_release(self._stop, self._scan)
+            finally:
+                self._held_key = None
 
     def pop(self) -> str | None:
         """Drain one wake byte and return the corresponding key, if any."""

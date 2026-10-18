@@ -324,6 +324,14 @@ def set_hold_keys(holds: dict[str, str]) -> None:
         reader.keypad.set_hold_keys(holds)
 
 
+def is_key_held(key: str) -> bool:
+    """True while *key* is still physically held on the keypad. Always
+    False for USB/SSH input, which reports presses only — a hold-to-
+    stream consumer then just sends once, like a tap."""
+    reader = _get_reader()
+    return reader.keypad is not None and reader.keypad.is_held(key)
+
+
 def set_repeat_interval(seconds: float | None) -> None:
     """Forward to the physical keypad's scanner (see hardware/keypad.py's
     KeypadScanner.set_repeat_interval), if one is present — a no-op

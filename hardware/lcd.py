@@ -39,39 +39,6 @@ GLYPH_CC_RIGHT = chr(3)
 GLYPH_BACK_ARROW = chr(4)
 GLYPH_BACK_SHAFT = chr(5)
 
-# Two-cell status box (slots 6-7, which nothing else uses): the Google TV
-# screen always draws these two at the end of line 1, and
-# set_status_glyph() only redefines what they look like — a boxed "*"
-# (open), a boxed "..." (connecting), or blank (closed). Never writes
-# DDRAM, so a status change from a background thread can't draw over
-# whatever other screen is up; it only shows where the glyphs are drawn.
-GLYPH_STATUS_LEFT = chr(6)
-GLYPH_STATUS_RIGHT = chr(7)
-_BOX_LEFT_EDGE, _BOX_RIGHT_EDGE = 0b10000, 0b00010
-
-
-def _boxed(left_rows: list[int], right_rows: list[int]) -> tuple[list[int], list[int]]:
-    """Wrap 5 interior rows (left cell cols 1-4, right cell cols 0-2) in a
-    1px box: rows 0 and 6 solid, row 7 empty like the ROM's letters."""
-    left = [0b11111] + [_BOX_LEFT_EDGE | r for r in left_rows] + [0b11111, 0]
-    right = [0b11110] + [_BOX_RIGHT_EDGE | r for r in right_rows] + [0b11110, 0]
-    return left, right
-
-
-# Interior is 7px wide (left cols 1-4, right cols 0-2), centered on the
-# left cell's last column; the LCD's gap between cells runs through it.
-_STATUS_GLYPHS = {
-    "open": _boxed(  # asterisk
-        [0, 0b00101, 0b00011, 0b00101, 0],
-        [0, 0b01000, 0b10000, 0b01000, 0],
-    ),
-    "connecting": _boxed(  # ellipsis
-        [0, 0, 0b00101, 0, 0],
-        [0, 0, 0b01000, 0, 0],
-    ),
-    "closed": ([0] * 8, [0] * 8),
-}
-
 # Down arrow for list screens (screens/widgets/format.py's with_arrows()):
 # the ROM's "^" (A00 0x5E: rows 0-2) mirrored top to bottom within the
 # glyph's 7 rows, since the ROM has no down arrow. Slot 0 — the one slot
@@ -170,7 +137,13 @@ class LCD:
         for location, bits in _BAR_PARTIAL_BITS.items():
             self._lcd.create_char(location, [bits] * 8)
         self._lcd.create_char(0, _ARROW_DOWN_ROWS)
-        self.set_status_glyph("closed")
+        # Status character in line 1's last column (write_with_status()).
+        # _status_shown is True only while the screen that drew it is
+        # still up: every other write that touches line 1 clears it, so
+        # set_status_char() from a background thread never draws over
+        # another screen.
+        self._status_char = " "
+        self._status_shown = False
         # Backlight idle-off. The backpack's PCF8574 P3 switches the
         # backlight (confirmed by eye 2026-10-18), which RPLCD drives as
         # backlight_enabled and re-sends with every write, so writes made
@@ -230,10 +203,12 @@ class LCD:
 
     def clear(self) -> None:
         with self._lock:
+            self._status_shown = False
             self._lcd.clear()
 
     def write(self, line1: str = "", line2: str = "") -> None:
         with self._lock:
+            self._status_shown = False
             self._lcd.clear()
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(line1[:16].ljust(16))
@@ -247,6 +222,7 @@ class LCD:
         screens/network_screen.py's background rescan not disturbing the
         network currently highlighted."""
         with self._lock:
+            self._status_shown = False
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(text[:16].ljust(16))
 
@@ -260,14 +236,28 @@ class LCD:
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(text[:16].ljust(16))
 
-    def set_status_glyph(self, status: str) -> None:
-        """Redefine the status box (GLYPH_STATUS_LEFT/RIGHT) as "open",
-        "connecting" or "closed". Wired to services/androidtv_service.py's
-        set_status_listener() in main.py."""
-        left, right = _STATUS_GLYPHS[status]
+    def write_with_status(self, line1: str = "", line2: str = "") -> None:
+        """write(), with *line1* cut to 15 columns and the current status
+        character (set_status_char()) in the 16th, kept up to date there
+        until something else redraws line 1. Used by the Google TV screen
+        (screens/active_device_screen.py) for its connection status."""
         with self._lock:
-            self._lcd.create_char(6, left)
-            self._lcd.create_char(7, right)
+            self._lcd.clear()
+            self._lcd.cursor_pos = (0, 0)
+            self._lcd.write_string(line1[:15].ljust(15) + self._status_char)
+            self._lcd.cursor_pos = (1, 0)
+            self._lcd.write_string(line2[:16].ljust(16))
+            self._status_shown = True
+
+    def set_status_char(self, char: str) -> None:
+        """Change the status character, redrawing it in place only if
+        write_with_status()'s screen is still up. Wired to services/
+        androidtv_service.py's set_status_listener() in main.py."""
+        with self._lock:
+            self._status_char = char
+            if self._status_shown:
+                self._lcd.cursor_pos = (0, 15)
+                self._lcd.write_string(char)
 
     def load_preset_glyphs(self) -> None:
         """Replace the progress bar's CGRAM slots with the preset-line
@@ -294,6 +284,7 @@ class LCD:
         bar = bar.ljust(16)
 
         with self._lock:
+            self._status_shown = False
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(line1[:16].ljust(16))
             self._lcd.cursor_pos = (1, 0)

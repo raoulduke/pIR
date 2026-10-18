@@ -74,8 +74,8 @@ _status_listener = None
 def set_status_listener(listener) -> None:
     """Register *listener(status)*, called with "connecting", "open" or
     "closed" whenever the connection changes — main.py wires it to
-    hardware/lcd.py's set_status_glyph(), the Google TV screen's status
-    box. Called on the background loop's thread, so it must be quick and
+    hardware/lcd.py's set_status_char(), the Google TV screen's status
+    character. Called on the background loop's thread, so it must be quick and
     must not raise."""
     global _status_listener
     _status_listener = listener

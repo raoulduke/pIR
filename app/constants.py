@@ -71,6 +71,10 @@ WIFI_SCAN_STOP_AFTER_UNCHANGED = 5  # give up auto-rescanning after this many fi
 # that gets raw D-pad passthrough instead of a cycled function list.
 DEFAULT_ACTIVE_DEVICE = "google_tv"
 
+# Its line 1's last column: the Android TV Remote connection's status
+# (services/androidtv_service.py's set_status_listener()).
+ANDROIDTV_STATUS_CHARS = {"closed": "-", "connecting": "+", "open": "*"}
+
 # Devices whose per-location leaves collapse into a single top-level
 # < Device/Device > stop instead of appearing individually — device name
 # -> the label shown on that stop's "Press Enter" screen. Enter there

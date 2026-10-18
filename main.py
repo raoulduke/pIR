@@ -20,6 +20,7 @@ print(f"[BOOT] PID={os.getpid()}")
 
 from app.startup import initialize
 from app import quick_actions
+from app.constants import ANDROIDTV_STATUS_CHARS
 from hardware.lcd import lcd
 from hardware.input import (
     set_quick_action_handler, set_key_observer, set_wake_handler, close as close_input,
@@ -44,9 +45,12 @@ def main() -> None:
     # dark screen does nothing else — see hardware/lcd.py's wake().
     set_wake_handler(lambda key: lcd.wake())
     lcd.set_idle_seconds(config_service.get_backlight_timeout_seconds())
-    # Google TV screen's connection status box — see hardware/lcd.py's
-    # GLYPH_STATUS_LEFT/RIGHT.
-    androidtv_service.set_status_listener(lcd.set_status_glyph)
+    # Google TV screen's connection status, in its line 1's last column —
+    # see hardware/lcd.py's write_with_status().
+    lcd.set_status_char(ANDROIDTV_STATUS_CHARS["closed"])
+    androidtv_service.set_status_listener(
+        lambda status: lcd.set_status_char(ANDROIDTV_STATUS_CHARS[status])
+    )
 
     def _handle_signal(signum, frame):
         print(f"[BOOT] signal {signum}")

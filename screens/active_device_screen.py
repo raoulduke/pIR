@@ -336,7 +336,7 @@ def _device_label(device: str, location: str) -> str:
     return label if len(label) <= 16 else name
 
 
-def _menu_leaf_label(home: str, device: str, location: str, width: int = 16) -> str:
+def _menu_leaf_label(home: str, device: str, location: str) -> str:
     """Line-1 title for a MENU_DEVICE_LABELS leaf (light/tv) — same as
     _device_label(), but framed in <> when there's more than one leaf in
     its group to Left/Right cycle to (nothing to cycle to, so no arrows,
@@ -344,7 +344,7 @@ def _menu_leaf_label(home: str, device: str, location: str, width: int = 16) -> 
     _cycle_line2() already uses on line 2 for a plain multi-function
     device's selected function name, so it reads the same way here."""
     label = _device_label(device, location)
-    return frame(label, width) if len(menu_leaves(home, device)) > 1 else label
+    return frame(label) if len(menu_leaves(home, device)) > 1 else label
 
 
 # Hand-picked short forms for Preset Function names (2026-09-1x) — chosen
@@ -534,12 +534,19 @@ def _check_hue(lcd: LCD, state: AppState, device: str, location: str, hue_ids: l
     hue_service.check_reachable_background(hue_ids, _on_done)
 
 
+# Stands in for the status character while laying out line 1; never drawn.
+_STATUS_SLOT = "\x00"
+
+
 def _draw_menu_leaf(lcd: LCD, home: str, device: str, location: str, hue_ids: list[str], line2: str) -> None:
-    """A Hue light's line 1 ends in its reachability status character."""
-    if hue_ids:
-        lcd.write_with_status(_menu_leaf_label(home, device, location, width=15), line2, source="hue")
-    else:
+    """A Hue light's reachability status character goes right after its
+    name ("<  Bedroom*   >"), inside the frame, so the arrows stay put."""
+    if not hue_ids:
         lcd.write(_menu_leaf_label(home, device, location), line2)
+        return
+    name = _device_label(device, location)[:13] + _STATUS_SLOT
+    line1 = frame(name) if len(menu_leaves(home, device)) > 1 else name
+    lcd.write_with_status(line1.replace(_STATUS_SLOT, " "), line2, source="hue", col=line1.index(_STATUS_SLOT))
 
 
 def render_after_cycle(lcd: LCD, state: AppState) -> None:

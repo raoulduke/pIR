@@ -476,12 +476,13 @@ one that's on, but `reachable` can (`services/hue_service.py`'s
 `is_reachable()`). Landing on a Hue light in Lights (Bedroom, Kitchen
 South, Kitchen North, Kitchen) checks each of its bulbs once in the
 background (`check_reachable_background()`), so cycling never waits on
-the bridge. Line 1 ends in the same status characters as Google TV
-(`app/constants.py`'s `HUE_STATUS_CHARS`): `+` while checking, `*`
-reachable, `-` not (the `<>` frame shrinks to 15 columns to make room).
-`hardware/lcd.py` keeps one status character per source (`"androidtv"`,
-`"hue"`), so a Google TV connection change never draws over a Hue
-light's. If every bulb on the leaf is unreachable nothing is sent:
+the bridge. The light's name on line 1 gets the same status characters
+as Google TV appended (`app/constants.py`'s `HUE_STATUS_CHARS`): `+`
+while checking, `*` reachable, `-` not — `<   Bedroom*   >`, inside the
+frame so the `<>` arrows stay at the edges (`hardware/lcd.py`'s
+`write_with_status()` takes the column). `hardware/lcd.py` keeps one
+status character per source (`"androidtv"`, `"hue"`), so a Google TV
+connection change never draws over a Hue light's. If every bulb on the leaf is unreachable nothing is sent:
 Enter/Up/Down only re-check (in case it's back on), and its presets show
 "Off at switch". Kitchen with one bulb off still sends to the other (that
 bulb's step fails as "Failed: Light"). A failed check (bridge or Wi-Fi

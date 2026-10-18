@@ -145,6 +145,7 @@ class LCD:
         # another source's character.
         self._status_chars: dict[str, str] = {}
         self._status_shown: str | None = None
+        self._status_col = 15
         # Backlight idle-off. The backpack's PCF8574 P3 switches the
         # backlight (confirmed by eye 2026-10-18), which RPLCD drives as
         # backlight_enabled and re-sends with every write, so writes made
@@ -251,19 +252,21 @@ class LCD:
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(text[:16].ljust(16))
 
-    def write_with_status(self, line1: str = "", line2: str = "", source: str = "androidtv") -> None:
-        """write(), with *line1* cut to 15 columns and *source*'s current
-        status character (set_status_char()) in the 16th, kept up to date
-        there until something else redraws line 1. Used by
+    def write_with_status(self, line1: str = "", line2: str = "", source: str = "androidtv", col: int = 15) -> None:
+        """write(), with *source*'s current status character
+        (set_status_char()) at line 1's column *col* (default the last),
+        kept up to date there until something else redraws line 1. Used by
         screens/active_device_screen.py: the Google TV screen's connection
-        status and a Hue light's reachability."""
+        status and a Hue light's reachability, right after its name."""
+        line1 = line1[:16].ljust(16)
         with self._lock:
             self._lcd.clear()
             self._lcd.cursor_pos = (0, 0)
-            self._lcd.write_string(line1[:15].ljust(15) + self._status_chars.get(source, " "))
+            self._lcd.write_string(line1[:col] + self._status_chars.get(source, " ") + line1[col + 1:])
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(line2[:16].ljust(16))
             self._status_shown = source
+            self._status_col = col
 
     def set_status_char(self, char: str, source: str = "androidtv") -> None:
         """Change *source*'s status character, redrawing it in place only
@@ -271,7 +274,7 @@ class LCD:
         with self._lock:
             self._status_chars[source] = char
             if self._status_shown == source:
-                self._lcd.cursor_pos = (0, 15)
+                self._lcd.cursor_pos = (0, self._status_col)
                 self._lcd.write_string(char)
 
     def load_preset_glyphs(self) -> None:

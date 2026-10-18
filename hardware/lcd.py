@@ -55,6 +55,12 @@ _ARROW_DOWN_ROWS = [
     0b00100,
     0b00000,
 ]
+# Ellipsis for a name cut short (screens/widgets/format.py's
+# fit_with_suffix()): three 1px dots on the baseline row, one cell instead
+# of "...". The ROM has none. Slot 6, unused by the bar and preset glyphs,
+# loaded once at startup like the down arrow.
+GLYPH_ELLIPSIS = chr(6)
+_ELLIPSIS_ROWS = [0, 0, 0, 0, 0, 0, 0b10101, 0]
 _PRESET_GLYPHS = {
     # Solid house with a door: a 1px gap 2px up the bottom center.
     1: [
@@ -137,6 +143,7 @@ class LCD:
         for location, bits in _BAR_PARTIAL_BITS.items():
             self._lcd.create_char(location, [bits] * 8)
         self._lcd.create_char(0, _ARROW_DOWN_ROWS)
+        self._lcd.create_char(6, _ELLIPSIS_ROWS)
         # Status character in line 1's last column (write_with_status()).
         # _status_shown is True only while the screen that drew it is
         # still up: every other write that touches line 1 clears it, so

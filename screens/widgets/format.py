@@ -1,4 +1,4 @@
-from hardware.lcd import GLYPH_ARROW_DOWN
+from hardware.lcd import GLYPH_ARROW_DOWN, GLYPH_ELLIPSIS
 
 # Known acronyms, uppercased in full rather than title-cased — checked
 # per word, not on the whole name, so "google_tv" -> "Google TV" the same
@@ -47,6 +47,16 @@ def frame(text: str) -> str:
 # glyph mirroring it.
 ARROW_UP = "^"
 ARROW_DOWN = GLYPH_ARROW_DOWN
+
+
+def fit_with_suffix(name: str, suffix: str, width: int) -> str:
+    """*name* left, *suffix* right-aligned, *width* characters in all, at
+    least one space between. A name too long for that is cut and ends in
+    an ellipsis glyph, straight against the suffix: "Westingh…38/38"."""
+    room = width - len(suffix)
+    if len(name) < room:
+        return name.ljust(room) + suffix
+    return name[:room - 1] + GLYPH_ELLIPSIS + suffix
 
 
 def with_arrows(line1: str, line2: str, up: bool, down: bool) -> tuple[str, str]:

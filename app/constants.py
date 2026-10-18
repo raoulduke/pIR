@@ -158,9 +158,9 @@ ASYNC_SEND_FLASH_SECONDS = 0.4
 BACKLIGHT_IDLE_SECONDS = 30
 
 # Settings menu (screens/settings_screen.py). Backlight's choices, in
-# seconds; None is "Never" (always on).
+# seconds; None is "Never" (always on), listed first.
 SETTINGS_BACKLIGHT = "Backlight"
-BACKLIGHT_TIMEOUT_CHOICES = [10, 15, 30, 60, 120, 300, None]
+BACKLIGHT_TIMEOUT_CHOICES = [None, 5, 10, 15, 20, 25, 30]
 
 # Debounce / scan timing
 # Kept deliberately light: a full sweep already drives every one of the 12

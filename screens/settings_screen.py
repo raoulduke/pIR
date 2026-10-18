@@ -49,9 +49,10 @@ def _backlight(lcd: LCD) -> str | None:
     current = config_service.get_backlight_timeout_seconds()
     choices = list(BACKLIGHT_TIMEOUT_CHOICES)
     if current not in choices:
-        # A hand-edited settings.json value: show it in order so it can
-        # still be kept.
-        choices.insert(sum(1 for c in choices if c is not None and c < current), current)
+        # A value saved before the choices changed, or hand-edited into
+        # settings.json: show it in order so it can still be kept. Never
+        # stays first.
+        choices.insert(1 + sum(1 for c in choices if c is not None and c < current), current)
 
     labels = [_label(c) + (_CURRENT_SUFFIX if c == current else "") for c in choices]
     choice = select_from_list(

@@ -96,7 +96,7 @@ def main() -> None:
 
     finally:
         try:
-            lcd.stop_idle_timer()  # keep "Program stopped" readable
+            lcd.stop_idle_timer()  # backlight off; shutdown-signal.sh relights it
         except Exception:
             pass
         close_input()

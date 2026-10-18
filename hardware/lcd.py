@@ -206,14 +206,15 @@ class LCD:
             self._backlight_listener(False)
 
     def stop_idle_timer(self) -> None:
-        """Backlight on for good — on exit, so "Program stopped" stays
-        readable after the app (and its timer) is gone."""
+        """Backlight off for good — on exit. On an OS shutdown the screen
+        stays dark until systemd/system-shutdown/shutdown-signal.sh lights
+        it with "OK to power off" at the last moment."""
         with self._lock:
             self._idle_gen += 1
             if self._idle_timer is not None:
                 self._idle_timer.cancel()
                 self._idle_timer = None
-            self._lcd.backlight_enabled = True
+            self._lcd.backlight_enabled = False
 
     def clear(self) -> None:
         with self._lock:

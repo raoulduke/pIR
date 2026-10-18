@@ -421,9 +421,9 @@ so this can be tuned without a code change once more is learned.
 TV-B-Gone style, but one brand at a time and slow enough to see which code
 worked. `Menu → Sweep → TV → <brand> → Power` sends each of that
 brand's library codes `SWEEP_GAP_SECONDS` (1s) apart. Line 1 is the
-code's brand and its position in the sweep (`Hisense   4/5`), the count
-one space short of the paused `^`; a brand too long for that is cut with an
-ellipsis glyph (`Westingh…38/38 ^`, CGRAM slot 6, `format.py`'s
+code's brand and its position in the sweep (`Hisense    4/5`), the count
+right against the paused `^`; a brand too long for that is cut with an
+ellipsis glyph (`Westingho…38/38^`, CGRAM slot 6, `format.py`'s
 `fit_with_suffix()`). The code itself (protocol/address) isn't shown —
 changed 2026-10-18, it meant nothing at a glance. Tap Enter to pause/resume; while paused
 Up/Down send the previous/next code (no wrapping, `^`/`v` only where

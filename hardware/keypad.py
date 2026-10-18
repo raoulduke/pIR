@@ -21,8 +21,10 @@ existing ``select()`` loop without polling.
 """
 
 import json
+import logging
 import os
 import queue
+import select
 import threading
 import time
 from collections import deque
@@ -40,6 +42,7 @@ from app.constants import (
     KEYPAD_REPEAT_DELAY_SECONDS,
     KEYPAD_REPEAT_INTERVAL_SECONDS,
     KEYPAD_HOLD_SECONDS,
+    KEYPAD_WAKE_IDLE_SECONDS,
 )
 from app.exceptions import HardwareError
 from hardware.input import (
@@ -51,7 +54,10 @@ from hardware.input import (
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
 )
 
+log = logging.getLogger(__name__)
+
 _MAP_PATH = Path(__file__).parent.parent / KEYPAD_MAP_FILE
+_GPIO_CHIP = "/dev/gpiochip0"
 
 # Labels that map onto the app's existing key vocabulary (hardware/input.py).
 # Anything not listed here passes through to the rest of the app as a raw
@@ -134,15 +140,18 @@ def scan_once() -> str | None:
     return None
 
 
-def _wait_for_press(stop_event: threading.Event, scan_fn=scan_once) -> str | None:
+def _wait_for_press(stop_event: threading.Event, scan_fn=scan_once,
+                    give_up_after: float | None = None) -> str | None:
     """Block until a press is stable for KEYPAD_DEBOUNCE_SCANS scans in a
     row, then return immediately (release not waited for here). Returns
-    None if stop_event was set first. *scan_fn* defaults to the
+    None if stop_event was set first, or once nothing has read as pressed
+    for *give_up_after* seconds (None = never). *scan_fn* defaults to the
     general-purpose scan_once(); KeypadScanner passes its own faster scan
     instead.
     """
     last = None
     streak = 0
+    last_seen = time.monotonic()
     while not stop_event.is_set():
         reading = scan_fn()
         if reading == last and reading is not None:
@@ -153,6 +162,10 @@ def _wait_for_press(stop_event: threading.Event, scan_fn=scan_once) -> str | Non
 
         if streak >= KEYPAD_DEBOUNCE_SCANS:
             return reading
+        if reading is not None:
+            last_seen = time.monotonic()
+        elif give_up_after is not None and time.monotonic() - last_seen >= give_up_after:
+            return None
 
         time.sleep(KEYPAD_POLL_INTERVAL_SECONDS if reading is None else KEYPAD_SCAN_DELAY_SECONDS)
     return None
@@ -275,6 +288,8 @@ class KeypadScanner:
         self.events: "queue.Queue[str]" = queue.Queue()
         self._wake_r, self._wake_w = os.pipe()
         self._stop = threading.Event()
+        self._stop_r, self._stop_w = os.pipe()
+        self._edges = self._request_edges() if self._fast_path else None
         self._repeatable_keys = set(_REPEATABLE_KEYS)
         self._repeat_interval = KEYPAD_REPEAT_INTERVAL_SECONDS
         self._hold_keys: dict[str, str] = {}
@@ -282,6 +297,41 @@ class KeypadScanner:
         self._held_key: str | None = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+
+    def _request_edges(self):
+        """Falling-edge interrupts on every sense pin, so the idle wait can
+        sleep in select() instead of scanning 100 times a second. Returns
+        None (polling idle, as before) if gpiod is missing or the request
+        fails."""
+        try:
+            import gpiod
+            from gpiod.line import Bias, Direction, Edge
+            settings = gpiod.LineSettings(
+                direction=Direction.INPUT, bias=Bias.PULL_UP, edge_detection=Edge.FALLING)
+            pins = tuple(sorted(self._side_b | set(self._direct_pins)))
+            self._edge_pins = pins
+            return gpiod.request_lines(_GPIO_CHIP, consumer="pihome-keypad", config={pins: settings})
+        except Exception as e:
+            log.warning("keypad edge detection unavailable, polling instead: %s", e)
+            return None
+
+    def _sleep_until_edge(self) -> None:
+        """Idle wait: drive every side-A pin low so any key pulls its
+        sense pin low, then sleep until an edge (or close()). Side A goes
+        back high before returning, ready for _scan()."""
+        for pin in self._side_a:
+            GPIO.output(pin, GPIO.LOW)
+        try:
+            time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
+            # Edges from the last press's scanning are stale.
+            while self._edges.wait_edge_events(0):
+                self._edges.read_edge_events()
+            # A press since then may have left no edge after the drain.
+            if all(GPIO.input(pin) == GPIO.HIGH for pin in self._edge_pins):
+                select.select([self._edges.fd, self._stop_r], [], [])
+        finally:
+            for pin in self._side_a:
+                GPIO.output(pin, GPIO.HIGH)
 
     @property
     def wake_fd(self) -> int:
@@ -405,7 +455,11 @@ class KeypadScanner:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            reading = _wait_for_press(self._stop, self._scan)
+            if self._edges is not None:
+                self._sleep_until_edge()
+                reading = _wait_for_press(self._stop, self._scan, KEYPAD_WAKE_IDLE_SECONDS)
+            else:
+                reading = _wait_for_press(self._stop, self._scan)
             if reading is None:
                 continue
             label = self._map.get(reading)
@@ -443,8 +497,11 @@ class KeypadScanner:
 
     def close(self) -> None:
         self._stop.set()
+        os.write(self._stop_w, b"\x00")
         self._thread.join(timeout=1)
-        for fd in (self._wake_r, self._wake_w):
+        if self._edges is not None:
+            self._edges.release()
+        for fd in (self._wake_r, self._wake_w, self._stop_r, self._stop_w):
             try:
                 os.close(fd)
             except OSError:

@@ -117,7 +117,7 @@ config/
 
 - venv lives inside the project at `ir/.venv`
 - Correct invocation: `sudo .venv/bin/python3 main.py` — **never** `sudo python3 main.py` (bypasses the venv)
-- Confirmed third-party dependencies: `evdev`, `RPi.GPIO`, `RPLCD`, `smbus2`, `pigpio`, `androidtvremote2` (pulls in `cryptography`, `protobuf`, `aiofiles`, `cffi`, `pycparser`)
+- Confirmed third-party dependencies: `evdev`, `RPi.GPIO`, `gpiod` (keypad edge interrupts; builds from source on the Pi, ~35s), `RPLCD`, `smbus2`, `pigpio`, `androidtvremote2` (pulls in `cryptography`, `protobuf`, `aiofiles`, `cffi`, `pycparser`)
 - `requirements.txt` must be generated from the Pi (the authoritative environment), not from WSL2
 - Windows-built venvs are unusable on ARM Linux — never sync `.venv/` to the Pi; it's excluded from sync
 
@@ -487,6 +487,24 @@ real error surfaces. A `-`/`+`/`*` line-1 indicator like Google TV's was
 tried and dropped the same day: line 2 is where the presets that stop
 working are. Battery: one LAN request per arrival on a Hue light, no
 polling.
+
+## Keypad idle on edge interrupts (2026-10-18)
+
+The keypad scanner used to sweep the matrix every 10ms around the clock,
+about 3% of a core with nothing pressed, enough to keep the CPU out of
+deep idle. Idle now sleeps in `select()` on gpiod falling-edge interrupts
+(`hardware/keypad.py`'s `_sleep_until_edge()`): every drive-side pin is
+held low so any key pulls its sense pin low, which fires the interrupt.
+Waking, it puts the drive side back high and scans exactly as before
+(debounce, repeat, tap/hold all unchanged), then goes back to sleep once
+nothing has read as pressed for `KEYPAD_WAKE_IDLE_SECONDS` (50ms).
+RPi.GPIO still does the scanning; gpiod only holds the sense pins as
+pulled-up inputs with edge detection (consumer `pihome-keypad` in
+`gpioinfo`). RPi.GPIO's own `add_event_detect` fails on this kernel
+(sysfs GPIO is gone), hence gpiod's character-device API. If gpiod is
+missing or its request fails, it logs a warning and polls as before.
+Side benefit: a press too short for the old 10ms gap still fires the
+edge.
 
 ## IR Tools & Integrations
 

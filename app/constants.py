@@ -179,7 +179,8 @@ BACKLIGHT_TIMEOUT_CHOICES = [None, 5, 10, 15, 20, 25, 30]
 # I2C (GPIO23/24) — seen as garbled LCD output / crashes during testing.
 KEYPAD_SCAN_DELAY_SECONDS = 0.0005  # settle time after driving a pin low
 KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
-# gap between sweeps when idle — this is also the minimum press-and-release
+# gap between sweeps while polling (after an edge wake, or idle when gpiod
+# edge detection is unavailable) — this is also the minimum press-and-release
 # duration guaranteed to be caught at all: a press shorter than this can
 # land entirely between two idle sweeps and never get sampled once, not
 # just debounced away (confirmed 2026-09-09: missed presses were random
@@ -190,6 +191,11 @@ KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
 # out of the picture; re-check for LCD garbling if this ever needs to move
 # further.
 KEYPAD_POLL_INTERVAL_SECONDS = 0.01
+# Idle, the scanner sleeps until a key's edge interrupt (hardware/keypad.py's
+# _sleep_until_edge()); after waking it scans as above, and goes back to
+# sleep once nothing has read as pressed for this long (contact noise, or
+# a press too short to debounce).
+KEYPAD_WAKE_IDLE_SECONDS = 0.05
 
 # Auto-repeat while a scroll key is held (see hardware/keypad.py's
 # KeypadScanner._repeat_while_held) — Up/Down on list screens

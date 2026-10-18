@@ -437,6 +437,24 @@ sends a saved code on Enter.
   user's additions A–Z; Skyworth, Sansui and Xiaomi are left out (no power
   code in either database). `services/ir_encode.py` encodes each entry to
   raw timings + carrier.
+- **Same-signal dedupe** (2026-10-18): the build drops any code whose first
+  frame and carrier match one earlier in that brand's list (frames compared
+  with timing tolerance, `hardware/ir_transmitter.py`'s `same_frame()`).
+  Matching by stored form missed raw Flipper captures of a code also listed
+  by protocol, and captures of one button held for different lengths. It
+  removed 9 (69 → 60): Samsung #5, Hisense #5, RCA #7, Sharp #7–10, Vizio
+  #2–3. ProScan's two RCA codes differ only in carrier (56/38 kHz) and both
+  stay. Codes shared across brands stay: each brand's list is meant to be
+  complete on its own (e.g. Hisense #4 = Insignia #1 = NECext 0586:F00F,
+  the power code of the user's own Insignia TVs).
+- **500ms send limit**: the kernel (lirc_dev's `IR_MAX_DURATION`) refuses
+  any send over 500ms with "Invalid argument". Every send goes through
+  `ir_transmitter._fit_tx_limit()`, which drops trailing frames that repeat
+  an earlier one until it fits. The first copy of every distinct frame stays
+  (the data frame, an NEC repeat code, Sharp's inverted check frame), so the
+  code itself is never cut; a signal that still doesn't fit fails with
+  "Signal too long". Found 2026-10-18: Hisense #5, a raw Flipper capture of
+  a button held ~1s (data frame + 9 NEC repeats, 1083ms), failed this way.
 - **Carrier**: Learn captures go out at the 38 kHz `gpio-ir-tx` default,
   but Sony (40k), Philips RC5/RC6 (36k), Panasonic (37k) and some RCA (56k)
   codes need their own. A signal file may start with a `carrier N` line;

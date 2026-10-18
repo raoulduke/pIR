@@ -8,9 +8,14 @@ default 38 kHz carrier. A file may start with a ``carrier N`` line instead
 carrier; see services/ir_encode.py): ir-ctl rejects that line mixed with
 +/- values, so it's stripped here and passed as ``-c N``, with the rest
 sent from a copy in /dev/shm (RAM, not the SD card).
+
+The kernel refuses a single send longer than 500ms in total, so a longer
+signal (a raw capture of a held button) loses trailing repeat frames
+until it fits; see _fit_tx_limit().
 """
 
 import fcntl
+import logging
 import os
 import struct
 import subprocess
@@ -21,6 +26,8 @@ from pathlib import Path
 
 from app.constants import LIRC_TX_DEVICE
 from app.exceptions import HardwareError
+
+log = logging.getLogger(__name__)
 
 _TEMP_DIR = "/dev/shm" if Path("/dev/shm").is_dir() else None
 
@@ -33,6 +40,13 @@ _FRAME_GAP_MIN_US = 10000
 # Frame period when a capture holds just one frame, so there's no gap to
 # measure: NEC's nominal repeat period.
 _DEFAULT_FRAME_PERIOD_US = 108000
+# lirc_dev's IR_MAX_DURATION: a send longer than this in total fails with
+# EINVAL ("Invalid argument").
+_TX_MAX_US = 500000
+# Two frames match when every duration agrees within this or 25%,
+# whichever is larger: capture jitter, or a capture against the encoder's
+# nominal timing.
+_FRAME_MATCH_US = 250
 
 
 def transmit(signal_file: Path) -> None:
@@ -40,21 +54,8 @@ def transmit(signal_file: Path) -> None:
 
     Raises ``HardwareError`` on failure.
     """
-    try:
-        text = Path(signal_file).read_text()
-    except OSError as e:
-        raise HardwareError(f"Can't read signal: {e}") from e
-
-    first, _, rest = text.partition("\n")
-    if not first.startswith("carrier "):
-        _run_ir_ctl(["-s", str(signal_file)])
-        return
-
-    try:
-        carrier = int(first.split()[1])
-    except (IndexError, ValueError):
-        raise HardwareError(f"Bad carrier line: {first[:20]}") from None
-    _send_text(rest, carrier)
+    carrier, pulses = _read_pulses(signal_file)
+    transmit_pulses(pulses, carrier)
 
 
 def stream(signal_file: Path, still_held) -> None:
@@ -128,8 +129,58 @@ def _first_frame(pulses: list[int]) -> tuple[list[int], float]:
     return frames[0][:-1], period_us / 1e6
 
 
+def split_frames(pulses: list[int]) -> tuple[list[list[int]], list[int]]:
+    """Frames (each starting and ending on a mark) and the gaps between
+    them. A trailing space is dropped."""
+    frames, gaps, start = [], [], 0
+    for i in range(1, len(pulses), 2):  # odd indexes are spaces
+        if pulses[i] >= _FRAME_GAP_MIN_US:
+            frames.append(pulses[start:i])
+            gaps.append(pulses[i])
+            start = i + 1
+    tail = pulses[start:]
+    if len(tail) % 2 == 0:
+        tail = tail[:-1]
+    if tail:
+        frames.append(tail)
+    elif gaps:
+        gaps.pop()
+    return frames, gaps
+
+
+def same_frame(a: list[int], b: list[int]) -> bool:
+    """True if *a* and *b* are the same frame, allowing for timing jitter."""
+    return len(a) == len(b) and all(
+        abs(x - y) <= max(_FRAME_MATCH_US, y // 4) for x, y in zip(a, b))
+
+
+def _fit_tx_limit(pulses: list[int]) -> list[int]:
+    """*pulses*, cut to the kernel's 500ms send limit by dropping trailing
+    frames that repeat an earlier one (a held button's repeats). The
+    first copy of every distinct frame stays, so the data and anything
+    the protocol needs once (an NEC repeat code, Sharp's inverted frame)
+    is never cut. Raises HardwareError if it still doesn't fit."""
+    if sum(pulses) <= _TX_MAX_US:
+        return pulses
+    frames, gaps = split_frames(pulses)
+    total = sum(map(sum, frames)) + sum(gaps)
+    dropped = 0
+    while (total > _TX_MAX_US and len(frames) > 1
+           and any(same_frame(frames[-1], f) for f in frames[:-1])):
+        total -= sum(frames.pop()) + gaps.pop()
+        dropped += 1
+    if total > _TX_MAX_US:
+        raise HardwareError(f"Signal too long: {total // 1000}ms")
+    log.info("Dropped %d repeat frame(s) to fit the 500ms send limit", dropped)
+    out = list(frames[0])
+    for gap, frame in zip(gaps, frames[1:]):
+        out += [gap, *frame]
+    return out
+
+
 def transmit_pulses(pulses: list[int], carrier: int) -> None:
     """Send raw mark/space timings (µs, starting with a mark) at *carrier* Hz."""
+    pulses = _fit_tx_limit(pulses)
     text = " ".join(f"{'+' if i % 2 == 0 else '-'}{v}" for i, v in enumerate(pulses))
     _send_text(text + "\n", carrier)
 

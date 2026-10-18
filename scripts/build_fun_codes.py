@@ -10,7 +10,9 @@ Runs once on WSL2, never on the Pi. Reads local checkouts of:
 
 Each brand's power codes are de-duplicated and ordered by how many model
 files share them (most common first), so a sweep usually hits the right one
-early. Brands with no power code at all are left out (Skyworth, Sansui,
+early. A code that sends the same first frame as one earlier in the brand's
+list is dropped too: a raw capture of a code also listed by protocol, or two
+captures of the same button. Brands with no power code at all are left out (Skyworth, Sansui,
 Xiaomi as of 2026-10-15) — rerun once a source has one.
 
 Brand list and order (decided 2026-10-15): the Statista Canada 2022 brand
@@ -26,6 +28,11 @@ from collections import Counter
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from hardware.ir_transmitter import same_frame, split_frames  # noqa: E402
+from services import ir_encode  # noqa: E402
+
 OUTPUT = PROJECT_ROOT / "data" / "fun_codes.json"
 
 # (display name, Flipper-IRDB folder, probonopd/irdb folder)
@@ -140,6 +147,21 @@ def _key(entry: dict) -> str:
     return json.dumps(entry, sort_keys=True)
 
 
+def _drop_same_signal(codes: list[dict]) -> list[dict]:
+    """Drop each code whose first frame and carrier match one earlier in
+    *codes* — the frame is what a TV decodes; the rest is repeats or a
+    check copy. The carrier matters: a 56 kHz receiver can miss the same
+    frame at 38 kHz (ProScan's two RCA codes)."""
+    kept, seen = [], []
+    for code in codes:
+        pulses, carrier = ir_encode.encode(code)
+        frame = split_frames(pulses)[0][0]
+        if not any(c == carrier and same_frame(frame, f) for c, f in seen):
+            kept.append(code)
+            seen.append((carrier, frame))
+    return kept
+
+
 def _brand_codes(display: str, flipper_dir: Path | None, irdb_dir: Path | None) -> list[dict]:
     counts: Counter = Counter()
     first_seen: dict[str, int] = {}
@@ -172,7 +194,7 @@ def _brand_codes(display: str, flipper_dir: Path | None, irdb_dir: Path | None) 
         roku = _key(ROKU_TV_POWER)
         codes = [c for c in codes if _key(c) != roku]
         codes.insert(min(1, len(codes)), dict(ROKU_TV_POWER))
-    return codes
+    return _drop_same_signal(codes)
 
 
 def _git_head(path: Path) -> str:

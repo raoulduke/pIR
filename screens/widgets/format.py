@@ -1,15 +1,9 @@
 from hardware.lcd import GLYPH_ARROW_UPDOWN, GLYPH_ELLIPSIS
 
-# Known acronyms, uppercased in full rather than title-cased — checked
-# per word, not on the whole name, so "google_tv" -> "Google TV" the same
-# way the standalone "tv" device -> "TV". Extend as new devices need it.
+# Words shown in capitals ("google_tv" -> "Google TV").
 _ACRONYMS = {"ac", "tv"}
 
-# Known single-letter directional suffixes, spelled out in full rather
-# than title-cased — checked per word, same as _ACRONYMS, so
-# "kitchen_n"/"kitchen_s" -> "Kitchen North"/"Kitchen South" (2026-09-09)
-# without renaming the actual signals/ directories or any config that
-# references them by their short "kitchen_n"/"kitchen_s" names.
+# Single-letter suffixes spelled out ("kitchen_n" -> "Kitchen North").
 _DIRECTIONS = {"n": "North", "s": "South", "e": "East", "w": "West"}
 
 
@@ -25,12 +19,9 @@ def format_name(name: str) -> str:
 
 
 def slugify(text: str) -> str:
-    """Convert free text typed on the D-pad (screens/widgets/char_input.py)
-    into a filesystem-safe snake_case name — the inverse of format_name.
-    Anything outside [a-z0-9_] is dropped rather than substituted, so e.g.
-    "Mom's House!" becomes "moms_house", not "mom_s_house_". Runs of
-    whitespace/hyphens collapse to a single underscore, so "Lake  Cabin"
-    doesn't come out "lake__cabin"."""
+    """Free text -> a filesystem-safe snake_case name (the inverse of
+    format_name()): characters outside [a-z0-9_] are dropped ("Mom's House!"
+    -> "moms_house"), and runs of spaces/hyphens become one underscore."""
     text = "_".join(text.strip().lower().replace("-", " ").split())
     return "".join(c for c in text if c.isalnum() or c == "_")
 
@@ -64,11 +55,9 @@ def with_arrows(line1: str, line2: str, scrollable: bool) -> tuple[str, str]:
 
 
 def crumbs(*names: str) -> str:
-    """Line-1 breadcrumb for a sub-menu — the path of names that led here,
-    ending with the screen you're on: "Menu > Rename". When it's longer
-    than 16 characters, names are dropped from the left until it fits
-    ("Menu > Sweep > TV > Hisense" -> "TV > Hisense"); the last one
-    always stays. Empty names (a device with no location) are skipped."""
+    """Line-1 breadcrumb: the names that led here, joined with " > ". Names
+    are dropped from the left until it fits 16 columns (the last always stays);
+    empty names are skipped."""
     parts = [n for n in names if n]
     while len(parts) > 1 and len(" > ".join(parts)) > 16:
         parts.pop(0)

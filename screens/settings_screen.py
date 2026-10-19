@@ -1,15 +1,9 @@
-"""Settings — Menu > Settings. One entry per setting, each opening its own
-list of choices (the app-wide navigation convention, CLAUDE.md's
-"Navigation convention").
+"""Settings (Menu > Settings). Each setting opens a list of choices that
+opens on the current one, marked "(current)"; Enter saves and applies it,
+Left cancels.
 
-Backlight: how long the LCD backlight stays on with no key press
-(hardware/lcd.py's set_idle_seconds()), saved to config/settings.json's
-backlight_timeout_seconds. The list opens on the current value, marked
-"(current)"; Enter saves and applies it right away, Left cancels.
-
-Sweep Speed: seconds between codes in a sweep (screens/code_sweep_screen.py),
-saved to config/settings.json's sweep_gap_seconds. Same list behavior.
-"""
+  Backlight     idle timeout (backlight_timeout_seconds; null = Never)
+  Sweep Speed   seconds between sweep codes (sweep_gap_seconds)"""
 
 import time
 
@@ -56,9 +50,8 @@ def _backlight(lcd: LCD) -> str | None:
     current = config_service.get_backlight_timeout_seconds()
     choices = list(BACKLIGHT_TIMEOUT_CHOICES)
     if current not in choices:
-        # A value saved before the choices changed, or hand-edited into
-        # settings.json: show it in order so it can still be kept. Never
-        # stays first.
+        # A saved value that isn't a choice (hand-edited, or from older choices):
+        # listed in order so it can be kept.
         choices.insert(1 + sum(1 for c in choices if c is not None and c < current), current)
 
     labels = [_label(c) + (_CURRENT_SUFFIX if c == current else "") for c in choices]

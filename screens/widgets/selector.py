@@ -1,13 +1,6 @@
-"""Scrollable list selector widget.
-
-``select_from_list(lcd, title, options)`` displays a navigable list on the
-LCD and returns the chosen option string, KEY_BACK, or KEY_QUIT.
-
-Follows the app-wide navigation convention (CLAUDE.md's "Navigation
-convention"): Up/Down scroll (wrapping), with the up/down glyph in line
-2's last column whenever there's more than one option; Enter or Right
-selects; Left goes back one level (returned as KEY_BACK).
-"""
+"""List selector: Up/Down scroll (wrapping), the up/down glyph in line 2's
+last column when there's more than one option, Enter/Right select, Left
+returns KEY_BACK."""
 
 from hardware.lcd import LCD
 from hardware.input import (
@@ -20,16 +13,9 @@ def select_from_list(
         lcd: LCD, title: str, options: list[str], start_index: int = 0,
         formatter=format_name,
 ) -> str:
-    """Navigate *options* and return the selected entry or a key constant.
-
-    *start_index* opens the list on that entry instead of the first one —
-    e.g. re-showing a button list on the button just transmitted, so
-    repeating a signal is just pressing ENTER again.
-
-    *formatter* turns an option into its display text — format_name by
-    default, for snake_case names; pass ``str`` for options that are
-    already display names (the Fun menu's TV brands: "LG", "onn.").
-    """
+    """Show *options* and return the chosen one, KEY_BACK or KEY_QUIT.
+    *start_index* opens on that entry; *formatter* gives the display text
+    (format_name by default; str for names already formatted)."""
     index = start_index if 0 <= start_index < len(options) else 0
     count = len(options)
 

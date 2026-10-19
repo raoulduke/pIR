@@ -1,12 +1,5 @@
-"""Receive screen.
-
-Collects device / location / button from the user, then delegates IR capture
-to ``hardware.ir_receiver`` and persistence to ``services.signal_service``.
-
-Text entry uses screens/widgets/char_input.py's D-pad-only composer, same
-as network_screen.py's Wi-Fi password prompt and command_screen.py's
-Command entry — the physical keypad has no letter keys.
-"""
+"""Learn: pick or type a device / location, type the button name, capture
+the signal (hardware.ir_receiver) and save it (services.signal_service)."""
 
 import logging
 import subprocess
@@ -34,15 +27,7 @@ log = logging.getLogger(__name__)
 def show(lcd: LCD, state: AppState) -> str | None:
     home = home_service.get_active_home()
 
-    # --- Collect device / location / button via back-navigable steps ---
-    # Device and location are picked from what already exists whenever
-    # possible — adding another button to a device you've already learned
-    # signals for is the common case, and re-typing "tv"/"living_room"
-    # character by character on the D-pad composer every single time was
-    # needless friction for something the app already knows (2026-09-1x).
-    # Button is always typed — that's the one genuinely new piece of
-    # information each time. Shared with screens.rename_screen, which
-    # collects a mistyped signal's new identity the same way.
+    # --- Collect device / location / button (back-navigable) ---
     values = collect_device_location_button(lcd, home, [MENU_TITLE, MENU_LEARN])
     if values is None:
         return None
@@ -61,8 +46,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
             return None
 
     # --- Capture ---
-    # capture() shows its own prompt once it's listening — no lead-in
-    # here, or a press made as soon as a prompt appears would be lost.
+    # capture() prompts once it's listening, so no press is lost.
     data = _capture(lcd)
     time.sleep(1)
 

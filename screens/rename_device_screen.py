@@ -1,19 +1,7 @@
-"""Rename Device screen — reached via Menu > Rename > Device, for fixing a
-device's name in the active home without re-learning every signal under
-it.
-
-Like a home, a device is referenced beyond its signals/<home>/<device>
-directory — config/device_order.json, the "device" field on keypad-device
-slots and preset steps, and the "device"/"device/location" keys of
-keypad_presets.json's "by_device" overrides and step_devices.json.
-services.home_service.rename_device() updates every one of them in one
-call.
-
-DEFAULT_ACTIVE_DEVICE and MENU_DEVICE_LABELS' devices can't be renamed
-here — their special Active Device Control behavior (D-pad passthrough,
-grouped < Device/Device > stop) is keyed by name in app/constants.py, so a
-rename would silently lose it.
-"""
+"""Rename Device (Menu > Rename > Device): renames a device in the active
+home everywhere it's referenced (services.home_service.rename_device()).
+Google TV and the grouped devices (light, tv) can't be renamed: their
+behaviour is keyed by name in app/constants.py."""
 
 import time
 from hardware.lcd import LCD

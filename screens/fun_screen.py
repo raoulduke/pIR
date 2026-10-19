@@ -1,21 +1,10 @@
-"""Sweep menu — TV-B-Gone style power-code sweep, and codes saved from it.
+"""Sweep menu: the power-code sweep and codes saved from it.
 
   Sweep ─┬─ Saved → TV → <brand> → Power → <saved name>  (Enter sends it)
-         └─ TV → <brand> → Power → sweep (screens/code_sweep_screen.py)
+         └─ TV → <All Brands|brand> → Power → sweep (screens/code_sweep_screen.py)
 
-The sweep's brand list starts with All Brands: every brand's codes in one
-sweep, each shared code once (fun_service.get_codes()).
-
-Every level is a select_from_list (Up/Down scroll, Enter or Right picks,
-Left goes back one level — the app-wide convention), line 1 a breadcrumb of the path
-so far ("Sweep > TV", "TV > Samsung"). Saved mirrors the sweep's path but
-only lists what has at least one save, and stays on the name just sent so
-Enter resends it.
-
-Codes come from data/fun_codes.json, saves from fun_signals/ — see
-services/fun_service.py. Neither is ever visible to Learn, Rename or
-Active Device Control.
-"""
+Every level is a list with a breadcrumb title. Saved lists only what has a
+save and stays on the name just sent, so Enter resends it."""
 
 import logging
 import time
@@ -84,9 +73,8 @@ def _browse(lcd: LCD, path: list[str], sources: list, finish,
             picks: list[str] | None = None) -> str | None:
     """Walk one list per entry in *sources* (each called with the picks so
     far), then call finish(lcd, *picks), which returns KEY_QUIT or the level to
-    go back to. *picks* already made by the caller skip their lists. Each
-    list re-opens on its last pick, headed by the breadcrumb *path* + picks.
-    Returns KEY_QUIT, or None when Up backs out of the first list shown."""
+    go back to. *picks* already made skip their lists; each list reopens on its
+    last pick. Returns KEY_QUIT, or None when Left backs out of the first list."""
     picks = list(picks or [])
     floor = len(picks)
     starts = [0] * len(sources)

@@ -1,28 +1,9 @@
-"""Wi-Fi network picker — reached via Menu > Network.
+"""Wi-Fi network picker (Menu > WiFi); a secured network's password is typed
+with the D-pad composer, so no keyboard is ever needed.
 
-Scan and pick an SSID work from the bare physical keypad already, with the
-same keys as every other list (the app-wide navigation convention,
-CLAUDE.md's "Navigation convention"): Up/Down scroll, Enter or Right
-picks, Left goes back. Password entry, when the chosen
-network is secured, uses screens/widgets/char_input.py's D-pad-only
-composer so the whole flow needs no USB keyboard or SSH session, even at a
-brand-new location.
-
-The list re-scans on its own every WIFI_RESCAN_INTERVAL_SECONDS while
-you're sitting on it (not just once on entry) — a custom loop instead of
-screens/widgets/selector.py's select_from_list, since that widget blocks
-on read_key() with no timeout and is shared by every other screen; adding
-timeout support to read_key() (hardware/input.py) was the safer, additive
-change, done once there instead of forking behavior per-caller.
-
-A background rescan only ever touches line 1 (hardware/lcd.py's
-write_line1()) — briefly "Scanning...", then "+N found (total)" if it
-actually found something new — so cycling through the list on line 2 is
-never interrupted by one, even mid-scan. Rescanning gives up for good
-after WIFI_SCAN_STOP_AFTER_UNCHANGED consecutive scans in a row find
-nothing new, so leaving this screen up unattended doesn't keep spending
-battery on nmcli rescans forever.
-"""
+Its own list loop rather than select_from_list, because it re-scans every
+WIFI_RESCAN_INTERVAL_SECONDS while open, updating only line 1 so scrolling
+isn't interrupted."""
 
 import time
 from hardware.lcd import LCD
@@ -59,20 +40,11 @@ def _merge_scan(by_ssid: dict) -> int:
 
 
 def _pick_network(lcd: LCD) -> dict | str | None:
-    """Scan, then let the user browse (re-scanning periodically) until
-    they pick a network or back out. Returns a {"ssid", "secure"} dict,
-    KEY_BACK, or KEY_QUIT.
-
-    Networks accumulate across rescans for the life of this call rather
-    than being replaced each time — a network that drops out of one scan
-    sweep (scans aren't perfectly exhaustive every time) stays selectable
-    instead of vanishing, as long as you're still sitting on this screen.
-
-    Auto-rescanning stops for good after WIFI_SCAN_STOP_AFTER_UNCHANGED
-    consecutive scans add nothing new — someone walking away and leaving
-    this screen up (nmcli rescans aren't free) shouldn't quietly drain the
-    battery forever. Backing out and back in starts fresh.
-    """
+    """Scan, then browse (re-scanning periodically) until a pick or Left.
+    Returns {"ssid", "secure"}, KEY_BACK or KEY_QUIT. Networks accumulate
+    across scans (one scan can miss a network); re-scanning stops after
+    WIFI_SCAN_STOP_AFTER_UNCHANGED scans find nothing new, so a screen left up
+    doesn't keep scanning."""
     lcd.write(_title([]), "Scanning...")
     by_ssid: dict = {}
     _merge_scan(by_ssid)
@@ -85,26 +57,17 @@ def _pick_network(lcd: LCD) -> dict | str | None:
     while True:
         use_default_keys()
         if not ssids:
-            # Distinguish "genuinely nothing in range" from "NetworkManager
-            # itself isn't answering yet" (see wifi_service.is_ready()) —
-            # a real possibility right after boot, not just a theoretical
-            # one, since this app deliberately starts before NetworkManager
-            # is guaranteed to be up.
+            # Right after boot NetworkManager may not be answering yet.
             lcd.write(_title(ssids), "No networks" if wifi_service.is_ready() else "Wi-Fi starting")
         else:
             lcd.write(*with_arrows(_title(ssids), format_name(ssids[index]), len(ssids) > 1))
 
-        # No more timeout once scanning has given up — just block for a
-        # real key, same as any other screen, instead of waking up every
-        # WIFI_RESCAN_INTERVAL_SECONDS forever with nothing left to do.
+        # Scanning has stopped: block for a key with no timeout.
         timeout = None if not scanning else max(WIFI_RESCAN_INTERVAL_SECONDS - (time.monotonic() - last_scan), 0)
         key = read_key(timeout=timeout)
 
         if key is None:  # rescan on timeout — only line 1 changes here.
-            # Whatever's on line 2 (the network currently highlighted)
-            # keeps showing the whole time a background rescan runs,
-            # instead of being blanked by a full "Scanning..." screen —
-            # cycling through the list is never interrupted by one.
+            # Background rescans touch only line 1, so scrolling isn't interrupted.
             current = ssids[index] if ssids else None
             lcd.write_line1("Scanning...")
             added = _merge_scan(by_ssid)
@@ -113,10 +76,7 @@ def _pick_network(lcd: LCD) -> dict | str | None:
             last_scan = time.monotonic()
 
             if added:
-                # Still only line 1 — worth a moment's pause since this is
-                # actual news (found something new), unlike the common
-                # case (nothing new) which reports nothing and goes
-                # straight back to browsing.
+                # Pause only when something new turned up.
                 unchanged_scans = 0
                 lcd.write_line1(f"+{added} found ({len(ssids)})")
                 time.sleep(1.5)

@@ -1,16 +1,7 @@
-"""Shared device / location / button collection for screens that need a
-signal *identity* — screens.receive_screen (Learn, for a brand-new signal)
-and screens.rename_screen (Rename Signal, for a mistyped one's new name) —
-both ask for exactly the same three values the same way: existing entries
-pickable from a list first (New Device/New Location to type instead),
-button always typed. Extracted out of receive_screen.py once rename_screen
-needed the identical flow (2026-09-19).
-
-Line 1 is a breadcrumb (screens.widgets.format.crumbs()): the caller's
-path, then "Device", then each pick so far — "Learn > Device" on the device
-list, "Device > TV" on TV's location list, "TV > Living Room" while typing
-the button.
-"""
+"""Device / location / button collection shared by Learn and Rename Signal:
+pick an existing device or location (or New Device/New Location to type
+one), then type the button. Line 1 is the breadcrumb ("Learn > Device",
+"Device > TV", "TV > Living Room")."""
 
 import time
 from hardware.lcd import LCD
@@ -26,12 +17,9 @@ from app.constants import (
 
 
 def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list[str] | str | None:
-    """Back-navigable device -> location -> button collection. *path* is
-    the breadcrumb leading here (e.g. ["Menu", "Learn"]). Picks from
-    existing entries whenever any exist (New Device/New Location to
-    type instead); button is always typed — the one genuinely new piece
-    of information every time. Returns [device, location, button] on
-    success, KEY_QUIT, or None (backed all the way out of step one)."""
+    """Back-navigable device -> location -> button collection; *path* is the
+    breadcrumb so far (e.g. ["Menu", "Learn"]). Returns [device, location,
+    button], KEY_QUIT, or None (backed out of the first step)."""
     values: list[str] = []
     i = 0
 
@@ -61,10 +49,7 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
                 else:
                     result = choice  # an existing location, or KEY_QUIT/KEY_BACK — handled below either way
             elif signal_service.buttons_at_device_level(home, device):
-                # An existing device that already stores buttons directly
-                # (no location sub-dirs, e.g. "ac") — nothing to pick and
-                # nothing to type either, same as choosing Single Device
-                # below for a brand-new device.
+                # A device with signals directly under it (e.g. "ac"): no location.
                 result = ""
             else:
                 choice = select_from_list(lcd, title, [LABEL_ENTER_LOCATION, LABEL_SINGLE_DEVICE])

@@ -1,15 +1,6 @@
-"""Rename Signal screen — reached via Menu > Rename > Signal, for fixing a
-device/location/button name mistyped during Learn without re-learning the
-IR signal itself.
-
-Picks the existing signal to rename from lists first (three back-navigable
-steps, all picked from what's already on disk — nothing typed, since
-every value here must already exist), then collects its new identity the
-exact same way screens.receive_screen collects a brand-new signal's
-identity (screens.widgets.signal_entry.collect_device_location_button) —
-existing entries pickable, New Device/New Location to type instead,
-button always typed.
-"""
+"""Rename Signal (Menu > Rename > Signal): pick an existing signal from
+lists, then give it a new device / location / button the same way Learn
+does (screens.widgets.signal_entry), without re-capturing it."""
 
 import time
 from hardware.lcd import LCD
@@ -61,9 +52,8 @@ def show(lcd: LCD, state: AppState) -> str | None:
         signal_service.rename_signal(home, device, button, location, new_device, new_button, new_location)
         lcd.write(STATEMENT_RENAMED, format_name(new_button)[:16])
         time.sleep(2)
-        # Make the renamed signal active so it can be tested right away —
-        # also fixes up state.active_device/location if they pointed at
-        # the old identity, which no longer exists on disk.
+        # Make the renamed signal active (testable at once; the old identity no
+        # longer exists).
         state.active_device = new_device
         state.active_location = new_location
     except Exception as e:
@@ -103,9 +93,7 @@ def _pick_existing_signal(lcd: LCD, home: str) -> list[str] | str | None:
             options = signal_service.list_buttons(home, values[0], values[1])
 
         if not options:
-            # Shouldn't happen — a listed device/location always has
-            # something under it — but bail cleanly rather than crashing
-            # select_from_list() on an empty list.
+            # A listed device/location always has signals; don't crash if not.
             return None
 
         choice = select_from_list(lcd, prompt, options)

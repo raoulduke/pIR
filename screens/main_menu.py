@@ -1,30 +1,11 @@
-"""Escape-hatch menu — reached via the physical Menu key from anywhere
-(see app/quick_actions.py._handle_menu), not part of the normal boot flow
-(that's screens/active_device_screen.py — see
-docs/active-device-control-plan.md).
+"""Main menu (the Menu key). Up/Down scroll, Enter/Right select, Left closes
+it; < Device/Device > also leaves it (DeviceCycledAway).
 
-Up/Down cycle the options, with the up/down glyph in line 2's last column like any other
-list; Enter or Right selects; Left goes back up a level — closes the menu,
-back to Active Device Control (the app-wide navigation convention,
-CLAUDE.md's "Navigation convention"). < Device/Device > (hardware.input.
-DeviceCycledAway) also unwinds out of the menu back to Active Device
-Control.
-
-Returns one of: MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME,
+Returns MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME,
 MENU_NETWORK, MENU_SETTINGS, KEY_QUIT (a keyboard's quit key), or None
-(Left — closed). No Quit entry: the app runs as pihome.service, so quitting
-from the keypad left nothing to start it again short of a reboot (removed
-2026-10-18). MENU_IP is handled
-inline here rather than returned — it's display-only. MENU_NETWORK
-(labeled "WiFi") is disabled — Enter is a no-op — while
-wifi_service.is_ready() is false, showing "WiFi loading" instead; see
-CLAUDE.md's "Pi OS boot time" section for why this can genuinely still be
-initializing the first time a human reaches this menu.
-
-No "Full Device List" entry — removed as redundant with < Device/Device >
-(app/quick_actions.py), which reaches the exact same leaf devices; see
-docs/active-device-control-plan.md's "Superseded" notes.
-"""
+(closed). IP Address is display-only. WiFi is disabled, showing
+"WiFi loading", until NetworkManager is ready. There's no Quit entry: the
+app runs as a service, and nothing on the device could start it again."""
 
 from app.constants import (
     MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
@@ -62,10 +43,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
         use_default_keys()
         lcd.write(*with_arrows(MENU_TITLE, _line2(option), True))
 
-        # Only poll while WiFi is the highlighted entry — a plain block
-        # everywhere else, same as before. Without this, "WiFi loading"
-        # would never clear back to "WiFi" (and re-enable) until some
-        # unrelated keypress happened to force a redraw.
+        # Poll only while WiFi is highlighted, so "WiFi loading" clears on its own.
         timeout = MENU_WIFI_POLL_INTERVAL_SECONDS if option == MENU_NETWORK else None
         key = read_key(timeout=timeout)
 

@@ -1,30 +1,13 @@
-"""D-pad-only text entry widget.
-
-The physical 12-wire keypad has no letter keys at all — every button is a
-pre-assigned label (D-pad, presets, Menu; see hardware/keypad.py), and this
-is the app's only text entry.
-
-``read_dpad_text`` does it the way a feature phone's keypad does:
-compose one character at a time by cycling a candidate with Up/Down, commit
-it and move to the next slot with Right. Only Up/Down/Left/Right/Enter are
-used, since those are the only raw keys the bare keypad can ever produce
-(everything else — Menu, Device cycle, Presets — is a global quick action
-intercepted before it reaches read_key() here; see hardware/input.py).
-
-Matches the app-wide navigation convention (CLAUDE.md's "Navigation
-convention") where it can: Up/Down scroll (the character, here) and Left
-goes back (deleting first, then out once empty). Right commits the
-character instead of selecting, and Enter submits.
-"""
+"""D-pad text entry — the app's only text entry, since the keypad has no
+letter keys. Like a feature phone: Up/Down pick the character, Right
+commits it and moves on, Left deletes (or backs out once empty), Enter
+submits."""
 
 from hardware.lcd import LCD
 from hardware.input import read_key, use_default_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK
 
-# Ordered so the common case is reachable with the fewest presses from the
-# default starting character: a capital for the first character (labels
-# start capitalized), lowercase after that. Excludes `"` —
-# services/wifi_service.py wraps values in literal double quotes for
-# wpa_cli, so keeping them out of the charset sidesteps escaping entirely.
+# Ordered for the fewest presses: capitals first for the first character,
+# lowercase after. No `"`, so a password containing one can't be typed.
 _LOWER = "abcdefghijklmnopqrstuvwxyz"
 _UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _DIGITS = "0123456789"
@@ -38,29 +21,13 @@ def _charset(text: str) -> str:
 
 
 def read_dpad_text(lcd: LCD, prompt: str) -> str:
-    """Collect a line of text using only Up/Down/Left/Right/Enter.
+    """Collect a line of text with Up/Down/Left/Right/Enter. Returns the text,
+    KEY_BACK or KEY_QUIT.
 
-    Returns the entered string, KEY_BACK, or KEY_QUIT. Left deletes the
-    last committed character, or backs out of the screen entirely once
-    there's nothing left to delete.
-
-    Enter submits whatever's actually showing on screen, character the
-    cursor is sitting on included — not just the characters already
-    locked in with Right. Cycling Up/Down to a letter and pressing Enter
-    right away (no Right first) works, matching what's visibly displayed;
-    no separate, invisible "confirm" step to remember (confirmed
-    2026-09-03: without this, "tv" typed as t-Right-<cycle to v>-Enter
-    silently submitted just "t" — the display showed "tv" the whole time
-    with no visual difference between the committed "t" and the
-    never-locked-in "v").
-
-    The one exception is a slot you haven't touched Up/Down on since the
-    last commit (or since the start) — its default preview character
-    doesn't count, so pressing Right then Enter immediately doesn't
-    silently tack on an unintended "a"/"A" (the charset's first character), and
-    a fresh, completely untouched call still submits "" on Enter, same as
-    before — an empty Wi-Fi password is valid for an open network.
-    """
+    Enter submits what's on screen, including the character under the cursor
+    without a Right first — except an untouched slot's default preview, so
+    Right-then-Enter adds nothing and an untouched entry submits "" (a valid
+    open-network password)."""
     text = ""
     candidate_index = 0
     candidate_touched = False  # Up/Down pressed since the last commit/start?

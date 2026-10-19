@@ -1,23 +1,7 @@
-"""Voice / Home Assistant command screen.
-
-Fill-in-the-blank templates, not freeform text — Google Home only reliably
-acts on a handful of phrasings, so letting someone type an arbitrary
-sentence on a D-pad-only composer just to have it fail was worse than
-picking from what's known to work. Two steps, looping back to the
-template list after every send (repeating the same kind of command, e.g.
-several "Turn on X"s in a row, is the common case):
-
-  1. Pick a template from _TEMPLATES — screens/widgets/selector.py's
-     select_from_list, same widget receive_screen.py and the Wi-Fi network
-     picker already use. Up backs out of Command entirely.
-  2. Fill its one blank — screens/widgets/char_input.py's D-pad-only
-     read_dpad_text, same as network_screen.py's Wi-Fi password prompt
-     (see command_screen's prior version, which used this for the whole
-     command before templates replaced it). Left here backs out to the
-     template list instead, not out of Command — same layered
-     back-navigation receive_screen.py uses for its device/location/button
-     steps. An empty entry reprompts rather than sending a blank.
-"""
+"""Voice command screen: pick a template (_TEMPLATES — the phrasings Google
+Home reliably acts on), fill its one blank with the D-pad composer, and it's
+sent through Home Assistant. Loops back to the template list after each
+send; Left from the blank returns to the list. An empty entry reprompts."""
 
 import time
 from hardware.lcd import LCD
@@ -30,9 +14,8 @@ from app.constants import (
     MENU_TITLE, MENU_COMMAND, STATEMENT_SENDING, STATEMENT_FAILED, ASYNC_SEND_FLASH_SECONDS,
 )
 
-# (list label, command template with one "{}" blank, fill-in prompt).
-# Phrasing matches exactly what Google Home is confirmed to act on — don't
-# reword these without confirming the new phrasing still works.
+# (list label, template with one "{}" blank, fill-in prompt). Only phrasings
+# Google Home is confirmed to act on; check before rewording.
 _TEMPLATES = [
     ("Turn On", "Turn on {}"),
     ("Turn Off", "Turn off {}"),
@@ -80,16 +63,7 @@ def show(lcd: LCD) -> str | None:
             continue  # back to the template list, not out of Command
 
         command = template.format(value)
-        # Non-blocking (see services/preset_service.py's
-        # run_steps_background) — send_command() is a real HTTP round-trip
-        # (up to 15s timeout), so blocking here used to leave "Sending..."
-        # up and the keypad unresponsive for however long that took. Shows
-        # "Sending..." for a brief fixed flash (ASYNC_SEND_FLASH_SECONDS —
-        # the command is already sending in the background during it, this
-        # is only so the message is actually seen before looping back to
-        # the template list would otherwise overwrite it) then loops back;
-        # a failure overwrites whatever's on screen by then, a success
-        # needs no follow-up message.
+        # Sent in the background (up to 15s); only a failure shows afterwards.
         lcd.write(STATEMENT_SENDING, command[:16])
         pressed = press_count()
 

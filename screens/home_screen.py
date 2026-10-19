@@ -65,8 +65,6 @@ def _activate(state: AppState, home: str) -> None:
     home_service.set_active_home(home)
     state.active_home = home
 
-    # Reset Active Device Control's active device — it re-resolves to the
-    # new home's default (google_tv, or its first device) next time it
-    # runs. See docs/active-device-control-plan.md.
+    # Active Device Control picks the new home's default device next.
     state.active_device = None
     state.active_location = None

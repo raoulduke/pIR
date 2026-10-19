@@ -1,39 +1,23 @@
-"""Sweep — steps through every library code for one brand's signal
-(TV-B-Gone style, but one brand at a time and slow enough to see which code
-worked), reached from screens/fun_screen.py. All Brands sweeps every
-brand's codes in one go; a save goes under the brand of the code on
-screen.
+"""Sweep — sends every library code for a brand's signal (or All Brands') one
+after another, slow enough to see which one the TV reacted to. Reached from
+screens/fun_screen.py. Line 1 is the code's brand and position
+("Hisense    15/38"; "38/38" is the end).
 
-Line 1 is that brand and the position in the sweep ("Hisense    15/38"),
-the count ending in the last column; "38/38" marks the end.
-
-Running: one code per gap (Menu > Settings > Sweep Speed: 1s, 0.5s or
-0.25s), line 1 naming the code just sent. Enter pauses on it, Left goes
-back a level (the signal list).
+Running: one code per gap (Menu > Settings > Sweep Speed). Enter pauses,
+Left goes back. Running off the end pauses on the last code.
 
 Paused ("||" on line 2):
-  Up / Down     move to the previous / next code without sending it (no
-                wrapping — they stop at the first / last code, which
-                the count shows). They auto-repeat when held, since
-                nothing fires.
-  Right         send the code on screen, once per press ("|| Sending..."
-                on line 2 while it goes out)
-  Enter (tap)   resume from the code on screen: sent first unless it
-                already went out since landing on it (paused on it, or
-                fired with Right), so a code never goes out twice in a row
-  Enter (hold)  save the code under a typed name (fun_service.save())
+  Up / Down     move to the previous / next code without sending (no
+                wrapping; auto-repeat when held)
+  Right         send the code on screen, once per press
+  Enter (tap)   resume from the code on screen, sending it first unless it
+                already went out since landing on it
+  Enter (hold)  save the code under a typed name (under its brand)
   Left          back a level
-Running off the end pauses on the last code, so Up can still step back.
 
-Tap vs. hold on Enter is this screen's alone (hardware.input.
-set_hold_keys()): a tap acts on release here, ~0.1s later than a press
-would, so everywhere else Enter still acts the instant it's pressed.
-Without a keypad (USB/SSH) there's no hold, so no saving from there.
-
-Runs on its own loop with ir_transmitter called directly, not
-preset_service's background worker — a pause has to land between two
-codes, not after whatever's already queued.
-"""
+Tap vs. hold on Enter is this screen's alone (a tap acts on release here);
+USB/SSH input has no hold, so no saving from there. Sends directly, not via
+the background step queue, so a pause lands between two codes."""
 
 import logging
 import time

@@ -1,15 +1,5 @@
-"""Rename Home screen — reached via Menu > Rename > Home, for
-fixing a home's name without re-creating it and re-learning every signal
-under it.
-
-Renaming a home touches more than its signals/<home> directory —
-config/settings.json's active_home (if this is the active home),
-config/device_order.json's home-prefixed ordering keys, and the "home"
-field on any keypad-device slot or preset step in config/keypad_devices
-.json, config/keypad_presets.json, or config/step_devices.json all
-reference a home by its current name. services.home_service.rename_home()
-updates every one of them in one call.
-"""
+"""Rename Home (Menu > Rename > Home): renames a home everywhere it's
+referenced (services.home_service.rename_home())."""
 
 import time
 from hardware.lcd import LCD
@@ -66,9 +56,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
         time.sleep(1.5)
         if state.active_home == old:
             state.active_home = new
-            # Active Device Control re-resolves to the (renamed) home's
-            # default next time it runs — same as home_screen.py's
-            # _activate() after switching homes.
+            # Active Device Control picks the renamed home's default device next.
             state.active_device = None
             state.active_location = None
     except Exception as e:

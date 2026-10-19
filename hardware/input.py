@@ -140,7 +140,22 @@ class InputReader:
     }
 
     def _read_usb_key(self, fd: int) -> str | None:
-        for event in self.devices[fd].read():
+        device = self.devices[fd]
+        try:
+            events = list(device.read())
+        except BlockingIOError:
+            return None  # nothing to read after all
+        except OSError as e:
+            # Unplugged (or otherwise gone): stop listening to it rather than
+            # let the error end the app.
+            print(f"Input device removed: {device.name} ({e})\r")
+            del self.devices[fd]
+            try:
+                device.close()
+            except OSError:
+                pass
+            return None
+        for event in events:
             if event.type == ecodes.EV_KEY and event.value == 1:
                 keycode = categorize(event).keycode
                 if isinstance(keycode, (list, tuple)):

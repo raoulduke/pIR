@@ -84,6 +84,7 @@ MENU_SENTINEL_TO_DEVICE = {sentinel: device for device, sentinel in MENU_DEVICE_
 
 # Misc
 LABEL_CANCEL = "Cancel"
+LABEL_LEARN_ANYWAY = "Learn anyway"
 LABEL_TRY_AGAIN = "Try again"
 LABEL_OVERWRITE = "Overwrite?"
 LABEL_NEW_HOME = "New Home"

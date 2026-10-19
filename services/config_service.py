@@ -1,20 +1,21 @@
-from pathlib import Path
+import copy
 import json
+from pathlib import Path
 
 from app.constants import BACKLIGHT_IDLE_SECONDS, SWEEP_GAP_SECONDS
-from app.files import write_text_atomic
+from app.files import read_json_cached, write_text_atomic
 
 _CONFIG_FILE = Path(__file__).parent.parent / "config" / "settings.json"
 _DEFAULT_HOME = "home"
 
 
 def _load() -> dict:
-    if _CONFIG_FILE.exists():
-        try:
-            return json.loads(_CONFIG_FILE.read_text())
-        except (OSError, json.JSONDecodeError):
-            pass
-    return {}
+    """settings.json (cached; don't modify — see _load_for_update())."""
+    return read_json_cached(_CONFIG_FILE, {})
+
+
+def _load_for_update() -> dict:
+    return copy.deepcopy(_load())
 
 
 def _save(data: dict) -> None:
@@ -26,7 +27,7 @@ def get_active_home() -> str:
 
 
 def set_active_home(name: str) -> None:
-    data = _load()
+    data = _load_for_update()
     data["active_home"] = name
     _save(data)
 
@@ -34,7 +35,7 @@ def set_active_home(name: str) -> None:
 def rename_active_home_if_matches(old: str, new: str) -> None:
     """Point active_home at *new* if it's *old* — written explicitly even when
     it was only the default, which would otherwise name a missing home."""
-    data = _load()
+    data = _load_for_update()
     if data.get("active_home", _DEFAULT_HOME) == old:
         data["active_home"] = new
         _save(data)
@@ -104,7 +105,7 @@ def get_backlight_timeout_seconds() -> int | None:
 
 
 def set_backlight_timeout_seconds(seconds: int | None) -> None:
-    data = _load()
+    data = _load_for_update()
     data["backlight_timeout_seconds"] = seconds
     _save(data)
 
@@ -115,6 +116,6 @@ def get_sweep_gap_seconds() -> float:
 
 
 def set_sweep_gap_seconds(seconds: float) -> None:
-    data = _load()
+    data = _load_for_update()
     data["sweep_gap_seconds"] = seconds
     _save(data)

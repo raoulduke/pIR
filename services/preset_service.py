@@ -43,6 +43,7 @@ import threading
 import time
 from pathlib import Path
 
+from app.files import read_json_cached
 from app.constants import KEYPAD_PRESETS_FILE, PRESET_DEFAULT_DELAY_SECONDS
 from app.exceptions import HardwareError
 from hardware import ir_transmitter
@@ -59,12 +60,7 @@ _voice_toggle_state: dict[str, bool] = {}
 
 
 def _load() -> dict:
-    if _PATH.exists():
-        try:
-            return json.loads(_PATH.read_text())
-        except (OSError, json.JSONDecodeError):
-            pass
-    return {}
+    return read_json_cached(_PATH, {})
 
 
 def _device_key(device: str, location: str) -> str:

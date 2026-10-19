@@ -8,19 +8,15 @@ functions: {"name", "steps"} fired by Enter, or {"name", "up_steps",
 The device still needs a (possibly empty) directory under
 signals/<home>/<device>[/<location>]/ to appear as a leaf."""
 
-import json
 from pathlib import Path
+
+from app.files import read_json_cached
 
 _PATH = Path(__file__).parent.parent / "config" / "step_devices.json"
 
 
 def _load() -> dict:
-    if _PATH.exists():
-        try:
-            return json.loads(_PATH.read_text())
-        except (OSError, json.JSONDecodeError):
-            pass
-    return {}
+    return read_json_cached(_PATH, {})
 
 
 def _device_key(device: str, location: str) -> str:

@@ -20,8 +20,9 @@ A voice slot sends Home Assistant commands instead:
     "down_command": "Turn living room lights down"
   }"""
 
-import json
 from pathlib import Path
+
+from app.files import read_json_cached
 
 from app.constants import KEYPAD_DEVICES_FILE
 
@@ -29,12 +30,7 @@ _PATH = Path(__file__).parent.parent / KEYPAD_DEVICES_FILE
 
 
 def _load() -> list[dict]:
-    if _PATH.exists():
-        try:
-            return json.loads(_PATH.read_text())
-        except (OSError, json.JSONDecodeError):
-            pass
-    return []
+    return read_json_cached(_PATH, [])
 
 
 def get_slot(offset: int, index: int) -> dict | None:

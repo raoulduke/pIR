@@ -65,16 +65,17 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
             i -= 1
             continue
 
+        if typed and (_ir_locations(home, result) is None if i == 0
+                      else i == 1 and not _takes_ir(home, values[0], result)):
+            # A step device: its buttons come from steps, not IR signals.
+            lcd.write("Step device:", "no IR signals")
+            time.sleep(1.5)
+            continue
+
         if typed and result in (signal_service.list_devices(home) if i == 0
                                 else signal_service.list_locations(home, values[0])):
             # New means new: an existing one is picked from the list.
             lcd.write("Already exists", format_name(result)[:16])
-            time.sleep(1.5)
-            continue
-
-        if i == 1 and not _takes_ir(home, values[0], result):
-            # A typed name that is a step device: its buttons come from steps.
-            lcd.write("Step device:", "no IR signals")
             time.sleep(1.5)
             continue
 

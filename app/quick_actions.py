@@ -270,8 +270,8 @@ def _handle_menu() -> bool:
 
             if result == KEY_QUIT:
                 _state.running = False
-                return False
-        return False
+                return True
+        return True  # stopped while in the menu
     finally:
         # DeviceCycledAway passes through on purpose (see
         # _handle_device_cycle()).

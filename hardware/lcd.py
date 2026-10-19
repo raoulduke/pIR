@@ -1,23 +1,14 @@
-"""LCD hardware abstraction.
-
-Wraps the 1602 IIC 16×2 HD44780 display (PCF8574 I²C backpack) over
-software I²C.  All other layers call only ``lcd.write(line1, line2)``
-and ``lcd.clear()``.
+"""The 16x2 HD44780 LCD (PCF8574 I2C backpack, bit-banged I2C on bus 3).
+Everything else draws through the shared `lcd` below.
 """
 
 import threading
 
 from app.constants import BACKLIGHT_IDLE_SECONDS
 
-# Custom CGRAM characters for a sub-cell-resolution progress bar: each 5px-
-# wide cell gets 1-5 columns filled from the left (slots 1-5) — 5 fill
-# levels per cell, 80 discrete positions across 16 cells. The fully-filled
-# cell (slot 5) is defined here too rather than reusing the ROM's built-in
-# solid block (0xFF) — that glyph isn't at the same code point on every
-# HD44780 clone (the "A00" vs "A02" character ROM tables disagree past
-# 0x7F), so relying on it looked like a single block moving across an
-# otherwise-blank row instead of a bar filling up: only the custom-defined
-# leading edge was guaranteed to render the same way on this hardware.
+# Startup progress bar: CGRAM slots 1-5 fill 1-5 of a cell's 5 pixel
+# columns, for 80 steps across 16 cells. The full cell is custom too: the
+# ROM's solid block isn't at the same code point on every HD44780 clone.
 _BAR_PARTIAL_BITS = {
     1: 0b10000,
     2: 0b11000,
@@ -27,21 +18,16 @@ _BAR_PARTIAL_BITS = {
 }
 _BAR_FULL_CELL = chr(5)
 
-# Preset-line glyphs (screens/active_device_screen.py's
-# _PRESET_ABBREVIATIONS). The progress bar only runs during startup, so
-# once it's done load_preset_glyphs() reuses its CGRAM slots 1-5 for these
-# — never loaded alongside the bar, so no slot conflict.
+# Preset-line glyphs. They reuse the progress bar's slots 1-5 once startup
+# is done (load_preset_glyphs()).
 GLYPH_HOME = chr(1)
 GLYPH_CC_LEFT = chr(2)
 GLYPH_CC_RIGHT = chr(3)
 GLYPH_BACK_ARROW = chr(4)
 GLYPH_BACK_SHAFT = chr(5)
 
-# Scroll indicator for list screens (screens/widgets/format.py's
-# with_arrows()): solid up and down triangles stacked in one cell, in line
-# 2's last column. Slot 0 — the one slot neither the progress bar nor the
-# preset glyphs use — so it's loaded once at startup and never replaced.
-# Replaced a ROM "^" in line 1 plus a custom "v" in line 2 (2026-10-18).
+# List scroll indicator (format.with_arrows()): solid up and down triangles
+# in one cell. Slot 0, loaded once at startup.
 GLYPH_ARROW_UPDOWN = chr(0)
 _ARROW_UPDOWN_ROWS = [
     0b00100,
@@ -53,10 +39,8 @@ _ARROW_UPDOWN_ROWS = [
     0b01110,
     0b00100,
 ]
-# Ellipsis for a name cut short (screens/widgets/format.py's
-# fit_with_suffix()): three 1px dots on the baseline row, one cell instead
-# of "...". The ROM has none. Slot 6, unused by the bar and preset glyphs,
-# loaded once at startup like the down arrow.
+# Ellipsis for a name cut short (format.fit_with_suffix()): three dots in one
+# cell; the ROM has none. Slot 6, loaded once at startup.
 GLYPH_ELLIPSIS = chr(6)
 _ELLIPSIS_ROWS = [0, 0, 0, 0, 0, 0, 0b10101, 0]
 _PRESET_GLYPHS = {
@@ -121,13 +105,9 @@ _PRESET_GLYPHS = {
 
 class LCD:
     def __init__(self) -> None:
-        # Guards every write below against interleaving with a background
-        # thread's write (services/preset_service.py's run_steps_background
-        # reports a failed voice/hue step from its own worker thread, after
-        # the main input loop has already moved on) — without this, two
-        # threads racing to write cursor_pos + write_string in an
-        # interleaved order could corrupt what's on screen, not just which
-        # message wins.
+        # Background threads write too (late step failures, the status
+        # character, the idle timer); interleaved cursor moves and writes
+        # would garble the screen.
         self._lock = threading.Lock()
         from RPLCD.i2c import CharLCD  # here, not at import: see _LazyLCD
         self._lcd = CharLCD(
@@ -144,18 +124,14 @@ class LCD:
         self._lcd.create_char(0, _ARROW_UPDOWN_ROWS)
         self._lcd.create_char(6, _ELLIPSIS_ROWS)
         # Status character in line 1's last column (write_with_status()).
-        # _status_shown is True only while the screen that drew it is
-        # still up: every other write that touches line 1 clears it, so
-        # set_status_char() from a background thread never draws over
-        # another screen.
+        # _status_shown is cleared by every other line-1 write, so a
+        # background set_status_char() never draws over another screen.
         self._status_char = " "
         self._status_shown = False
-        # Backlight idle-off. The backpack's PCF8574 P3 switches the
-        # backlight (confirmed by eye 2026-10-18), which RPLCD drives as
-        # backlight_enabled and re-sends with every write, so writes made
-        # while it's off don't turn it back on. _idle_gen invalidates a
-        # timer that already fired but is still waiting on _lock when
-        # wake() re-arms.
+        # Backlight idle-off (the backpack's P3 bit; RPLCD re-sends it with
+        # every write, so writes while it's off don't relight it).
+        # _idle_gen invalidates a timer that fired but is still waiting on
+        # _lock when wake() re-arms.
         self._idle_timer: threading.Timer | None = None
         self._idle_gen = 0
         self._backlight_listener = None
@@ -164,11 +140,9 @@ class LCD:
         self.wake()
 
     def set_backlight_listener(self, listener) -> None:
-        """Register *listener(lit)*, called when the idle timer turns the
-        backlight off (False) and when wake() turns it back on (True) —
-        main.py wires it to services/androidtv_service.py's
-        set_screen_lit(). Called outside the lock, from the timer's thread
-        or wake()'s caller, so it must be quick and must not raise."""
+        """Register *listener(lit)*, called when the backlight goes off
+        (False) or comes back on (True). Called outside the lock, from the
+        timer thread or wake()'s caller: must be quick and not raise."""
         self._backlight_listener = listener
 
     def set_idle_seconds(self, seconds: float | None) -> None:
@@ -239,22 +213,14 @@ class LCD:
             self._lcd.write_string(line2[:16].ljust(16))
 
     def write_line1(self, text: str = "") -> None:
-        """Overwrite just the top row — no clear() (that would blank both
-        rows), so line 2 survives untouched. For a status update that
-        shouldn't interrupt something already showing on line 2, e.g.
-        screens/network_screen.py's background rescan not disturbing the
-        network currently highlighted."""
+        """Rewrite only the top row, leaving line 2 as it is."""
         with self._lock:
             self._status_shown = False
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(text[:16].ljust(16))
 
     def write_line2(self, text: str = "") -> None:
-        """Overwrite just the bottom row — no clear() (that would blank
-        both rows), so line 1 survives untouched. Mirrors write_line1();
-        see there. Used by screens/active_device_screen.py's Preset
-        Function name reveal after a device switch, so the device label
-        already on line 1 doesn't need rewriting each frame."""
+        """Rewrite only the bottom row, leaving line 1 as it is."""
         with self._lock:
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(text[:16].ljust(16))
@@ -290,13 +256,8 @@ class LCD:
                 self._lcd.create_char(location, rows)
 
     def write_progress(self, line1: str, fraction: float) -> None:
-        """Top row is *line1*; bottom row is a fill bar for *fraction*
-        (0.0-1.0), left to right, at 5 sub-positions per cell.
-
-        Skips clear() (unlike write()) so repeated calls don't flicker —
-        every cell in both rows is always overwritten with padding, so no
-        stale characters can survive between frames.
-        """
+        """*line1* on top; a bar filled to *fraction* (0.0-1.0) below, at 5
+        steps per cell."""
         fraction = max(0.0, min(1.0, fraction))
         units = round(fraction * 16 * 5)
         full_cells, partial = divmod(units, 5)

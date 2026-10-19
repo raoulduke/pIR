@@ -1,17 +1,10 @@
-"""IR transmitter hardware wrapper.
+"""IR transmitter: sends signals with `ir-ctl -s` on the TX device.
 
-Wraps ``ir-ctl -s`` (lirc0).  Only this file knows about the TX device path.
-
-Signal files are ir-ctl ``+pulse -space`` text, sent at the gpio-ir-tx
-default 38 kHz carrier. A file may start with a ``carrier N`` line instead
-(the Fun menu's library codes — Sony, Philips and Panasonic need their own
-carrier; see services/ir_encode.py): ir-ctl rejects that line mixed with
-+/- values, so it's stripped here and passed as ``-c N``, with the rest
-sent from a copy in /dev/shm (RAM, not the SD card).
-
-The kernel refuses a single send longer than 500ms in total, so a longer
-signal (a raw capture of a held button) loses trailing repeat frames
-until it fits; see _fit_tx_limit().
+Signal files are `+pulse -space` text at 38 kHz, optionally starting with a
+`carrier N` line (Sweep codes for brands that need another carrier). ir-ctl
+rejects that line mixed with timings, so signals go out from a temp copy in
+/dev/shm (RAM) with `-c N`. The kernel refuses any send over 500ms, so a
+longer signal loses trailing repeat frames until it fits (_fit_tx_limit()).
 """
 
 import fcntl
@@ -63,19 +56,11 @@ def transmit(signal_file: Path) -> None:
 
 
 def stream(signal_file: Path, still_held) -> None:
-    """Send one frame of *signal_file*, then repeat it at the remote's own
-    pace for as long as *still_held()* — the way a physical remote behaves
-    while a button is held, which a receiver ramps volume on smoothly.
-    Blocks until released. A tap sends exactly one frame.
-
-    Writes straight to the LIRC device instead of spawning ir-ctl per
-    frame (~103ms each on this hardware, longer than the ~90ms frame
-    period itself). The frame is the capture's first; the period is the
-    capture's own average frame-plus-gap, so it matches whatever pace the
-    original remote used.
-
-    Raises ``HardwareError`` on failure.
-    """
+    """Send *signal_file*'s first frame, then repeat it at the capture's own
+    frame period while *still_held()* — like a held remote button, so a
+    receiver ramps volume smoothly. Blocks until released; a tap is one
+    frame. Writes the LIRC device directly: an ir-ctl per frame takes
+    ~100ms, longer than the frame period. Raises HardwareError on failure."""
     carrier, pulses = _read_pulses(signal_file)
     frame, period = _first_frame(pulses)
     data = array("I", frame).tobytes()

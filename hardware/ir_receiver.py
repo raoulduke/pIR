@@ -1,8 +1,4 @@
-"""IR receiver hardware wrapper.
-
-Wraps ``ir-ctl -r`` (lirc1).  Only this file knows about the RX device path
-and the capture state machine.
-"""
+"""IR receiver: captures one signal with `ir-ctl -r` on the RX device."""
 
 import subprocess
 import signal
@@ -26,15 +22,9 @@ from hardware import lirc
 if TYPE_CHECKING:
     from hardware.lcd import LCD
 
-# The receiver is locked to NEC-only decoding (see ir-nec.service), and
-# every NEC frame — the main burst and every repeat — starts with a lead-in
-# pulse around 8500-9000us, dramatically longer than any real data pulse
-# (NEC's own unit pulses top out around 600us). Electrical interference
-# observed on this circuit tops out well under 1ms per pulse and never
-# produces anything close to a real lead-in. Requiring a line's first pulse
-# to clear this threshold before treating it as a signal — rather than
-# noise — filters that interference out without needing to know its exact
-# source. If a non-NEC protocol is ever supported, this needs revisiting.
+# Noise filter: every NEC frame starts with a ~9ms lead-in pulse, while the
+# interference seen on this circuit stays well under 1ms per pulse. A burst
+# whose first pulse is shorter than this is ignored. (Assumes NEC remotes.)
 _MIN_LEAD_PULSE_MICROSECONDS = 2000
 
 
@@ -49,11 +39,9 @@ def _looks_like_real_frame(line: str) -> bool:
 
 
 def capture(lcd: "LCD") -> str:
-    """Capture one IR signal burst.
-
-    Displays progress on *lcd*.  Returns the raw signal text, or ``""`` on
-    failure.  Raises ``HardwareError`` if ``ir-ctl`` is not available.
-    """
+    """Capture one IR signal, showing progress on *lcd*. Returns the raw
+    `+pulse -space` text, or "" if nothing real arrived. Raises
+    HardwareError if ir-ctl is missing."""
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".txt", prefix="ir_signal_")
     os.close(tmp_fd)
 
@@ -88,23 +76,14 @@ def capture(lcd: "LCD") -> str:
                             break
 
                         if not _looks_like_real_frame(line):
-                            # Interference, not a real button press — ignore
-                            # it entirely: don't save it, don't count it,
-                            # and don't let it reset the tail timer below
-                            # (which would otherwise stop a real capture
-                            # from ever reaching "quiet long enough to end").
-                            # The overall timeout just below is what keeps
-                            # this from waiting forever if it's noise the
-                            # whole way through with no real press at all.
+                            # Interference: not saved, and it mustn't reset
+                            # the tail timer below or a capture never ends.
                             continue
 
                         tmp.write(line)
                         tmp.flush()
 
-                        # ir-ctl -r emits one line per burst, e.g.
-                        # "+8559 -4195 +659 -1520 ...", not lines literally
-                        # starting with "pulse"/"space" — count the +/-
-                        # tokens themselves instead.
+                        # One line per burst: "+8559 -4195 +659 ...".
                         stripped = line.strip()
                         if stripped:
                             new_pulses = len(stripped.split())
@@ -122,11 +101,7 @@ def capture(lcd: "LCD") -> str:
                         lcd.write(STATEMENT_CAPTURED, f"{pulse_count} pulses")
                         break
 
-                    # Nothing real yet after a while — likely just noise the
-                    # whole time with no actual button press. Give up rather
-                    # than wait forever; the caller's existing "no signal,
-                    # try again" retry handles this the same as a too-short
-                    # capture.
+                    # Nothing real at all: give up (the caller offers a retry).
                     if not captured and (time.monotonic() - start_time) > SIGNAL_WAIT_TIMEOUT_SECONDS:
                         break
 

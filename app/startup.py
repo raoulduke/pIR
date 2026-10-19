@@ -16,16 +16,9 @@ log = logging.getLogger(__name__)
 
 
 def initialize() -> AppState | None:
-    """Runs the checks that are cheap and worth failing fast on before the
-    real screen appears. Deliberately does NOT check input-device
-    availability first — the app needs human interaction to do anything at
-    all, and that's inherently slower than any of this, so there's no
-    reason to gate showing the real screen on it. hardware/input.py's
-    read_key() already has the real version of that same check (and a more
-    accurate one — it knows whether the keypad itself actually came up,
-    not just whether some evdev device exists), so a broken zero-input
-    device still fails exactly as loudly, just the moment read_key() is
-    first called instead of before the screen ever gets a chance to draw."""
+    """Run the quick checks worth failing fast on before the first screen.
+    Input devices aren't checked here: read_key() reports having none the
+    first time it's called."""
     state = AppState()
 
     def _check_config() -> None:
@@ -42,10 +35,6 @@ def initialize() -> AppState | None:
     def _check_ir_transmit() -> None:
         ir_transmitter.verify()
 
-    # The progress bar's denominator comes from this list's own length, not
-    # a separately-maintained count — add or remove a check here and the
-    # bar automatically reflects real progress against the new total,
-    # instead of a number that has to be remembered and kept in sync.
     checks = [_check_config, _check_ir_receive, _check_ir_transmit]
 
     try:
@@ -54,14 +43,6 @@ def initialize() -> AppState | None:
             check()
 
         lcd.load_preset_glyphs()
-
-        # No "Ready" screen here — active_device_screen.show() draws the
-        # real first screen immediately, and a network-connectivity check
-        # used to run right before this too: state.network_connected/
-        # ip_address were set but never read anywhere else in the app, so
-        # that step was pure dead work — up to a full second of stalling
-        # on network.is_connected()'s socket timeout if Wi-Fi wasn't
-        # associated yet, for a result nothing ever consulted.
         return state
 
     except (ConfigError, HardwareError) as e:

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Pi Home Control — entry point.
 
-Startup → Active Device Control (main loop) → shutdown. Everything else
-(Learn, voice command, Home switcher, WiFi) is reached via the physical
-Menu key from anywhere — see docs/active-device-control-plan.md.
+Startup, then Active Device Control (the main loop) until stopped. Every
+other screen is reached through the Menu key (app/quick_actions.py).
 """
 
 import _thread
@@ -13,9 +12,8 @@ import signal
 import sys
 import threading
 
-# Device failures (IR TX/RX, voice, Hue, Android TV) log here as well as
-# the LCD — the LCD message is gone the moment the screen redraws, the
-# journal (`journalctl -u pihome.service`) keeps it.
+# Failures also go to the journal (journalctl -u pihome.service): the LCD
+# message is gone at the next redraw.
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 print(f"[BOOT] PID={os.getpid()}")
@@ -33,9 +31,9 @@ import screens.active_device_screen as active_device_screen
 
 
 def _powering_off() -> bool:
-    """True if this exit is part of an OS power-off/halt (shutdown button,
-    poweroff) rather than a restart, reboot or plain stop — the only case
-    where systemd/system-shutdown/shutdown-signal.sh will darken the screen."""
+    """True if this exit is part of an OS power-off/halt rather than a
+    restart, reboot or plain stop — the only case where
+    systemd/system-shutdown/shutdown-signal.sh darkens the screen."""
     import subprocess
     try:
         jobs = subprocess.run(
@@ -71,18 +69,13 @@ def main() -> None:
 
     quick_actions.init(state)
     set_quick_action_handler(quick_actions.handle)
-    # Speculative Wi-Fi radio wake on every keypress — see
-    # services/wifi_wake_service.py's docstring for why.
-    set_key_observer(wifi_wake_service.wake)
-    # Backlight idle-off: any key relights it, and the press that lights a
-    # dark screen does nothing else — see hardware/lcd.py's wake().
+    set_key_observer(wifi_wake_service.wake)  # wake the Wi-Fi radio early
+    # Any key relights a dark backlight, and that press does nothing else.
     set_wake_handler(lambda key: lcd.wake())
-    # The Google TV connection is held open on its screen only while the
-    # backlight is on — see services/androidtv_service.py's docstring.
+    # Google TV's connection is held open on its screen only while lit.
     lcd.set_backlight_listener(androidtv_service.set_screen_lit)
     lcd.set_idle_seconds(config_service.get_backlight_timeout_seconds())
-    # Google TV screen's connection status, in its line 1's last column —
-    # see hardware/lcd.py's write_with_status().
+    # Google TV screen's connection status, line 1's last column.
     lcd.set_status_char(ANDROIDTV_STATUS_CHARS["closed"])
     androidtv_service.set_status_listener(
         lambda status: lcd.set_status_char(ANDROIDTV_STATUS_CHARS[status])
@@ -115,12 +108,7 @@ def main() -> None:
     # the app back; 0 for a requested stop (signal, quit), which shouldn't.
     exit_code = 0
     try:
-        # Boot straight into Active Device Control (the most-used screen)
-        # — no menu detour on startup. It owns the main loop until
-        # state.running goes False; everything else (Learn, Command, Home)
-        # is reached via the Menu key (app/quick_actions.py), not through
-        # this loop.
-        active_device_screen.show(lcd, state)
+        active_device_screen.show(lcd, state)  # runs until state.running is False
         _write_exit_message()
 
     except KeyboardInterrupt:

@@ -1,13 +1,7 @@
-"""Global keypad quick actions.
-
-Wired into hardware.input via set_quick_action_handler at startup (see
-main.py), so device/preset/menu shortcuts on the physical keypad fire from
-anywhere in the app — read_key() intercepts them before returning to
-whichever screen is currently blocked waiting for a key.
-
-init(state) must be called once at startup (see main.py) before any of
-these touch AppState — handle() itself stays a plain function of just the
-key, matching hardware.input.set_quick_action_handler's calling convention.
+"""Global keypad quick actions: device slots, Preset Function 1-4,
+< Device/Device > and Menu. hardware.input's read_key() runs handle() for
+these keys from whichever screen is waiting, so they work everywhere.
+Call init(state) once at startup.
 """
 
 import logging
@@ -40,9 +34,7 @@ _CYCLE_DIRECTIONS = {KEY_DEVICE_PREV: -1, KEY_DEVICE_NEXT: 1}
 
 _state: AppState | None = None
 
-# Set for the duration of _handle_menu() (and everything it calls) so
-# _handle_device_cycle can tell it's currently nested under a Menu screen —
-# see hardware.input.DeviceCycledAway.
+# True while a Menu screen is up (_handle_menu() and everything it calls).
 _in_menu = False
 
 
@@ -56,22 +48,11 @@ def init(state: AppState) -> None:
 
 
 def handle(key: str) -> bool:
-    """Returns True if hardware.input.read_key() should return None to its
-    caller right away instead of continuing to block for another key —
-    used by the "Preset Device N" slot buttons, Preset Function, and
-    < Device/Device > so whatever they've already drawn doesn't just sit
-    there with the interrupted screen's own read_key() call left blocked
-    indefinitely behind it, silently, until some unrelated keypress
-    happens to wake it back up. Returning True makes read_key() return
-    None to its caller right away instead — every screen's own read loop
-    already redraws unconditionally on a None key, except a few of
-    screens/active_device_screen.py's own (see its handling of a None key
-    there), which is also exactly what lets that screen notice a leaf
-    change and start its Preset-name reveal (_reveal_presets()) the
-    instant a device switch actually happens, not one extra keypress
-    later. Menu returns True when it was closed with Left — the screen it
-    was opened over then needs that same redraw, since the menu's own last
-    frame is still on the LCD — or when a quit stopped the app."""
+    """Run the quick action for *key*. Returns True when read_key() should
+    return None to its caller at once, so the interrupted screen redraws
+    over what the action drew (and Active Device Control notices a device
+    switch straight away). Menu returns True when closed with Left, or when
+    a quit stopped the app."""
     if key in _DEVICE_KEYS:
         _handle_device(key)
         return True
@@ -131,12 +112,9 @@ def _handle_device(key: str) -> None:
 
 
 def _stream_device(key: str, label: str, button: str, path) -> None:
-    """A "smooth" slot (config/keypad_devices.json): send the signal like
-    its own remote does while held — one frame, repeated at the remote's
-    pace until release (hardware/ir_transmitter.py's stream()) — so e.g.
-    receiver volume ramps smoothly instead of one step per press. Blocks
-    for the hold, showing the button meanwhile; a tap is one frame, shown
-    for at least ASYNC_SEND_FLASH_SECONDS."""
+    """A "smooth" slot: repeat the signal at the remote's own pace until the
+    key is released (ir_transmitter.stream()), so e.g. receiver volume ramps
+    smoothly. A tap is one frame, shown for at least ASYNC_SEND_FLASH_SECONDS."""
     lcd.write(label, button.replace("_", " ").title())
     started = time.monotonic()
     try:
@@ -167,15 +145,8 @@ def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
         time.sleep(1)
         return
 
-    # Non-blocking (see services/preset_service.py's run_steps_background)
-    # — voice_service.send_command() is a real HTTP round-trip (up to 15s
-    # timeout), so blocking here used to leave the keypad unresponsive for
-    # however long that took. Shows "Sending..." for a brief fixed flash
-    # (ASYNC_SEND_FLASH_SECONDS — the command is already sending in the
-    # background during it, this is only so the message is actually seen
-    # before the caller's own next redraw would otherwise overwrite it)
-    # then returns; a failure overwrites the label whenever it's actually
-    # known, a success needs no follow-up message.
+    # Sent in the background (an HTTP call of up to 15s); only a failure
+    # shows afterwards.
     lcd.write(label, "Sending...")
     still_here = _still_on_screen()
 
@@ -188,15 +159,9 @@ def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
 
 
 def _handle_preset(number: int) -> None:
-    """Preset Function N — runs the active device's override for slot N if
-    it has one (see services/preset_service.py); a slot it doesn't define is
-    "Not configured" — there is no global default.
-    Active device is read-only here; presses never change it.
-
-    Shows the preset's configured name (e.g. "Candlelight", "Rest")
-    instead of the generic "Preset N" — falls back to "Preset N" if the
-    entry has no name or isn't configured at all, so there's still
-    something on line 1 either way."""
+    """Preset Function N: run the active device's preset N, shown under its
+    name ("Preset N" if it has none). There's no global default — a slot the
+    device doesn't define is "Not configured"."""
     device = _state.active_device or ""
     location = _state.active_location or ""
 
@@ -213,18 +178,8 @@ def _handle_preset(number: int) -> None:
         time.sleep(1)
         return
 
-    # Non-blocking (see services/preset_service.py's run_steps_background)
-    # — a voice/hue step in here is a real network round-trip, so blocking
-    # used to leave "Running..." on screen and the keypad unresponsive for
-    # however long that took. Shows "Running..." for a brief fixed flash
-    # (ASYNC_SEND_FLASH_SECONDS — steps are already running in the
-    # background during it, this is only so the message is actually seen
-    # before the caller's own next redraw would otherwise overwrite it)
-    # then returns; a failure overwrites the label whenever it's actually
-    # known — which step failed (preset_service.describe_step()), same for
-    # a single-step preset (e.g. Preset 1's default "Back" IR signal) and a
-    # multi-step one (e.g. "Rust"'s voice command + IR signal) — a full
-    # success needs no follow-up message.
+    # Steps run in the background (voice/Hue are network calls); only a
+    # failure shows afterwards, naming the step that failed.
     lcd.write(label, "Running...")
     still_here = _still_on_screen()
 
@@ -237,15 +192,9 @@ def _handle_preset(number: int) -> None:
 
 
 def _handle_device_cycle(key: str) -> None:
-    """< Device / Device > — cycle screens.active_device_screen's active
-    device. Global (works from any screen), replacing the old Send-screen
-    -scoped cycle. Every light device collapses into one "Lights" stop,
-    and every tv device into one "TV" stop, here (screens.
-    active_device_screen.cycle_top_level()) — Left/Right, handled locally
-    by active_device_screen.show() itself once inside one of those groups,
-    is what actually moves between its individual leaves (Google TV, its
-    own top-level stop, isn't part of the TV group — see app.constants.
-    MENU_DEVICE_LABELS)."""
+    """< Device / Device >: switch Active Device Control's device, from any
+    screen. Lights and TVs are one stop each (MENU_DEVICE_LABELS); Left/Right
+    on that screen moves between their leaves."""
     direction = _CYCLE_DIRECTIONS[key]
     home = home_service.get_active_home()
     current = (_state.active_device, _state.active_location)
@@ -256,46 +205,23 @@ def _handle_device_cycle(key: str) -> None:
     device, location = active_device_screen.cycle_top_level(home, current, direction)
     _state.active_device, _state.active_location = device, location
 
-    # Show the real, already-interactive screen for the new device right
-    # away — no separate "Active device" confirmation banner, which used a
-    # fixed sleep that only delayed the next real button press without
-    # adding anything the screen itself doesn't already make obvious.
     active_device_screen.render_after_cycle(lcd, _state)
 
     if _in_menu:
-        # Cycling devices backs out of any Menu screen immediately, on
-        # this very keypress — not just a redraw that a Menu screen sits
-        # on top of, invisible, until some unrelated key is next pressed.
-        # Deliberately left uncaught here (see DeviceCycledAway) so it
-        # unwinds all the way back to active_device_screen.show()'s own
-        # blocked read_key() call, from before the Menu key was pressed —
-        # not just out of _handle_menu — so *that* screen's very next
-        # read_key() call is a fresh one against the already-switched
-        # device, instead of the stale one it was mid-call on when Menu
-        # interrupted it (which would otherwise still need its usual
-        # "this key isn't safe to apply to it sight unseen" discard-and-
-        # redraw, costing an extra throwaway keypress on top of this one).
+        # Leave the Menu on this press: unwinds past _handle_menu() to
+        # Active Device Control's own read_key(), so its next read is a
+        # fresh one for the new device.
         raise DeviceCycledAway()
 
 
 def _handle_menu() -> bool:
-    """Menu key — the escape hatch. Opens screens.main_menu and dispatches
-    to whichever screen is chosen directly, since a quick action doesn't
-    feed back into an outer dispatch loop (there isn't one anymore — see
-    screens/active_device_screen.py, which owns the app's main loop).
-    Returns True when Left closed the menu or a quit stopped the app (see
-    handle())."""
-    # This can fire while active_device_screen.py has google_tv's D-pad
-    # Left/Right hold-to-scroll turned on (it re-asserts that per loop
-    # iteration, but this quick action runs from inside its blocked
-    # read_key() call, mid-iteration) — clear it (and its widened repeat
-    # interval) so e.g. holding Left in a menu screen's list doesn't
-    # rapid-fire "Back" or, worse, rapid-delete characters in the D-pad
-    # text entry widget at the wrong pace. active_device_screen.py
-    # reasserts the right state again on its own next loop pass regardless.
+    """Menu key: show the main menu and run the chosen screen. Returns True
+    when Left closed the menu or a quit stopped the app (see handle())."""
+    # Reset whatever key behaviour the interrupted screen set (Google TV's
+    # Left/Right repeat, the sweep's tap/hold Enter), so it doesn't carry
+    # into the menu.
     from hardware import input as input_hw
     input_hw.use_default_keys()
-    # Same for the Sweep's tap/hold Enter, if Menu was pressed mid-sweep.
     input_hw.set_hold_keys({})
 
     import screens.main_menu as main_menu
@@ -347,10 +273,6 @@ def _handle_menu() -> bool:
                 return False
         return False
     finally:
-        # Not catching DeviceCycledAway here — it's meant to propagate
-        # further up, past this function entirely, to
-        # active_device_screen.show()'s own blocked read_key() call (see
-        # DeviceCycledAway and _handle_device_cycle). This finally only
-        # resets the "are we nested under a Menu screen" flag on the way
-        # out, however _handle_menu is exiting.
+        # DeviceCycledAway passes through on purpose (see
+        # _handle_device_cycle()).
         _in_menu = False

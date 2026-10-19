@@ -1,23 +1,16 @@
-"""GPIO keypad matrix hardware abstraction.
+"""GPIO keypad matrix.
 
-The 12-wire keypad is pre-built with an unknown row/column grouping (see
-CLAUDE.md — "pre-built layout preserved as-is, not renumbered"), so this
-module treats it generically: it doesn't assume which wires are rows and
-which are columns, or even that it's a true matrix at all (a directly
-grounded-per-button wiring scheme reads the same way here).
+The pre-built 12-wire keypad's row/column grouping is unknown, so nothing
+here assumes which wires are rows or columns. A reading is an id for what's
+pressed:
 
-``scan_once()`` is the shared primitive used both by ``scripts/keypad_wizard.py``
-(to discover the physical layout) and by ``KeypadScanner`` at runtime (to look
-a reading up in the saved map). It returns a deterministic string id for
-whatever is currently pressed:
-
-  - "14"     — a single wire reads LOW on its own (direct-to-ground wiring)
-  - "14+15"  — wire 14 driven LOW causes wire 15 to read LOW (true matrix)
+  - "14"     — wire 14 reads LOW on its own (wired straight to ground)
+  - "14+15"  — driving wire 14 LOW pulls wire 15 LOW (a matrix key)
   - None     — nothing pressed
 
-Runtime key events are pushed onto a thread-safe queue and signalled through
-a self-pipe so ``hardware.input.InputReader`` can multiplex them into its
-existing ``select()`` loop without polling.
+scripts/keypad_wizard.py maps readings to labels (config/keypad_map.json);
+KeypadScanner looks them up at runtime and queues key events, signalled
+through a pipe that hardware/input.py's select() waits on.
 """
 
 import json
@@ -75,16 +68,9 @@ _LABEL_ALIASES = {
     "PRESET FUNCTION 3": KEY_PRESET_3, "PRESET FUNCTION 4": KEY_PRESET_4,
 }
 
-# Keys that always auto-repeat while held (see KeypadScanner._repeat_while_held).
-# Deliberately just Up/Down by default: every repeat does the same single
-# action regardless of timing (scroll a list, cycle a character), unlike
-# Enter or the preset/menu quick actions, where an accidental repeat would
-# re-fire a one-shot action (an IR signal, a preset macro) rather than just
-# moving a cursor. A screen can layer Left/Right (or anything else) on top
-# of this baseline at runtime via KeypadScanner.set_repeatable_keys() —
-# screens/active_device_screen.py does this for Google TV's D-pad, where
-# Left/Right hold-to-scroll makes sense the same way Up/Down already does,
-# but only while that specific device is active (see its own comment).
+# Keys that auto-repeat while held by default: Up/Down only, since repeating
+# them just moves a cursor, while a repeated Enter or quick action would
+# re-fire it. Screens add more with set_repeatable_keys().
 _REPEATABLE_KEYS = {KEY_UP, KEY_DOWN}
 
 
@@ -104,11 +90,10 @@ def teardown_pins() -> None:
 
 
 def scan_once() -> str | None:
-    """Do one full pass over the matrix and return an id for whatever is
-    pressed right now, or None. Assumes ``setup_pins()`` has been called.
-    """
-    # Idle check first: catches a wire that's simply pulled to ground when
-    # its button is pressed (no active driving needed).
+    """One full pass over the matrix: an id for whatever is pressed, or
+    None. The general scan (the wizard, and maps that aren't a clean
+    two-sided matrix); assumes setup_pins() was called."""
+    # A wire pulled to ground on its own (no driving needed).
     for pin in KEYPAD_GPIO_PINS:
         if GPIO.input(pin) == GPIO.LOW:
             return str(pin)
@@ -138,13 +123,9 @@ def scan_once() -> str | None:
 
 def _wait_for_press(stop_event: threading.Event, scan_fn=scan_once,
                     give_up_after: float | None = None) -> str | None:
-    """Block until a press is stable for KEYPAD_DEBOUNCE_SCANS scans in a
-    row, then return immediately (release not waited for here). Returns
-    None if stop_event was set first, or once nothing has read as pressed
-    for *give_up_after* seconds (None = never). *scan_fn* defaults to the
-    general-purpose scan_once(); KeypadScanner passes its own faster scan
-    instead.
-    """
+    """Return a reading once it's stable for KEYPAD_DEBOUNCE_SCANS scans
+    (without waiting for release). None if stop_event is set first, or once
+    nothing has read as pressed for *give_up_after* seconds."""
     last = None
     streak = 0
     last_seen = time.monotonic()
@@ -168,17 +149,14 @@ def _wait_for_press(stop_event: threading.Event, scan_fn=scan_once,
 
 
 def _wait_for_release(stop_event: threading.Event, scan_fn=scan_once) -> None:
-    """Block until nothing reads as pressed, so one physical press can't
-    repeat-fire (unless the caller explicitly wants repeat — see
-    KeypadScanner._repeat_while_held)."""
+    """Block until nothing reads as pressed."""
     while scan_fn() is not None and not stop_event.is_set():
         time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
 
 
 def _read_debounced(stop_event: threading.Event, scan_fn=scan_once) -> str | None:
-    """Block until a press is stable, then block again until release.
-    Returns the id, or None if stop_event was set first. Used by
-    scripts/keypad_wizard.py, which always wants one press per call."""
+    """One whole press (stable, then released): its id, or None if
+    stop_event was set first. For scripts/keypad_wizard.py."""
     reading = _wait_for_press(stop_event, scan_fn)
     if reading is not None:
         _wait_for_release(stop_event, scan_fn)
@@ -188,18 +166,11 @@ def _read_debounced(stop_event: threading.Event, scan_fn=scan_once) -> str | Non
 def _infer_partition(
         pins: list[int], edges: set[tuple[int, int]]
 ) -> tuple[set[int], set[int]] | None:
-    """2-color the matrix graph so every known key-press edge crosses sides.
-
-    Lets KeypadScanner drive one side's pins as fixed OUTPUTs (idle HIGH)
-    and read the other side as fixed INPUTs, so a sweep only toggles output
-    *values* instead of calling GPIO.setup() on every pin every sweep — a
-    direction change, which is a slow sysfs write and, done continuously in
-    a background thread, generates enough traffic to disrupt the LCD's
-    bit-banged software I2C (seen as garbled output / I2C timeouts).
-
-    Returns (side_a, side_b), or None if the graph isn't bipartite — caller
-    falls back to the slower, fully general scan_once().
-    """
+    """Split the wires into two sides so every key connects one wire from
+    each: (drive side, sense side), or None if that's impossible. Lets the
+    scanner set pin directions once and only toggle output values — changing
+    directions on every sweep caused enough GPIO traffic to garble the
+    LCD's bit-banged I2C."""
     adjacency: dict[int, set[int]] = {p: set() for p in pins}
     for a, b in edges:
         adjacency.setdefault(a, set()).add(b)
@@ -239,9 +210,8 @@ def resolve_label(label: str) -> str:
 
 
 class KeypadScanner:
-    """Background thread that scans the matrix and feeds key events into
-    hardware/input.py through a queue + self-pipe wakeup.
-    """
+    """Background thread that scans the matrix and queues key events for
+    hardware/input.py."""
 
     def __init__(self) -> None:
         self._map = _load_map()
@@ -295,10 +265,9 @@ class KeypadScanner:
         self._thread.start()
 
     def _request_edges(self):
-        """Falling-edge interrupts on every sense pin, so the idle wait can
-        sleep in select() instead of scanning 100 times a second. Returns
-        None (polling idle, as before) if gpiod is missing or the request
-        fails."""
+        """Falling-edge interrupts (gpiod) on every sense pin, so idle waits
+        sleep instead of scanning 100 times a second. None — poll instead —
+        if gpiod is missing or the request fails."""
         try:
             import gpiod
             from gpiod.line import Bias, Direction, Edge
@@ -335,57 +304,35 @@ class KeypadScanner:
         return self._wake_r
 
     def set_repeatable_keys(self, extra: set[str], exclude: set[str] = frozenset()) -> None:
-        """Runtime override of which keys auto-repeat while held, layering
-        *extra* on top of the always-repeatable baseline (_REPEATABLE_KEYS —
-        Up/Down) and dropping *exclude* from it — e.g. the sweep drops
-        Up/Down so a hold can't rapid-fire IR codes. Pass empty sets to
-        fall back to just the baseline.
-        Read by the scan thread on its next key press, so this is safe to
-        call from any thread without a lock — worst case a press right at
-        the boundary uses the old set for that one press."""
+        """Keys that auto-repeat: the Up/Down baseline plus *extra*, minus
+        *exclude*. Read at the next press, so no lock is needed."""
         self._repeatable_keys = (set(_REPEATABLE_KEYS) | set(extra)) - set(exclude)
 
     def set_hold_keys(self, holds: dict[str, str]) -> None:
-        """Runtime opt-in to tap vs. hold for the keys in *holds* (key ->
-        event emitted on a hold). A tap emits the key on release instead
-        of on press; holding past KEYPAD_HOLD_SECONDS emits the mapped
-        hold event instead, and nothing on release. Pass {} to restore
-        on-press behavior. Only the Fun sweep uses this (Enter: tap
-        pauses/resumes, hold saves) — everywhere else Enter has to act
-        the instant it's pressed (Google TV's D-pad; see
-        docs/active-device-control-plan.md's "Rejected: long-press
-        Enter"). Same lock-free reasoning as set_repeatable_keys()."""
+        """Tap vs. hold for the keys in *holds* (key -> event sent on a
+        hold): a tap sends the key on release; holding past
+        KEYPAD_HOLD_SECONDS sends the hold event instead. {} restores
+        on-press. Only the sweep uses it — elsewhere Enter must act on
+        press."""
         self._hold_keys = dict(holds)
 
     def is_held(self, key: str) -> bool:
-        """True while *key* is still physically held — set just before its
-        press is emitted and cleared on release, so a tap released before
-        its consumer even looks reads as not held. For hold-to-stream IR
-        (hardware/ir_transmitter.py's stream()), which needs the release
-        directly rather than through the event queue."""
+        """True while *key* is physically held (set before its press is
+        queued, cleared on release). For ir_transmitter.stream(), which
+        needs the release directly rather than through the queue."""
         return self._held_key == key
 
     def set_repeat_interval(self, seconds: float | None) -> None:
-        """Runtime override of the pace once a repeatable key is held past
-        the initial KEYPAD_REPEAT_DELAY_SECONDS. Pass None to restore the
-        default (KEYPAD_REPEAT_INTERVAL_SECONDS).
-
-        The default 100ms assumes each repeated key event is cheap to act
-        on (bump an in-memory list index). An IR transmit is not cheap —
-        screens/active_device_screen.py's google_tv D-pad measured ~103ms
-        per ir-ctl send alone, already over the 100ms default before even
-        counting the consumer's own work — so events piled up in self.events
-        (an unbounded queue) during a hold and kept draining, stale, after
-        release, reading as laggy/bursty rather than a smooth scroll. That
-        screen widens the interval while google_tv is active so production
-        and consumption stay roughly matched."""
+        """Repeat pace once a held key starts repeating; None restores the
+        default. Google TV's D-pad widens it: each repeat is an IR send
+        (~100ms), and repeats faster than that piled up and kept firing
+        after release."""
         self._repeat_interval = KEYPAD_REPEAT_INTERVAL_SECONDS if seconds is None else seconds
 
     def _scan(self) -> str | None:
-        """Fast path: pins are pre-configured once in __init__, so a sweep
-        only toggles output *values* — no GPIO.setup() calls. Falls back to
-        the general scan_once() when the map isn't a clean bipartite matrix.
-        """
+        """One sweep. Pin directions are set once in __init__, so this only
+        toggles output values; falls back to scan_once() for a map that
+        isn't a clean two-sided matrix."""
         if not self._fast_path:
             return scan_once()
 
@@ -415,14 +362,8 @@ class KeypadScanner:
         os.write(self._wake_w, b"\x00")
 
     def _repeat_while_held(self, reading: str, key: str) -> None:
-        """Keep emitting *key* at KEYPAD_REPEAT_INTERVAL_SECONDS once held
-        past KEYPAD_REPEAT_DELAY_SECONDS, until released. Only called for
-        keys in self._repeatable_keys — Up/Down always, plus whatever a
-        screen has layered on top via set_repeatable_keys() — where every
-        repeat does the same single action regardless of timing, unlike
-        Enter (see docs/active-device-control-plan.md's "Rejected:
-        long-press Enter").
-        """
+        """Repeat *key* at the repeat interval once held past
+        KEYPAD_REPEAT_DELAY_SECONDS, until released."""
         held_since = time.monotonic()
         repeating = False
         while not self._stop.is_set():
@@ -450,10 +391,9 @@ class KeypadScanner:
             time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
 
     def _run(self) -> None:
-        """Scan forever. An unexpected error (a GPIO or gpiod failure) is
-        logged and scanning resumes a second later: left uncaught it would
-        end this thread silently, leaving the keypad dead and the app
-        looking frozen. Logged once per run of errors, not every retry."""
+        """Scan forever. An unexpected error (GPIO, gpiod) is logged once and
+        scanning retries every second — uncaught it would end the thread and
+        leave the keypad dead."""
         failing = False
         while not self._stop.is_set():
             try:

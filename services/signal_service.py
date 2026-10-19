@@ -1,8 +1,4 @@
-"""Signal filesystem service.
-
-All reads and writes to the signals/ directory live here.
-Hardware and screens never touch the filesystem directly.
-"""
+"""Signal files: everything under signals/<home>/<device>[/<location>]/<button>.txt."""
 
 import json
 from pathlib import Path
@@ -31,20 +27,15 @@ def list_homes() -> list[str]:
 
 
 def create_home(home: str) -> None:
-    """Create an empty home directory and fix ownership so it's accessible
-    as *matt* — same pattern as save_signal for files written while running
-    as root."""
+    """Create an empty home directory, owned by matt (the app runs as root)."""
     d = home_dir(home)
     d.mkdir(parents=True, exist_ok=True)
     _chown_to_file_owner(d)
 
 
 def rename_home(old: str, new: str) -> None:
-    """Rename a home's signals/ directory. Caller (services.home_service)
-    is responsible for checking home_exists(new) first if it wants to
-    refuse an overwrite — Path.rename() would otherwise silently merge
-    *old*'s contents into an existing *new* directory on most platforms,
-    or fail outright, depending on whether *new* is empty."""
+    """Rename a home's directory. The caller checks *new* doesn't exist
+    (a rename would merge into it, or fail)."""
     old_dir = home_dir(old)
     new_dir = home_dir(new)
     old_dir.rename(new_dir)
@@ -52,13 +43,8 @@ def rename_home(old: str, new: str) -> None:
 
 
 def rename_order_keys(old: str, new: str) -> None:
-    """Rewrite config/device_order.json's home-prefixed keys (the home's
-    own top-level key, e.g. "home", plus every "<home>/<device>" key
-    under it, e.g. "home/light") from *old* to *new* — for
-    services.home_service.rename_home(). A silently stale key would just
-    fall back to alphabetical ordering (see _explicit_order()), not
-    break anything outright, but there's no reason to let a rename orphan
-    it when fixing it up is this cheap."""
+    """Rename *old*'s keys in config/device_order.json ("<old>" and every
+    "<old>/<device>") to *new*."""
     if not _ORDER_PATH.exists():
         return
     try:
@@ -83,9 +69,7 @@ def rename_order_keys(old: str, new: str) -> None:
 
 
 def rename_device(home: str, old: str, new: str) -> None:
-    """Rename a device's signals/<home>/<device> directory. Caller
-    (services.home_service) is responsible for refusing an existing
-    *new* first — same caveat as rename_home()."""
+    """Rename a device's directory. The caller checks *new* doesn't exist."""
     old_dir = home_dir(home) / old
     new_dir = home_dir(home) / new
     old_dir.rename(new_dir)
@@ -93,11 +77,8 @@ def rename_device(home: str, old: str, new: str) -> None:
 
 
 def rename_device_order(home: str, old: str, new: str) -> None:
-    """Rewrite config/device_order.json for a device rename within
-    *home*: *old*'s entry in the home's own top-level list (keeping its
-    position, so < Device/Device > cycle order doesn't change), plus its
-    "<home>/<old>" location-order key — for
-    services.home_service.rename_device()."""
+    """Rename a device in config/device_order.json: its entry in the home's
+    list (keeping its place) and its "<home>/<old>" key."""
     if not _ORDER_PATH.exists():
         return
     try:
@@ -121,11 +102,8 @@ def rename_device_order(home: str, old: str, new: str) -> None:
 
 
 def _explicit_order(key: str) -> list[str]:
-    """config/device_order.json's explicit order for *key*, or [] if the
-    file/key entry is missing — callers fall back to pure alphabetical
-    either way. *key* is a home name for list_devices()'s top-level
-    ordering (e.g. "home"), or "<home>/<device>" for list_locations()'s
-    per-device ordering (e.g. "home/light" — see there)."""
+    """config/device_order.json's order for *key* (a home, or
+    "<home>/<device>"), or [] if none."""
     if not _ORDER_PATH.exists():
         return []
     try:
@@ -136,10 +114,8 @@ def _explicit_order(key: str) -> list[str]:
 
 
 def list_devices(home: str) -> list[str]:
-    """Device directory names under *home*, in < Device/Device >'s cycle
-    order — config/device_order.json's explicit order for this home
-    first, then any device not listed there (a new one added since, or a
-    home with no config entry at all), alphabetically, appended after."""
+    """Device directories under *home*: config/device_order.json's order
+    first, then the rest alphabetically."""
     d = home_dir(home)
     if not d.is_dir():
         return []
@@ -151,13 +127,8 @@ def list_devices(home: str) -> list[str]:
 
 
 def list_leaf_devices(home: str) -> list[tuple[str, str]]:
-    """Every cyclable "leaf" device under *home*, as (device, location)
-    pairs — used by screens.active_device_screen and the < Device/Device >
-    quick action (see docs/active-device-control-plan.md). A device with
-    location sub-dirs contributes one entry per location (e.g. ("light",
-    "hall")); a device with buttons directly under it contributes one
-    entry with location "" instead (e.g. ("ac", "")).
-    """
+    """Every (device, location) leaf under *home*: one per location, or
+    (device, "") for a device with signals directly under it."""
     leaves: list[tuple[str, str]] = []
     for device in list_devices(home):
         locations = list_locations(home, device)
@@ -169,9 +140,8 @@ def list_leaf_devices(home: str) -> list[tuple[str, str]]:
 
 
 def default_leaf_device(home: str) -> tuple[str, str]:
-    """The leaf Active Device Control resets to on boot or a home switch:
-    DEFAULT_ACTIVE_DEVICE if this home has it, else the alphabetically
-    first leaf. ("", "") if the home has no leaves at all."""
+    """The leaf Active Device Control starts on: DEFAULT_ACTIVE_DEVICE if
+    this home has it, else the first leaf; ("", "") if there are none."""
     leaves = list_leaf_devices(home)
     if not leaves:
         return "", ""
@@ -182,11 +152,8 @@ def default_leaf_device(home: str) -> tuple[str, str]:
 
 
 def list_locations(home: str, device: str) -> list[str]:
-    """Location directory names under *device*, in Left/Right cycling
-    order for that device (e.g. screens.active_device_screen's light
-    leaves) — config/device_order.json's explicit order for "<home>/
-    <device>" first (see _explicit_order()), then any location not listed
-    there, alphabetically, appended after."""
+    """Location directories under *device*: config/device_order.json's
+    "<home>/<device>" order first, then the rest alphabetically."""
     d = home_dir(home) / device
     if not d.is_dir():
         return []
@@ -207,19 +174,10 @@ def list_buttons(home: str, device: str, location: str = "") -> list[str]:
 
 
 def list_functions(home: str, device: str, location: str = "") -> list[dict]:
-    """Derive screens.active_device_screen's function list for a device
-    from its existing signal files — no separate config to author.
-
-    A pair of files sharing a stem with matching "_up"/"_down" suffixes
-    (e.g. "temp_up.txt" / "temp_down.txt") becomes one "paired" function:
-    Up fires the "_up" file, Down fires the "_down" file. Any other file
-    (e.g. "power.txt") becomes a "standalone" function fired by Enter.
-    Order is alphabetical by function name.
-
-    Returns a list of dicts: {"name", "type" ("paired"/"standalone"),
-    "up", "down", "button"} — "up"/"down" are set for paired functions,
-    "button" for standalone ones, the rest None.
-    """
+    """A device's functions, derived from its signal files: "x_up"/"x_down"
+    become one "paired" function (Up/Down), anything else a "standalone"
+    one (Enter). Alphabetical. Dicts of {"name", "type", "up", "down",
+    "button"}, with the fields that don't apply set to None."""
     buttons = list_buttons(home, device, location)
     paired: dict[str, dict[str, str]] = {}
     standalone: list[str] = []
@@ -296,16 +254,9 @@ def rename_signal(
         new_button: str,
         new_location: str,
 ) -> None:
-    """Move a signal file to a new device/location/button identity — for
-    screens.rename_screen, fixing a name mistyped during Learn without
-    re-learning the IR signal itself. Caller is responsible for checking
-    signal_exists() at the destination first if an overwrite prompt is
-    wanted; this always overwrites silently.
-
-    Any now-empty directories left behind at the old location (the old
-    location dir, then the old device dir) are removed, so a renamed-away
-    leaf doesn't linger as an empty stop in list_locations()/list_devices()
-    — stops as soon as a directory still has something else in it."""
+    """Move a signal file to a new device/location/button (fixing a name
+    mistyped in Learn), overwriting any file there, and remove directories
+    left empty."""
     old_path = signal_path(home, device, button, location)
     new_path = signal_path(home, new_device, new_button, new_location)
 

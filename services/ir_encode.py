@@ -1,22 +1,13 @@
-"""Protocol encoder for the Fun menu's code library (data/fun_codes.json,
-built by scripts/build_fun_codes.py from Flipper-IRDB).
+"""Protocol encoder for the Sweep's code library (data/fun_codes.json).
 
-Turns a library entry into the raw pulse/space timings ir-ctl sends, plus
-the carrier that protocol needs — Learn captures are already raw timings at
-the 38 kHz default, but Sony (40 kHz), Philips RC5/RC6 (36 kHz) and
-Panasonic (~37 kHz) codes need their own carrier.
-
-Entries are either
+Turns an entry into raw mark/space timings plus the carrier it needs
+(Sony 40 kHz, RC5/RC6 36 kHz, Panasonic 37 kHz; others 38 kHz). Entries are
   {"protocol": "NECext", "address": 0x0586, "command": 0xF00F, ["carrier": Hz]}
 or
   {"raw": [mark, space, mark, ...], "carrier": Hz}
-with address/command in Flipper's representation — bit layouts and timings
-follow Flipper's own encoders (flipperzero-firmware lib/infrared/
-encoder_decoder), so a code works here the way it does on a Flipper.
-
-Each protocol sends a minimal "short press": enough frames/repeats that a
-TV registers it once (one NEC repeat code, three Sony frames, ...).
-"""
+with address/command, bit layouts and timings as in Flipper's encoders, so
+a code behaves as it does on a Flipper. Each protocol sends a short press:
+just enough frames for a TV to register it once."""
 
 from hardware.ir_transmitter import same_frame, split_frames
 
@@ -215,9 +206,8 @@ def encode(entry: dict) -> tuple[list[int], int]:
 
 def distinct_signals(codes: list[dict]) -> list[int]:
     """Indexes of the codes whose first frame and carrier match no earlier
-    code's — the frame is what a TV decodes; the rest is repeats or a
-    check copy. The carrier matters: a 56 kHz receiver can miss the same
-    frame at 38 kHz (ProScan's two RCA codes)."""
+    code's. The first frame is what a TV decodes; the carrier matters because
+    a 56 kHz receiver can miss the same frame at 38 kHz."""
     kept, seen = [], []
     for i, code in enumerate(codes):
         pulses, carrier = encode(code)
@@ -229,10 +219,8 @@ def distinct_signals(codes: list[dict]) -> list[int]:
 
 
 def to_signal_text(pulses: list[int], carrier: int) -> str:
-    """ir-ctl's +pulse -space text, with a "carrier N" first line when it
-    isn't the 38 kHz default — hardware/ir_transmitter.transmit() strips
-    that line and passes it as ir-ctl -c, since ir-ctl itself rejects a
-    carrier line mixed with +/- values."""
+    """ir-ctl `+pulse -space` text, with a "carrier N" first line when it
+    isn't 38 kHz (ir_transmitter strips it and passes -c)."""
     values = [f"{'+' if i % 2 == 0 else '-'}{v}" for i, v in enumerate(pulses)]
     lines = [" ".join(values[i:i + 16]) for i in range(0, len(values), 16)]
     header = [] if carrier == DEFAULT_CARRIER else [f"carrier {carrier}"]

@@ -1,24 +1,8 @@
-"""Wi-Fi scan/connect via NetworkManager (nmcli).
+"""Wi-Fi scan/connect through NetworkManager (nmcli), which owns wlan0.
 
-wlan0 is actively managed by NetworkManager on this Pi (confirmed via
-`nmcli device status` — an earlier version of this module assumed only
-wpa_supplicant/wpa_cli were involved, checked against the wrong machine;
-see project memory). Driving wlan0 with raw wpa_cli commands underneath
-NetworkManager risks being overridden or ignored, so this goes through
-nmcli instead, which is what actually owns the interface.
-
-Two independent layers of backup if a new network doesn't actually work:
-  1. In-process: connect() remembers whatever wlan0 was connected to
-     before, and reverts to it if the new network doesn't reach real
-     connectivity within WIFI_CONNECT_TIMEOUT_SECONDS.
-  2. Out-of-process: scripts/wifi_watchdog.sh is launched detached (via
-     systemd-run) before the attempt, independent of this app's own
-     process — the backstop for the case layer 1 never gets to run at all
-     (this process crashes/hangs mid-connect). Its escalation ladder
-     (reassociate, restart the network stack, reboot as a last resort)
-     was validated end-to-end with simulated outages — see
-     docs/active-device-control-plan.md session notes.
-"""
+A failed switch is undone twice over: connect() reverts to the previous
+network itself, and scripts/wifi_watchdog.sh, started detached beforehand,
+recovers connectivity if the app crashes or hangs mid-attempt."""
 
 import re
 import subprocess
@@ -33,10 +17,8 @@ _NMCLI_TIMEOUT_SECONDS = 15
 # working directory.
 _WATCHDOG_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "wifi_watchdog.sh"
 _WATCHDOG_DURATION_SECONDS = 90
-# connect()'s worst case is ~80s (25s attempt + 15s DHCP poll, then for a
-# saved SSID another 25s + 15s bringing the saved profile up); the watchdog
-# waits that out so it never disconnects or restarts NetworkManager under a
-# legitimate attempt.
+# Longer than connect()'s worst case (~80s), so the watchdog never acts
+# during a legitimate attempt.
 _WATCHDOG_START_DELAY_SECONDS = 90
 
 
@@ -52,16 +34,9 @@ def _split_terse(line: str) -> list[str]:
 
 
 def is_ready() -> bool:
-    """True once NetworkManager itself is up and answering — distinguishes
-    "nothing in range yet" from "the Wi-Fi stack itself isn't ready yet".
-
-    pihome.service deliberately doesn't wait on NetworkManager at boot (see
-    CLAUDE.md's "Pi OS boot time" section — normal use needs a human to
-    navigate here first, which takes longer than NetworkManager needs to
-    come up), so a scan attempted in the first moment after boot can
-    legitimately hit a NetworkManager that isn't answering yet. Without
-    this, that showed as a plain "No networks" — indistinguishable from
-    actually being out of range of every AP."""
+    """True once NetworkManager is answering. The app starts before it, so
+    right after boot an empty scan can mean "not ready" rather than "nothing
+    in range"."""
     try:
         result = _nmcli("-t", "-f", "RUNNING", "general", "status", timeout=_NMCLI_TIMEOUT_SECONDS)
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -70,12 +45,8 @@ def is_ready() -> bool:
 
 
 def scan_networks() -> list[dict]:
-    """Scan and return known networks, strongest signal first.
-
-    Each entry: {"ssid": str, "secure": bool}. Hidden (blank-SSID) results
-    are dropped, and duplicate SSIDs (seen on multiple APs/bands) keep only
-    their strongest reading.
-    """
+    """Networks in range, strongest first: [{"ssid", "secure"}]. Hidden
+    networks are dropped; an SSID seen on several APs keeps its strongest."""
     try:
         _nmcli("device", "wifi", "rescan")
         time.sleep(2)  # give the rescan a moment before listing
@@ -165,10 +136,9 @@ def _delete_profile(name: str) -> None:
 
 
 def _online_on(profile: str, deadline: float) -> bool:
-    """Poll until wlan0 is on *profile* with real connectivity, or *deadline*
-    (time.monotonic()) passes. Both conditions matter: is_connected() alone
-    is a bare socket check and stays true off the *previous* network if the
-    attempt failed without tearing it down (e.g. wrong password)."""
+    """Poll until wlan0 is on *profile* with connectivity, or *deadline*
+    (time.monotonic()) passes. Both matter: is_connected() alone stays true
+    on the previous network after a failed attempt."""
     while True:
         if _current_connection() == profile and network.is_connected():
             return True
@@ -178,19 +148,13 @@ def _online_on(profile: str, deadline: float) -> bool:
 
 
 def connect(ssid: str, password: str = "") -> tuple[bool, str]:
-    """Switch wlan0 to *ssid*, reverting to whatever it was connected to
-    before if the new network doesn't reach real connectivity in time.
-    Returns (success, message).
+    """Switch wlan0 to *ssid*; if it doesn't come up, revert to the previous
+    network. Returns (success, message).
 
-    A saved profile is never deleted (2026-10-18: deleting it first, so a
-    typed password wasn't ignored in favour of the stored one, could leave
-    the Pi with no working profile for its own network after a typo — no
-    Wi-Fi until USB or the SD card). Instead a typed password for an SSID
-    that already has a profile is tried on a throwaway trial profile; only
-    once that connects is it copied into the saved profile, which is then
-    brought up and the trial removed. A failed attempt removes only what
-    it created itself.
-    """
+    A saved profile is never deleted: a typed password for an SSID that
+    already has one is tried on a throwaway trial profile, copied into the
+    saved profile only once it connects. A failed attempt removes only
+    profiles it created."""
     previous = _current_connection()
     saved = _wifi_profiles().get(ssid)
     trial = f"{_TRIAL_PREFIX}{ssid}" if saved else None

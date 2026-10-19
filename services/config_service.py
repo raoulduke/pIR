@@ -32,12 +32,8 @@ def set_active_home(name: str) -> None:
 
 
 def rename_active_home_if_matches(old: str, new: str) -> None:
-    """Update settings.json's active_home to *new* if it's currently
-    *old* — for services.home_service.rename_home(). Writes an explicit
-    "active_home": new even when the key was previously absent (meaning
-    *old* was only active via _DEFAULT_HOME's implicit fallback), since
-    that fallback would otherwise silently point at a home directory that
-    no longer exists after the rename."""
+    """Point active_home at *new* if it's *old* — written explicitly even when
+    it was only the default, which would otherwise name a missing home."""
     data = _load()
     if data.get("active_home", _DEFAULT_HOME) == old:
         data["active_home"] = new
@@ -85,10 +81,8 @@ def get_wifi_wake_enabled() -> bool:
 
 
 def get_wifi_wake_mode() -> str:
-    """"every_key" (default) fires services.wifi_wake_service.wake() on
-    every keypress; "throttled" limits it to at most once per
-    get_wifi_wake_interval_seconds(). See that module's docstring for why
-    "every_key" is the current default — untuned, deliberately generous."""
+    """"every_key" (default): a wake ping per press, at most one a second;
+    "throttled": at most one per get_wifi_wake_interval_seconds()."""
     return _load().get("wifi_wake_mode", "every_key")
 
 

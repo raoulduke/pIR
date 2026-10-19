@@ -1,14 +1,8 @@
-"""Fun menu data: the TV power-code library (data/fun_codes.json, built by
-scripts/build_fun_codes.py) and codes saved from a sweep.
-
-Saves live in fun_signals/<device_type>/<brand>/<signal>/<name>.txt — a
-top-level folder, not under signals/, because everything under signals/ is
-a home to signal_service (Learn, Rename, Active Device Control) and these
-must never show up there. Brand folders are slugified ("onn." -> "onn");
-everything else here takes the library's display names ("onn.", "LG").
-Tracked in git like signals/: saves made on the Pi get committed and pushed
-from the Pi.
-"""
+"""Sweep data: the TV power-code library (data/fun_codes.json) and codes
+saved from a sweep, in fun_signals/<device_type>/<brand>/<signal>/<name>.txt
+— outside signals/, so they never appear in Learn, Rename or Active Device
+Control. Brand folders are slugified ("onn." -> "onn"); everything else
+uses the library's display names."""
 
 import json
 import os

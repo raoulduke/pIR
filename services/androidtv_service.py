@@ -1,53 +1,18 @@
-"""Android TV / Google TV remote control via the Android TV Remote protocol
-v2 (androidtvremote2) — the same protocol the Google Home app and physical
-Android TV remotes use. Replaced the earlier adb/Wireless-debugging-based
-implementation (2026-09-09): adb is a debugging protocol repurposed for
-remote control, and had already caused two separate outages in one week —
-a lost pairing trust after a TV update, and the connect port drifting on
-every Wireless-debugging toggle/TV reboot. This protocol needs neither
-Developer Options nor adb; pairing is a one-time self-signed-cert exchange
-this module's async_start_pairing()/finish_pairing() flow handles (see
-scripts/pair_androidtv.py), independent of the TV's own debugging settings.
+"""Google TV control over the Android TV Remote protocol v2
+(androidtvremote2), for keys IR can't send (Home, a real Back, app launch).
+Pairing is a one-time certificate exchange (scripts/pair_androidtv.py).
 
-It's also meaningfully faster: adb paid two subprocess spawns (connect +
-shell) per keypress, real overhead on a Pi Zero 2 W. Here, a keypress on an
-already-open connection is a single non-blocking socket write — measured
-~2-3ms of call overhead against the actual TV during PoC testing, versus
-adb's measured hundreds of ms to multiple seconds.
+Connections cost battery (the TV pings every ~5s), so:
+- Elsewhere, one opens on first use and closes after
+  _IDLE_DISCONNECT_SECONDS without activity; keepalive() lets any key on the
+  Google TV screen count as activity.
+- On the Google TV screen with the backlight on, it's held open with no
+  idle timeout and reconnected if dropped, so a Home/YouTube press never
+  waits for a connect (set_on_tv_screen()/set_screen_lit()).
 
-Bypasses IR entirely for keys the TV's own IR remote can't emulate (Home,
-true Back distinct from Menu — see docs/active-device-control-plan.md and
-the session notes on the Insignia remote's Home button opening Menu
-instead).
-
-Connect-on-demand, not held open 24/7 — see CLAUDE.md's battery note: the
-device pings an open connection every ~5s to keep it alive, so holding one
-open at all times would mean a permanent wake-every-5s tax. Instead, a
-connection opens on first use after being idle and closes after
-_IDLE_DISCONNECT_SECONDS of no further activity, so the cost is bounded to
-actual use (and a short tail after it) rather than running all day
-regardless of whether anyone's touching the remote. "Activity" isn't just
-this module's own calls (send_keyevent/launch_app) — keepalive() lets
-screens/active_device_screen.py push the idle timer back out on every
-D-pad/Back press too (2026-09-09), even though those are plain IR and
-never call into this module otherwise, so navigating the TV by any input
-keeps an open connection warm instead of it dropping mid-session.
-
-Held open on the Google TV screen (2026-10-18): while that screen is the
-active device *and* the LCD backlight is on, the connection is opened
-right away and kept open with no idle timeout, reconnecting with backoff
-if the TV drops it — so a Home/YouTube press there never waits for a
-connect. Switching away or the backlight turning off closes it at once
-(set_on_tv_screen()/set_screen_lit()); the battery cost is bounded to
-time spent actually looking at that screen.
-
-The library is asyncio-only; the rest of this app is fully synchronous
-(hardware.input's blocking read_key() loop). Bridged here with a single
-dedicated event loop run forever in a background thread, started lazily on
-first use — every function below is a plain blocking call from the
-caller's point of view, matching the old adb-based module's contract
-(send_keyevent/launch_app, same (success, message) return shape) so
-preset_service.py and active_device_screen.py needed no changes at all.
+The library is asyncio-only and the app is synchronous: everything runs on
+one background event loop, and each public function is a plain blocking
+call returning (success, message).
 """
 
 import asyncio
@@ -80,12 +45,9 @@ _connected = False
 _idle_handle: asyncio.TimerHandle | None = None
 _status = "closed"  # "closed" | "connecting" | "open" — see set_status_listener()
 _status_listener = None
-# Serializes connecting, so the hold's own connect and a real send
-# arriving mid-connect don't both call async_connect() on the same
-# AndroidTVRemote.
+# One connect at a time (the hold's and a send's).
 _connect_lock = asyncio.Lock()
-# Held open while both are true — see the module docstring. Only touched
-# on the background loop.
+# Held open while both are true. Only touched on the loop.
 _on_tv_screen = False
 _screen_lit = True
 _hold_task: asyncio.Task | None = None
@@ -114,9 +76,7 @@ def _set_status(status: str) -> None:
 
 
 def _ensure_loop() -> asyncio.AbstractEventLoop:
-    """The single background event loop, started on first use and kept
-    running for the life of the process — everything in this module after
-    startup runs as a coroutine submitted to it via _call()."""
+    """The background event loop, started on first use."""
     global _loop
     if _loop is None:
         _loop = asyncio.new_event_loop()
@@ -125,10 +85,8 @@ def _ensure_loop() -> asyncio.AbstractEventLoop:
 
 
 def _call(coro):
-    """Run *coro* on the background loop and block the calling (sync)
-    thread for its result — the bridge every public function in this
-    module goes through. Cancels *coro* if the backstop expires, so it
-    never keeps running on the loop after its caller has given up."""
+    """Run *coro* on the background loop and wait for its result; cancel it
+    if the backstop expires."""
     future = asyncio.run_coroutine_threadsafe(coro, _ensure_loop())
     try:
         return future.result(timeout=_CALL_BACKSTOP_SECONDS)
@@ -145,10 +103,7 @@ def _cancel_idle_timer() -> None:
 
 
 def _arm_idle_timer() -> None:
-    """(Re)starts the idle-disconnect countdown from _IDLE_DISCONNECT_SECONDS.
-    Must run on the background loop — called both right after connecting
-    and by keepalive() below, so any activity pushes the disconnect back
-    out rather than just the moment of connecting."""
+    """Restart the idle-disconnect countdown (none while held). On the loop."""
     global _idle_handle
     _cancel_idle_timer()
     if _held():
@@ -157,19 +112,16 @@ def _arm_idle_timer() -> None:
 
 
 def _disconnect_idle() -> None:
-    """Runs on the background loop via call_later — closes the connection
-    after _IDLE_DISCONNECT_SECONDS of no activity, so the TV's keepalive
-    ping tax only applies during and briefly after actual use."""
+    """Idle timeout reached: close the connection."""
     global _idle_handle
     _idle_handle = None
     _reset_connection()
 
 
 def _reset_connection() -> None:
-    """Closes whatever connection state exists, including a half-open one
-    — androidtvremote2 leaves its transport/protocol set when async_connect()
-    fails or is cancelled partway, so without this a failed or timed-out
-    attempt would leak a socket and the next connect would stack on top."""
+    """Close the connection, including a half-open one: androidtvremote2
+    keeps its transport after a failed or cancelled connect, which would
+    otherwise leak a socket."""
     global _connected
     _cancel_idle_timer()
     if _remote is not None:
@@ -179,35 +131,22 @@ def _reset_connection() -> None:
 
 
 def keepalive() -> None:
-    """Pushes the idle-disconnect timer back out, without opening a new
-    connection — call this for every key press on the Google TV screen
-    (screens/active_device_screen.py), even ones that don't go through
-    this module at all (D-pad/Back are plain IR — see _transmit there),
-    so actively driving the remote via any input keeps the connection
-    warm for an imminent Home/YouTube press instead of it dropping out
-    from under you mid-session. A no-op if not currently connected — this
-    never forces a fresh connect on its own, matching the connect-on-
-    demand design (see module docstring's battery note).
-
-    Non-blocking: schedules the reset on the background loop and returns
-    immediately, so this is cheap enough to call on every repeat tick
-    while a D-pad key is held (see _GOOGLE_TV_REPEAT_INTERVAL_SECONDS)
-    without adding to that loop's own timing budget."""
+    """Push the idle-disconnect timer back out without connecting — for any
+    key on the Google TV screen, IR ones included. Non-blocking; a no-op
+    when not connected."""
     if _connected and _loop is not None:
         _loop.call_soon_threadsafe(_arm_idle_timer)
 
 
 def set_on_tv_screen(on: bool) -> None:
-    """Whether the Google TV screen is the active device — screens/
-    active_device_screen.py calls this on every pass of its loop.
-    Non-blocking."""
+    """Whether Google TV is Active Device Control's device (called on every
+    pass of its loop). Non-blocking."""
     _ensure_loop().call_soon_threadsafe(_update_hold, on, None)
 
 
 def set_screen_lit(lit: bool) -> None:
-    """Whether the LCD backlight is on — wired to hardware/lcd.py's
-    set_backlight_listener() in main.py. Off also closes a connection
-    opened on demand from another screen. Non-blocking."""
+    """Whether the backlight is on. Off also closes an on-demand connection
+    from another screen. Non-blocking."""
     _ensure_loop().call_soon_threadsafe(_update_hold, None, lit)
 
 
@@ -243,10 +182,8 @@ def _start_hold_connect() -> None:
 
 
 async def _hold_connect() -> None:
-    """Connect, retrying at _HOLD_RETRY_SECONDS gaps, for as long as the
-    hold lasts and the connection isn't open. Connecting is just the TLS
-    handshake and the protocol's own configuration exchange — no key
-    press — so it doesn't touch what's playing."""
+    """Connect, retrying at _HOLD_RETRY_SECONDS gaps, while held and not
+    connected. Connecting sends no key, so playback isn't touched."""
     attempt = 0
     while _held() and not _connected:
         delay = _HOLD_RETRY_SECONDS[min(attempt, len(_HOLD_RETRY_SECONDS) - 1)]
@@ -264,12 +201,10 @@ async def _hold_connect() -> None:
 
 
 async def _watch_connection(protocol) -> None:
-    """Notices the TV dropping the connection (standby, Wi-Fi, or the
-    library closing it after missed pings) instead of leaving "open" up
-    until the next send fails — and reconnects if held. androidtvremote2
-    only exposes the drop through its protocol's on_con_lost future, so
-    this reads its private _remote_message_protocol (androidtvremote2
-    0.3.2): a mismatch means we closed or replaced it ourselves."""
+    """Notice the TV dropping the connection (standby, Wi-Fi, missed pings)
+    and reconnect if held. Uses androidtvremote2 0.3.2's private
+    _remote_message_protocol, the only way it exposes the drop; a mismatch
+    means we closed or replaced it ourselves."""
     await protocol.on_con_lost
     if _remote is None or _remote._remote_message_protocol is not protocol:
         return
@@ -280,9 +215,7 @@ async def _watch_connection(protocol) -> None:
 
 
 async def _ensure_connected() -> AndroidTVRemote:
-    """Returns an open, ready-to-send AndroidTVRemote, connecting first if
-    idle-disconnected or this is the first call. Runs entirely on the
-    background loop (called only from coroutines passed to _call())."""
+    """An open AndroidTVRemote, connecting first if needed. On the loop."""
     global _remote, _connected
 
     async with _connect_lock:
@@ -311,14 +244,9 @@ async def _ensure_connected() -> AndroidTVRemote:
 
 
 async def _send(action) -> None:
-    """Connect if needed, run *action* (a sync function taking the
-    connected AndroidTVRemote), retrying once through a fresh connect if
-    the existing one turned out to be stale — mirrors the old adb module's
-    "self-heal a stuck connection, don't just fail" behavior.
-
-    Any failure — including hitting _CALL_TIMEOUT_SECONDS or being
-    cancelled by _call()'s backstop — tears the connection down, so nothing
-    from a failed call lingers on the loop or carries into the next one."""
+    """Connect if needed and run *action(remote)*, retrying once on a fresh
+    connection if the open one turns out stale. Any failure (timeout or
+    cancellation included) tears the connection down."""
     try:
         async with asyncio.timeout(_CALL_TIMEOUT_SECONDS):
             remote = await _ensure_connected()
@@ -334,10 +262,8 @@ async def _send(action) -> None:
 
 
 def _describe_chain(exc: BaseException) -> str:
-    """*exc* and every exception chained behind it, outermost first —
-    androidtvremote2 wraps the OSError that actually says what went wrong
-    (errno, e.g. 113 "No route to host" vs 111 "Connection refused") inside
-    CannotConnect, so the outer exception alone hides the cause."""
+    """*exc* and every exception chained behind it, outermost first: the
+    real cause (an OSError's errno) is wrapped inside CannotConnect."""
     parts = []
     seen = set()
     while exc is not None and id(exc) not in seen:
@@ -386,12 +312,6 @@ def send_keyevent(keycode: str) -> tuple[bool, str]:
 
 
 def launch_app(app_link: str) -> tuple[bool, str]:
-    """Launch an app via a deep link (e.g. "https://www.youtube.com/tv").
-    A bare package name (e.g. "com.google.android.youtube.tv") technically
-    works too — androidtvremote2 sends it as a market://launch?id=<package>
-    request — but confirmed 2026-09-09 that this doesn't reliably switch
-    away from whatever app currently has foreground focus (seen with Plex
-    open: reported success, did nothing), while an explicit deep link
-    does. Use a real deep link; see config/keypad_presets.json's
-    androidtv_app steps and preset_service.py's docstring."""
+    """Launch an app by deep link (e.g. "https://www.youtube.com/tv"). A
+    bare package name reports success but may not leave the current app."""
     return _run(f"launch_app({app_link})", lambda remote: remote.send_launch_app_command(app_link))

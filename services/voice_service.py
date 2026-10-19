@@ -25,15 +25,9 @@ def _load_token() -> str:
 
 
 def send_command(text: str) -> tuple[bool, str]:
-    """Send *text* to Google Assistant via Home Assistant.
-
-    Returns ``(success, message)``.
-    """
-    # Deferred: urllib.request pulls in http.client/email.parser/etc — real
-    # cost at import time (measured ~125ms on this hardware), worth paying
-    # only when a voice/HA command is actually sent, not on every boot just
-    # because this module is loaded (see app/quick_actions.py's eager
-    # services import).
+    """Send *text* to Google Assistant through Home Assistant. Returns
+    (success, message)."""
+    # Imported here: urllib.request is slow to import (~125ms) and rarely needed.
     import urllib.request
     import urllib.error
 

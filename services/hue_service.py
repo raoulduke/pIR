@@ -1,14 +1,5 @@
-"""Philips Hue Bridge control via its local (LAN) API.
-
-Local, not cloud: the bridge sits on the same network as the Pi
-(`hue_bridge_ip` in config/settings.json) and talks plain HTTP with no
-internet dependency — see docs discussion favoring this over routing
-light control through Google Home for a battery-powered, latency-sensitive
-device. The username/API key was minted once via the bridge's link-button
-flow (`POST /api` with `devicetype`) and is read from `hue_username_file`,
-mirroring how voice_service.py keeps the HA token out of the repo rather
-than in settings.json.
-"""
+"""Philips Hue bridge control over its local HTTP API (`hue_bridge_ip`;
+the API key is read from `hue_username_file`, kept out of the repo)."""
 
 import json
 import logging
@@ -22,7 +13,7 @@ log = logging.getLogger(__name__)
 _TIMEOUT_SECONDS = 5
 
 # Last reachability check per light ID: True/False, or None if the check
-# itself failed (bridge or Wi-Fi down) — see check_reachable_background().
+# itself failed (bridge or Wi-Fi down).
 _reachable: dict[str, bool | None] = {}
 
 
@@ -48,8 +39,7 @@ def _base_url() -> str:
 
 
 def _request(method: str, path: str, body: dict | None = None) -> dict | list:
-    # Deferred for the same reason voice_service.py defers it: real
-    # import-time cost, worth paying only when a Hue command actually runs.
+    # Imported here: urllib.request is slow to import (~125ms) and rarely needed.
     import urllib.request
     import urllib.error
 
@@ -84,15 +74,9 @@ def turn_off(light_id: str) -> list:
 
 
 def is_reachable(light_id: str) -> bool:
-    """True if the bridge can currently talk to the bulb over Zigbee.
-
-    Use this, not state["on"], to tell if a bulb is actually powered.
-    "on" only reflects the last command the bridge sent — if a bulb is
-    cut at a wall switch, the bridge can't detect that and "on" keeps
-    reporting whatever it last told the bulb, stuck true, even though the
-    bulb is dark. "reachable" flips false as soon as the bridge loses
-    contact (confirmed 2026-09-01: wall switch off -> reachable false
-    within one poll, "on" stayed true)."""
+    """True if the bridge can reach the bulb. Use this, not state["on"], to
+    tell whether a bulb has power: "on" only reflects the last command, so a
+    bulb cut at the wall switch still reports on."""
     return bool(get_light(light_id).get("state", {}).get("reachable"))
 
 
@@ -101,10 +85,10 @@ def is_known_unreachable(light_id: str) -> bool:
 
 
 def check_reachable_background(light_ids: list[str], on_done) -> None:
-    """Check each light once on a background thread, update
-    is_known_unreachable(), then call *on_done()*. A failed request (bridge or
-    Wi-Fi down) records None, not False, so a send still gets tried and
-    reports the real error."""
+    """Check each light on a background thread, record the result for
+    is_known_unreachable(), then call *on_done()*. A failed request records
+    None (unknown), not False, so sends still go out and report the real
+    error."""
     def _run():
         for light_id in light_ids:
             try:

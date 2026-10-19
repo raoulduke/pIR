@@ -1,49 +1,16 @@
-"""Speculative Wi-Fi radio wake-up.
+"""Wakes the Wi-Fi radio early on key presses.
 
-Background: Wi-Fi power save (802.11 PS mode) is enabled on this device
-(NetworkManager's `wifi.powersave = 3` in
-/etc/NetworkManager/conf.d/wifi-powersave.conf — not tracked in this repo)
-for the battery savings, which puts the radio in a low-power doze state
-between activity. The tradeoff is wake latency: measured 2026-09 as up to
-~1.6s for the first packet after an idle period, dropping to single-digit
-ms once the radio's awake (see git history around this module's
-introduction for the actual ping measurements and the "No route to host"
-symptom that led to investigating this at all). CLAUDE.md previously
-called for disabling power save outright to avoid this; this module is
-the middle ground instead — keep the battery savings, hide the latency.
-
-Mechanism: a Wi-Fi station's own radio controls when *it* transmits
-(unlike receiving, which has to wait for the AP's next DTIM beacon to
-learn there's buffered traffic waiting) — so a small outbound packet
-tends to wake the radio faster than waiting on an inbound one. wake() is
-called from hardware/input.py's read_key() (via set_key_observer(), wired
-in main.py) on every real keypress, globally, across every screen — a
-Wi-Fi-dependent action (voice_service/hue_service/androidtv_service) is
-often not the very first press of a session (cycling devices, opening a
-menu, etc. usually comes first), so nudging the radio awake on those
-earlier presses gives it a head start before the press that actually
-needs the network.
-
-What's NOT known (see the diagnostic conversation this module came out
-of): the Pi's onboard chip (Broadcom BCM43430/1, brcmfmac driver) doesn't
-expose the firmware's own "how long until it re-dozes after activity"
-timing anywhere in sysfs — measured Pi-initiated pings stayed fast for at
-least 45s after one wake, but that test ran back-to-back with a lot of
-other SSH activity on the same radio and could not cleanly isolate a
-genuinely cold, multi-minute-idle re-doze timing, nor whether a full TCP
-handshake/HTTP response (what the real Wi-Fi actions actually need)
-behaves the same as a bare ICMP reply. Given that uncertainty, the
-default (get_wifi_wake_mode() == "every_key") fires on every press, at most
-once a second (_MIN_GAP_SECONDS, so a held key's ~10 repeats a second don't
-each start a ping) — better than guessing a longer interval and having it
-silently stop helping partway through a session. config/settings.json's
-wifi_wake_* keys (services/config_service.py) exist so this can be tuned
-without a code change once more is learned:
+Wi-Fi power save is on for battery (NetworkManager wifi.powersave = 3), so
+the first packet after idle can take up to ~1.6s. An outbound packet wakes
+the radio sooner than waiting for inbound traffic, and a Wi-Fi action is
+rarely the first press of a session, so each press sends a fire-and-forget
+ping to give the radio a head start. The radio's re-doze timing couldn't
+be measured, so by default every press counts (at most one ping a second).
+Tunable in config/settings.json:
   "wifi_wake_enabled": true,             # master on/off
   "wifi_wake_mode": "every_key",         # or "throttled"
   "wifi_wake_interval_seconds": 3.0,     # only used by "throttled"
-  "wifi_wake_target": null               # ping target; null = auto-detect gateway
-"""
+  "wifi_wake_target": null               # ping target; null = the gateway"""
 
 import subprocess
 import threading
@@ -63,11 +30,8 @@ _gateway: str | None = None
 
 
 def _default_gateway() -> str | None:
-    """The LAN default gateway from `ip route` — a reliable always-present
-    ping target with no config needed. Cached for the life of the process
-    once found: if the gateway genuinely changes (new network), a restart
-    already happens for every other reason a network change would matter
-    to this app."""
+    """The default gateway from `ip route`, cached once found (a network
+    change restarts the app anyway)."""
     global _gateway
     if _gateway is not None:
         return _gateway
@@ -107,14 +71,9 @@ def _fire() -> None:
 
 
 def wake(key: str = "") -> None:
-    """Call on every real keypress — see hardware/input.py's
-    set_key_observer()/read_key(). *key* is accepted (and ignored) only to
-    match that observer contract; nothing here cares which key it was.
-
-    Doesn't wait on the ping (see _fire()); at most one every
-    _MIN_GAP_SECONDS ("every_key") or wifi_wake_interval_seconds
-    ("throttled"), so a held key's repeats don't each start a ping. No-op
-    entirely if disabled in config/settings.json."""
+    """Key observer (hardware.input.set_key_observer()); *key* is unused.
+    Pings without waiting, at most once per _MIN_GAP_SECONDS ("every_key") or
+    wifi_wake_interval_seconds ("throttled"). No-op when disabled."""
     if not config_service.get_wifi_wake_enabled():
         return
 

@@ -1,110 +1,39 @@
-"""Keypad presets — run multiple IR commands in sequence from one button.
+"""Keypad presets and the shared step runner.
 
-config/keypad_presets.json maps preset number ("1".."4") to a {"name":
-..., "steps": [...]} object — "name" is what app/quick_actions.py's
-_handle_preset shows on the LCD in place of the generic "Preset N" while
-it runs (e.g. "Candlelight", "Rest"); "steps" is the ordered list of
-actions to fire. "name" is optional (falls back to "Preset N" if missing
-or blank) but every entry should have one — an unnamed preset is hard to
-tell apart from another at a glance. An IR step:
-  {"home": "home", "device": "tv", "location": "bedroom", "button": "power",
-   "delay_after": 0.3}
+config/keypad_presets.json's "by_device" maps "device" or "device/location"
+(whatever is active when Preset Function N is pressed) to that device's
+slots "1".."4", each {"name": ..., "steps": [...]}. There are no global
+defaults: a slot the device doesn't define is "Not configured".
 
-"location" and "delay_after" are optional (default "" and
-PRESET_DEFAULT_DELAY_SECONDS). Presets start out empty — assign steps by
-editing the file directly. Missing signal files are skipped rather than
-aborting the rest of the sequence.
+  "by_device": {"light/hall": {"1": {"name": "On", "steps": [...]}}}
 
-A voice step sends free-text through Home Assistant
-(services/voice_service.py) instead of an IR signal:
-  {"type": "voice", "command": "Rest", "delay_after": 0.3}
+Steps ("delay_after" is optional, default PRESET_DEFAULT_DELAY_SECONDS):
 
-An androidtv step sends an Android keyevent over the Android TV Remote
-protocol (services/androidtv_service.py) — for Google TV functions IR
-can't reach (Home, true Back distinct from Menu):
-  {"type": "androidtv", "keyevent": "KEYCODE_HOME", "delay_after": 0.3}
+  IR signal       {"home": "home", "device": "tv", "location": "bedroom",
+                   "button": "power"}                  (location optional)
+  Voice (HA)      {"type": "voice", "command": "Rest"}
+  Google TV key   {"type": "androidtv", "keyevent": "KEYCODE_HOME"}
+  Google TV app   {"type": "androidtv_app", "app_link": "https://www.youtube.com/tv"}
+                  (a deep link: a bare package name may not leave the
+                  current app)
+  Hue             {"type": "hue", "action": "toggle", "light_id": "3"}
+                  "action" is on/off/toggle; "bri_inc"/"ct_inc" (relative)
+                  or "bri"/"ct" (absolute) take priority over it.
+  IR on/off pair  {"type": "ir_toggle", "home": "home", "device": "light",
+                   "location": "hall", "on_button": "on", "off_button": "off"}
+  Voice on/off    {"type": "voice_toggle", "key": "lamp",
+                   "on_command": "Turn on lamp", "off_command": "Turn off lamp"}
 
-An androidtv_app step launches an app the same way — for functions with no
-keyevent equivalent (e.g. a YouTube shortcut button). Use an actual deep
-link, not a bare package name: confirmed 2026-09-09 that a bare package
-name (sent as a market://launch?id=<package> request) doesn't reliably
-switch away from whatever app currently has foreground focus (seen with
-Plex open), while an explicit deep link does.
-  {"type": "androidtv_app", "app_link": "https://www.youtube.com/tv",
-   "delay_after": 0.3}
+The two toggles track an assumed on/off state in memory, for devices with no
+state readback (a dumb IR light; Google Assistant has no reliable "toggle"
+phrase). It starts "off" at every restart and drifts if the device is
+changed another way. "key" only needs to be unique among voice_toggle steps.
 
-A hue step controls a Philips Hue light over the bridge's local API
-(services/hue_service.py). "action" is "on", "off", or "toggle" (reads the
-light's current state and flips it):
-  {"type": "hue", "action": "toggle", "light_id": "3", "delay_after": 0.3}
-Any of "bri_inc"/"ct_inc" (relative change, -254..254/mireds, via the
-bridge's own clamping) or "bri"/"ct" (absolute value) instead takes
-priority over "action" if present — used for Up/Down brightness
-(bri_inc) and Preset Function colour/temp presets (ct; see
-config/keypad_presets.json's "by_device" Candlelight/Warm White/Daylight
-entries):
-  {"type": "hue", "bri_inc": 25, "light_id": "3", "delay_after": 0.3}
-  {"type": "hue", "ct": 454, "light_id": "3", "delay_after": 0.3}
-
-An ir_toggle step fires one of two IR signals depending on assumed
-on/off state, flipping it each time — for a device whose remote has no
-single toggle button, just separate on/off ones (e.g. Hall Light). No
-real state readback exists for a dumb IR light, so this is only as
-reliable as the assumption that nothing else ever changes the light's
-power (see _ir_toggle_state's own comment):
-  {"type": "ir_toggle", "home": "home", "device": "light", "location": "hall",
-   "on_button": "on", "off_button": "off", "delay_after": 0.3}
-
-A voice_toggle step is the same idea for a Google Home device with no
-Hue-style state readback: a bare "Toggle X" phrase is NOT one of the
-phrasings Google Assistant is confirmed to act on (see
-screens/command_screen.py's _TEMPLATES — only "Turn on {}"/"Turn off {}"/
-"Dim {}"/"Brighten {}" are confirmed), and a Home app Routine can't
-read a device's current state either, so a single "Toggle X" command can
-only ever perform whatever fixed action it was authored with — it can
-turn a light off reliably but then never turn it back on. This tracks
-assumed on/off state locally instead (same caveat as ir_toggle: no real
-readback, resets on restart, drifts if the light is ever changed another
-way) and alternates between the two confirmed phrasings:
-  {"type": "voice_toggle", "key": "lamp", "on_command": "Turn on lamp",
-   "off_command": "Turn off lamp", "delay_after": 0.3}
-"key" only needs to be unique among voice_toggle steps — it's the state
-lookup, unrelated to the command text.
-
-There are no global defaults: a device only ever has the presets it defines
-itself. config/keypad_presets.json's top-level "by_device" key maps
-"device" or "device/location" (matching whatever's active when the button
-is pressed) to that device's own slots:
-  "by_device": {
-    "light/hall": {"1": {"name": "On", "steps": [{"home": "home",
-                           "device": "light", "location": "hall",
-                           "button": "on"}]}}
-  }
-A slot a device doesn't define is simply not configured (Preset Function
-shows "Not configured") — it never falls through to another device's or a
-shared preset.
-
-run_steps() below is the actual step-execution engine, shared with
-services/step_device_service.py — a step device's Active Device Control
-functions (screens/active_device_screen.py) use this exact same step
-vocabulary and step-runner, not a separate one, so e.g. a step can mix a
-voice command with a follow-up IR signal.
-
-run_steps_background() runs the same engine on a single dedicated
-background thread (mirrors services/androidtv_service.py's single-loop-
-thread bridge) instead of the caller blocking on it — a voice or hue step
-is a real HTTP round-trip (voice_service.send_command()'s timeout is up
-to 15s), and every caller used to leave the LCD stuck on "Sending..."/
-"Running..." and the keypad unresponsive for that whole time. Every call
-site now shows its own "Sending..."/"Running..." then returns right away;
-on_result(sent, total, failed_step), if given, runs on the background
-thread once the steps actually finish — used only to write a failure to
-the LCD after the fact (a success needs no follow-up message, the caller
-has already moved on to whatever's next), so it may land on top of
-whatever screen/message is showing by then. One worker thread, not one
-per call, so two quick button presses run their steps one after another
-rather than racing each other through _ir_toggle_state/_voice_toggle_state
-above.
+run_steps() is also used by step devices (services/step_device_service.py).
+run_steps_background() queues steps on one worker thread, so a voice or Hue
+call (up to 15s) never blocks the keypad, and two quick presses run in order
+instead of racing through the toggle state. Its on_result(sent, total,
+failed_step) runs on that thread when the steps finish.
 """
 
 import json
@@ -123,19 +52,9 @@ log = logging.getLogger(__name__)
 
 _PATH = Path(__file__).parent.parent / KEYPAD_PRESETS_FILE
 
-# In-memory assumed on/off state for ir_toggle steps, keyed by (home,
-# device, location) — see run_steps()'s ir_toggle handling. Resets to the
-# "off" assumption on every app restart, and can drift from the light's
-# real state if it's ever changed another way (the light's own remote, a
-# wall switch) — there's no way to read a dumb IR light's actual state
-# back, unlike hue_service's bridge-backed lights, so this is a real
-# limitation, not just a startup quirk. Acceptable for a light with no
-# other regular control path (see Hall Light, 2026-09-02).
+# Assumed on/off state for ir_toggle steps, keyed by (home, device,
+# location), and voice_toggle steps, keyed by "key" (see module docstring).
 _ir_toggle_state: dict[tuple[str, str, str], bool] = {}
-
-# Same idea as _ir_toggle_state above, for voice_toggle steps — see that
-# step type's docstring for why a bare "Toggle X" voice command can't be
-# trusted to actually toggle a Google Home device.
 _voice_toggle_state: dict[str, bool] = {}
 
 
@@ -153,19 +72,14 @@ def _device_key(device: str, location: str) -> str:
 
 
 def get_preset(number: int, device: str = "", location: str = "") -> tuple[str, list[dict]]:
-    """Returns (name, steps) — the active device's own preset for this
-    slot. ("", []) if that device doesn't define it (or there is no active
-    device); there is deliberately no global default to fall back on."""
+    """(name, steps) of the device's preset *number*; ("", []) if it has
+    none."""
     entry = _load().get("by_device", {}).get(_device_key(device, location), {}).get(str(number), {}) if device else {}
     return entry.get("name", ""), entry.get("steps", [])
 
 
 def describe_step(step: dict) -> str:
-    """A short, human-readable label for one step — e.g. what run_steps()'s
-    failed-step return value actually was, for a caller to show on the
-    LCD. Not run through screens/widgets/format.py's format_name()
-    (services intentionally doesn't depend on screens) — just enough to
-    tell steps apart at a glance in ~16 characters."""
+    """A short label for a step, for the LCD ("Failed: <label>")."""
     step_type = step.get("type")
     if step_type == "voice":
         return step.get("command", "Voice")
@@ -187,8 +101,8 @@ def hue_light_ids(steps: list[dict]) -> list[str]:
 
 
 def all_unreachable(steps: list[dict]) -> bool:
-    """True if every step is a Hue step on a light the last check found
-    unreachable (off at the wall) — nothing in *steps* could do anything."""
+    """True if every step is a Hue step on a light last found unreachable
+    (off at the wall), so none of them could do anything."""
     return bool(steps) and all(
         step.get("type") == "hue" and hue_service.is_known_unreachable(step.get("light_id", ""))
         for step in steps
@@ -209,19 +123,9 @@ def _send_ir(step: dict, button: str) -> str:
 
 
 def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
-    """Fire every step in *steps* in order — the shared voice/androidtv/
-    androidtv_app/IR step-execution engine. Returns (steps actually sent,
-    steps configured, the first step that failed — None if every step
-    sent, or nothing was configured). The caller needs "steps configured"
-    too, to tell "nothing configured" apart from "configured but every
-    step failed" (0 sent either way); the failed step (see describe_step()
-    above) is what actually failed, not just how many did.
-
-    Used by app/quick_actions.py's _handle_preset (on the steps get_preset()
-    above returns for a keypad preset), and by
-    services/step_device_service.py-backed Active Device Control
-    functions (screens/active_device_screen.py) — both draw from the
-    exact same step vocabulary rather than each having their own."""
+    """Run *steps* in order. Returns (steps sent, steps configured, first
+    step that failed or None). A failing or malformed step doesn't stop the
+    rest."""
     sent = 0
     failed_step = None
 
@@ -248,18 +152,9 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
             elif step.get("type") == "hue":
                 try:
                     light_id = step["light_id"]
-                    # bri_inc/ct_inc change brightness/colour temperature by a
-                    # relative amount via the bridge's own clamping (avoids a
-                    # read-current-then-write race — see Up/Down brightness in
-                    # screens/active_device_screen.py); bri/ct set an absolute
-                    # value instead (see Preset Function colour/temp presets in
-                    # config/keypad_presets.json's "by_device" — Candlelight/
-                    # Warm White/Daylight/Rust). Any combination of the four
-                    # may appear in one step. on=True whenever any of them is
-                    # present so a press on an off light turns it on rather
-                    # than silently doing nothing (Hue only applies a
-                    # brightness/colour change to an off light if "on" is set
-                    # in the same request).
+                    # bri_inc/ct_inc are relative (the bridge clamps); bri/ct absolute.
+                    # "on" goes with them: Hue ignores a brightness/colour change to an
+                    # off light unless the same request turns it on.
                     light_state = {k: step[k] for k in ("bri_inc", "ct_inc", "bri", "ct") if k in step}
                     if light_state:
                         light_state["on"] = True
@@ -277,11 +172,6 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                 except (OSError, ValueError, KeyError) as e:
                     error = repr(e)
             elif step.get("type") == "ir_toggle":
-                # Flip the assumed state and fire whichever real signal
-                # matches it — see _ir_toggle_state's own comment for the
-                # "no real state readback" caveat. Sent-count only reflects
-                # whether the chosen signal file existed/transmitted, same as
-                # the plain-IR branch below.
                 key = (step["home"], step["device"], step.get("location", ""))
                 now_on = not _ir_toggle_state.get(key, False)
                 button = step["on_button"] if now_on else step["off_button"]
@@ -290,9 +180,6 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                     _ir_toggle_state[key] = now_on  # only once it actually went out
                     sent += 1
             elif step.get("type") == "voice_toggle":
-                # Same "no real state readback" caveat as ir_toggle — see
-                # this step type's docstring for why a bare "Toggle X" voice
-                # command can't be trusted to actually flip the device.
                 key = step["key"]
                 now_on = not _voice_toggle_state.get(key, False)
                 command = step["on_command"] if now_on else step["off_command"]
@@ -313,8 +200,6 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
             if failed_step is None:
                 failed_step = step
 
-        # No delay needed after the last step — nothing follows it that
-        # could be disrupted by firing signals too close together.
         if i < len(steps) - 1:
             time.sleep(step.get("delay_after", PRESET_DEFAULT_DELAY_SECONDS))
 
@@ -339,8 +224,7 @@ def _worker_loop() -> None:
             log.warning("Skipped steps queued %.1fs ago: %r", waited, steps)
             result = (0, len(steps), steps[0] if steps else None)
         else:
-            # An unexpected exception here would otherwise kill this thread
-            # silently, leaving every later queued step waiting forever.
+            # Uncaught, this would end the worker and strand every later task.
             try:
                 result = run_steps(steps)
             except Exception:
@@ -362,11 +246,9 @@ def _ensure_worker() -> None:
 
 
 def run_steps_background(steps: list[dict], on_result=None) -> None:
-    """Queue *steps* for the background worker and return immediately —
-    see this module's docstring for why. on_result, if given, is called
-    as on_result(sent, total, failed_step) from the worker thread once
-    these steps finish running (or are skipped as stale — see
-    _STALE_SECONDS — reported as failed)."""
+    """Queue *steps* for the worker thread and return at once. on_result, if
+    given, gets run_steps()'s result on that thread when they finish (or
+    are skipped as stale, reported as failed)."""
     _ensure_worker()
     _task_queue.put((steps, on_result, time.monotonic()))
 

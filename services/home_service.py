@@ -7,12 +7,7 @@ from services import config_service, signal_service
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 
-# Every config file (besides device_order.json, handled separately by
-# signal_service.rename_order_keys() since it's keyed *by* home name
-# rather than referencing one from inside a step) whose entries can carry
-# a {"home": "<name>", ...} field naming which home a step/slot belongs
-# to — keypad device slots, Preset Function steps (including nested
-# "by_device" overrides), and voice/Hue/IR preset steps respectively.
+# Config files whose steps/slots name a home in a "home" field.
 _STEP_REFERENCING_FILES = ["keypad_devices.json", "keypad_presets.json", "step_devices.json"]
 
 
@@ -43,18 +38,10 @@ def create_home(name: str) -> None:
 
 
 def rename_home(old: str, new: str) -> None:
-    """Rename a home: its signals/ directory, plus every config file that
-    references it by name. A home is referenced in more places than just
-    signals/ — config/settings.json's active_home (if this is the active
-    home), config/device_order.json's home-prefixed ordering keys, and
-    the "home" field on any keypad-device slot or preset step in
-    _STEP_REFERENCING_FILES. Raises if *new* already exists (see
-    signal_service.rename_home()) — the caller is expected to have
-    checked home_exists(new) first for a friendlier message, this is the
-    last-resort guard against silently merging two homes together.
-    Missing/unparsable config files are skipped rather than raising — a
-    fresh home with none of these configured yet is normal, not an
-    error."""
+    """Rename a home everywhere it's named: its signals directory, active_home,
+    device_order.json keys, and the "home" field of steps/slots in
+    _STEP_REFERENCING_FILES. Raises if *new* exists (the caller checks first
+    for a friendlier message). Missing or unreadable config files are skipped."""
     if signal_service.home_exists(new):
         raise ConfigError(f"'{new}' already exists")
 
@@ -86,24 +73,16 @@ def _rename_home_in_place(node, old: str, new: str) -> bool:
     return changed
 
 
-# Config dicts keyed by "device" or "device/location" (not by home) —
-# config/keypad_presets.json's "by_device" overrides, and
-# config/step_devices.json's top level. (filename, path to the dict).
+# Config dicts keyed by "device" or "device/location": (filename, key path).
 _DEVICE_KEYED_DICTS = [("keypad_presets.json", ["by_device"]), ("step_devices.json", [])]
 
 
 def rename_device(home: str, old: str, new: str) -> None:
-    """Rename a device within *home*: its signals/<home>/<device>
-    directory, its config/device_order.json entries, the "device" field
-    on any step/slot in _STEP_REFERENCING_FILES that also names *home*,
-    and any _DEVICE_KEYED_DICTS key for it ("old" or "old/<location>").
-
-    Those device-keyed dicts aren't scoped by home, so if another home
-    still has a device named *old* its keys are copied to *new* rather
-    than moved — renaming one home's device shouldn't strip the other's
-    presets. An existing key for *new* is never overwritten. Raises if
-    *new* already exists in *home* (same last-resort guard as
-    rename_home())."""
+    """Rename a device in *home*: its directory, device_order.json entries,
+    the "device" field of steps/slots naming *home*, and _DEVICE_KEYED_DICTS
+    keys ("old", "old/<location>"). Those keys aren't per home, so if another
+    home still has a device called *old* they're copied rather than moved. An
+    existing key for *new* is never overwritten. Raises if *new* exists."""
     if new in signal_service.list_devices(home):
         raise ConfigError(f"'{new}' already exists")
 

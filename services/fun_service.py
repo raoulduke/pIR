@@ -17,6 +17,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from app.constants import FUN_CODES_FILE, FUN_SIGNALS_DIR, FILE_OWNER, FUN_ALL_BRANDS
+from app.files import write_text_atomic
 from screens.widgets.format import slugify
 from services import ir_encode
 
@@ -115,7 +116,7 @@ def save(device_type: str, brand: str, signal: str, name: str, text: str) -> Pat
     signal_service.save_signal() — the app runs as root."""
     path = save_path(device_type, brand, signal, name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    write_text_atomic(path, text)
     try:
         pw = pwd.getpwnam(FILE_OWNER)
         for p in [path, *path.parents]:

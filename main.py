@@ -49,7 +49,7 @@ def main() -> None:
 
     state = initialize()
     if state is None:
-        sys.exit(0)
+        sys.exit(1)  # nonzero, so systemd's Restart=on-failure retries
 
     quick_actions.init(state)
     set_quick_action_handler(quick_actions.handle)
@@ -83,6 +83,9 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
+    # Nonzero after an error, so pihome.service's Restart=on-failure brings
+    # the app back; 0 for a requested stop (signal, quit), which shouldn't.
+    exit_code = 0
     try:
         # Boot straight into Active Device Control (the most-used screen)
         # — no menu detour on startup. It owns the main loop until
@@ -104,6 +107,7 @@ def main() -> None:
             pass
 
     except Exception as e:
+        exit_code = 1
         print(f"[BOOT] fatal error: {e!r}")
         import traceback
         traceback.print_exc()
@@ -118,7 +122,7 @@ def main() -> None:
         except Exception:
             pass
         close_input()
-        sys.exit(0)
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

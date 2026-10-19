@@ -215,95 +215,101 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
     for i, step in enumerate(steps):
         sent_before = sent
         error = ""
-        if step.get("type") == "voice":
-            success, error = voice_service.send_command(step["command"])
-            if success:
-                sent += 1
-        elif step.get("type") == "androidtv":
-            success, error = androidtv_service.send_keyevent(step["keyevent"])
-            if success:
-                sent += 1
-        elif step.get("type") == "androidtv_app":
-            success, error = androidtv_service.launch_app(step["app_link"])
-            if success:
-                sent += 1
-        elif step.get("type") == "hue" and hue_service.is_known_unreachable(step.get("light_id", "")):
-            error = f"light {step.get('light_id')} unreachable"
-        elif step.get("type") == "hue":
-            try:
-                light_id = step["light_id"]
-                # bri_inc/ct_inc change brightness/colour temperature by a
-                # relative amount via the bridge's own clamping (avoids a
-                # read-current-then-write race — see Up/Down brightness in
-                # screens/active_device_screen.py); bri/ct set an absolute
-                # value instead (see Preset Function colour/temp presets in
-                # config/keypad_presets.json's "by_device" — Candlelight/
-                # Warm White/Daylight/Rust). Any combination of the four
-                # may appear in one step. on=True whenever any of them is
-                # present so a press on an off light turns it on rather
-                # than silently doing nothing (Hue only applies a
-                # brightness/colour change to an off light if "on" is set
-                # in the same request).
-                light_state = {k: step[k] for k in ("bri_inc", "ct_inc", "bri", "ct") if k in step}
-                if light_state:
-                    light_state["on"] = True
-                    hue_service.set_light_state(light_id, **light_state)
-                else:
-                    action = step.get("action", "toggle")
-                    if action == "on":
-                        hue_service.turn_on(light_id)
-                    elif action == "off":
-                        hue_service.turn_off(light_id)
+        # A malformed step (e.g. a missing "command") fails on its own and
+        # is reported like any other failure, rather than aborting the run.
+        try:
+            if step.get("type") == "voice":
+                success, error = voice_service.send_command(step["command"])
+                if success:
+                    sent += 1
+            elif step.get("type") == "androidtv":
+                success, error = androidtv_service.send_keyevent(step["keyevent"])
+                if success:
+                    sent += 1
+            elif step.get("type") == "androidtv_app":
+                success, error = androidtv_service.launch_app(step["app_link"])
+                if success:
+                    sent += 1
+            elif step.get("type") == "hue" and hue_service.is_known_unreachable(step.get("light_id", "")):
+                error = f"light {step.get('light_id')} unreachable"
+            elif step.get("type") == "hue":
+                try:
+                    light_id = step["light_id"]
+                    # bri_inc/ct_inc change brightness/colour temperature by a
+                    # relative amount via the bridge's own clamping (avoids a
+                    # read-current-then-write race — see Up/Down brightness in
+                    # screens/active_device_screen.py); bri/ct set an absolute
+                    # value instead (see Preset Function colour/temp presets in
+                    # config/keypad_presets.json's "by_device" — Candlelight/
+                    # Warm White/Daylight/Rust). Any combination of the four
+                    # may appear in one step. on=True whenever any of them is
+                    # present so a press on an off light turns it on rather
+                    # than silently doing nothing (Hue only applies a
+                    # brightness/colour change to an off light if "on" is set
+                    # in the same request).
+                    light_state = {k: step[k] for k in ("bri_inc", "ct_inc", "bri", "ct") if k in step}
+                    if light_state:
+                        light_state["on"] = True
+                        hue_service.set_light_state(light_id, **light_state)
                     else:
-                        current = hue_service.get_light(light_id).get("state", {}).get("on", False)
-                        hue_service.set_light_state(light_id, on=not current)
-                sent += 1
-            except (OSError, ValueError, KeyError) as e:
-                error = repr(e)
-        elif step.get("type") == "ir_toggle":
-            # Flip the assumed state and fire whichever real signal
-            # matches it — see _ir_toggle_state's own comment for the
-            # "no real state readback" caveat. Sent-count only reflects
-            # whether the chosen signal file existed/transmitted, same as
-            # the plain-IR branch below.
-            key = (step["home"], step["device"], step.get("location", ""))
-            now_on = not _ir_toggle_state.get(key, False)
-            _ir_toggle_state[key] = now_on
-            button = step["on_button"] if now_on else step["off_button"]
-            path = signal_service.signal_path(
-                step["home"], step["device"], button, step.get("location", "")
-            )
-            if not path.exists():
-                error = f"signal missing: {path}"
-            else:
-                try:
-                    ir_transmitter.transmit(path)
+                        action = step.get("action", "toggle")
+                        if action == "on":
+                            hue_service.turn_on(light_id)
+                        elif action == "off":
+                            hue_service.turn_off(light_id)
+                        else:
+                            current = hue_service.get_light(light_id).get("state", {}).get("on", False)
+                            hue_service.set_light_state(light_id, on=not current)
                     sent += 1
-                except HardwareError as e:
-                    error = str(e)
-        elif step.get("type") == "voice_toggle":
-            # Same "no real state readback" caveat as ir_toggle — see
-            # this step type's docstring for why a bare "Toggle X" voice
-            # command can't be trusted to actually flip the device.
-            key = step["key"]
-            now_on = not _voice_toggle_state.get(key, False)
-            _voice_toggle_state[key] = now_on
-            command = step["on_command"] if now_on else step["off_command"]
-            success, error = voice_service.send_command(command)
-            if success:
-                sent += 1
-        else:
-            path = signal_service.signal_path(
-                step["home"], step["device"], step["button"], step.get("location", "")
-            )
-            if not path.exists():
-                error = f"signal missing: {path}"
-            else:
-                try:
-                    ir_transmitter.transmit(path)
+                except (OSError, ValueError, KeyError) as e:
+                    error = repr(e)
+            elif step.get("type") == "ir_toggle":
+                # Flip the assumed state and fire whichever real signal
+                # matches it — see _ir_toggle_state's own comment for the
+                # "no real state readback" caveat. Sent-count only reflects
+                # whether the chosen signal file existed/transmitted, same as
+                # the plain-IR branch below.
+                key = (step["home"], step["device"], step.get("location", ""))
+                now_on = not _ir_toggle_state.get(key, False)
+                button = step["on_button"] if now_on else step["off_button"]
+                path = signal_service.signal_path(
+                    step["home"], step["device"], button, step.get("location", "")
+                )
+                if not path.exists():
+                    error = f"signal missing: {path}"
+                else:
+                    try:
+                        ir_transmitter.transmit(path)
+                        _ir_toggle_state[key] = now_on  # only once it actually went out
+                        sent += 1
+                    except HardwareError as e:
+                        error = str(e)
+            elif step.get("type") == "voice_toggle":
+                # Same "no real state readback" caveat as ir_toggle — see
+                # this step type's docstring for why a bare "Toggle X" voice
+                # command can't be trusted to actually flip the device.
+                key = step["key"]
+                now_on = not _voice_toggle_state.get(key, False)
+                command = step["on_command"] if now_on else step["off_command"]
+                success, error = voice_service.send_command(command)
+                if success:
+                    _voice_toggle_state[key] = now_on  # only once it actually went out
                     sent += 1
-                except HardwareError as e:
-                    error = str(e)
+            else:
+                path = signal_service.signal_path(
+                    step["home"], step["device"], step["button"], step.get("location", "")
+                )
+                if not path.exists():
+                    error = f"signal missing: {path}"
+                else:
+                    try:
+                        ir_transmitter.transmit(path)
+                        sent += 1
+                    except HardwareError as e:
+                        error = str(e)
+
+        except Exception as e:
+            error = f"bad step: {e!r}"
 
         if sent == sent_before:
             log.warning("Step failed (%s): %s", describe_step(step), error or "unknown error")
@@ -333,10 +339,14 @@ def _worker_loop() -> None:
         # silently, leaving every later queued step waiting forever.
         try:
             result = run_steps(steps)
-            if on_result:
-                on_result(*result)
         except Exception:
             log.exception("Background steps crashed: %r", steps)
+            result = (0, len(steps), steps[0] if steps else None)
+        if on_result:
+            try:
+                on_result(*result)
+            except Exception:
+                log.exception("Step result callback failed")
 
 
 def _ensure_worker() -> None:

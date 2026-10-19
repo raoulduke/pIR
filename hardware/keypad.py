@@ -454,35 +454,52 @@ class KeypadScanner:
             time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
 
     def _run(self) -> None:
+        """Scan forever. An unexpected error (a GPIO or gpiod failure) is
+        logged and scanning resumes a second later: left uncaught it would
+        end this thread silently, leaving the keypad dead and the app
+        looking frozen. Logged once per run of errors, not every retry."""
+        failing = False
         while not self._stop.is_set():
-            if self._edges is not None:
-                self._sleep_until_edge()
-                reading = _wait_for_press(self._stop, self._scan, KEYPAD_WAKE_IDLE_SECONDS)
-            else:
-                reading = _wait_for_press(self._stop, self._scan)
-            if reading is None:
-                continue
-            label = self._map.get(reading)
-            if label is None:
-                _wait_for_release(self._stop, self._scan)
-                continue
-
-            key = resolve_label(label)
-            self._held_key = key
             try:
-                hold_event = self._hold_keys.get(key)
-                if hold_event is not None:
-                    self._tap_or_hold(reading, key, hold_event)
-                    continue
-
-                self._emit(key)
-
-                if key in self._repeatable_keys:
-                    self._repeat_while_held(reading, key)
-                else:
-                    _wait_for_release(self._stop, self._scan)
-            finally:
+                self._scan_once_through()
+                failing = False
+            except Exception:
+                if not failing:
+                    log.exception("Keypad scanner error; retrying every second")
+                failing = True
                 self._held_key = None
+                self._stop.wait(1)
+
+    def _scan_once_through(self) -> None:
+        """Wait for one press and handle it through to release."""
+        if self._edges is not None:
+            self._sleep_until_edge()
+            reading = _wait_for_press(self._stop, self._scan, KEYPAD_WAKE_IDLE_SECONDS)
+        else:
+            reading = _wait_for_press(self._stop, self._scan)
+        if reading is None:
+            return
+        label = self._map.get(reading)
+        if label is None:
+            _wait_for_release(self._stop, self._scan)
+            return
+
+        key = resolve_label(label)
+        self._held_key = key
+        try:
+            hold_event = self._hold_keys.get(key)
+            if hold_event is not None:
+                self._tap_or_hold(reading, key, hold_event)
+                return
+
+            self._emit(key)
+
+            if key in self._repeatable_keys:
+                self._repeat_while_held(reading, key)
+            else:
+                _wait_for_release(self._stop, self._scan)
+        finally:
+            self._held_key = None
 
     def pop(self) -> str | None:
         """Drain one wake byte and return the corresponding key, if any."""

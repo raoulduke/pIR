@@ -47,6 +47,9 @@ _TX_MAX_US = 500000
 # whichever is larger: capture jitter, or a capture against the encoder's
 # nominal timing.
 _FRAME_MATCH_US = 250
+# A send is at most 500ms of IR plus ~0.1s to start ir-ctl; past this it's
+# hung, and it runs on the main thread, so it would freeze the app.
+_IR_CTL_TIMEOUT_SECONDS = 5
 
 
 def transmit(signal_file: Path) -> None:
@@ -200,7 +203,10 @@ def _run_ir_ctl(args: list[str]) -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
+            timeout=_IR_CTL_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        raise HardwareError("ir-ctl timed out") from None
     except subprocess.CalledProcessError as e:
         detail = (e.stderr or "").strip()
         raise HardwareError(f"ir-ctl TX failed: {detail or e}") from e

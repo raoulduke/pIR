@@ -242,7 +242,7 @@ class InputReader:
                 ip = network.get_ip_address()
                 lcd.write("No input device", ip[:16] if ip else "WiFi not conn.")
                 time.sleep(5)
-                raise SystemExit(0)
+                raise SystemExit(1)  # nonzero: systemd retries, in case it was transient
 
             read_fds = list(self.devices.keys())
             if self.stdin_fd is not None:

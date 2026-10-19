@@ -123,28 +123,82 @@ def _start_watchdog() -> None:
         pass
 
 
+# Name for a throwaway profile that checks a typed password against an SSID
+# that already has a saved profile (see connect()).
+_TRIAL_PREFIX = "pihome-trial-"
+
+
+def _wifi_profiles() -> dict[str, str]:
+    """Saved Wi-Fi profiles: SSID -> profile name."""
+    try:
+        listing = _nmcli("-t", "-f", "NAME,TYPE", "connection", "show")
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return {}
+    profiles = {}
+    for line in listing.stdout.splitlines():
+        parts = _split_terse(line)
+        if len(parts) != 2 or parts[1] != "802-11-wireless":
+            continue
+        name = parts[0].replace("\\:", ":")
+        if name.startswith(_TRIAL_PREFIX):
+            continue
+        try:
+            ssid = _nmcli("-g", "802-11-wireless.ssid", "connection", "show", name).stdout.strip()
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            continue
+        if ssid:
+            profiles.setdefault(ssid, name)
+    return profiles
+
+
+def _delete_profile(name: str) -> None:
+    try:
+        _nmcli("connection", "delete", name)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+
+def _online_on(profile: str, deadline: float) -> bool:
+    """Poll until wlan0 is on *profile* with real connectivity, or *deadline*
+    (time.monotonic()) passes. Both conditions matter: is_connected() alone
+    is a bare socket check and stays true off the *previous* network if the
+    attempt failed without tearing it down (e.g. wrong password)."""
+    while True:
+        if _current_connection() == profile and network.is_connected():
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(1)
+
+
 def connect(ssid: str, password: str = "") -> tuple[bool, str]:
     """Switch wlan0 to *ssid*, reverting to whatever it was connected to
     before if the new network doesn't reach real connectivity in time.
     Returns (success, message).
+
+    A saved profile is never deleted (2026-10-18: deleting it first, so a
+    typed password wasn't ignored in favour of the stored one, could leave
+    the Pi with no working profile for its own network after a typo — no
+    Wi-Fi until USB or the SD card). Instead a typed password for an SSID
+    that already has a profile is tried on a throwaway trial profile; only
+    once that connects is it copied into the saved profile, which is then
+    brought up and the trial removed. A failed attempt removes only what
+    it created itself.
     """
     previous = _current_connection()
+    saved = _wifi_profiles().get(ssid)
+    trial = f"{_TRIAL_PREFIX}{ssid}" if saved else None
     _start_watchdog()
-
-    # If a connection profile for this SSID already exists, `device wifi
-    # connect` reactivates it using ITS stored secrets and silently ignores
-    # whatever password we pass here — so a wrong password against an
-    # already-known network (e.g. the Pi's own home Wi-Fi) would otherwise
-    # always "succeed". Drop the old profile first so nmcli is forced to
-    # build a fresh one from the password actually typed just now.
-    try:
-        _nmcli("connection", "delete", ssid, timeout=_NMCLI_TIMEOUT_SECONDS)
-    except Exception:
-        pass  # no existing profile (or delete failed) — fine either way
 
     args = ["device", "wifi", "connect", ssid, "ifname", WIFI_INTERFACE]
     if password:
         args += ["password", password]
+    if trial:
+        if previous == trial:
+            trial += "-2"  # an earlier trial is what's connected; leave it be
+        _delete_profile(trial)  # a leftover from an interrupted attempt
+        args += ["name", trial]
+    attempt = trial or ssid  # nmcli names a new profile after the SSID
 
     result = None
     try:
@@ -152,28 +206,36 @@ def connect(ssid: str, password: str = "") -> tuple[bool, str]:
     except Exception:
         pass  # fall through to the connectivity check/revert below regardless
 
-    # nmcli already blocked until the attempt resolved one way or the other
-    # (e.g. a bad password fails the handshake almost immediately) — a
-    # nonzero exit means it's already known to have failed, so don't also
-    # burn the full poll window below waiting for something that's not
-    # coming. Only poll when nmcli reported success but the IP/DHCP side
-    # may still need a moment to catch up.
-    if result is not None and result.returncode == 0:
-        deadline = time.monotonic() + WIFI_CONNECT_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
-            # Both conditions matter: is_connected() alone is a bare socket
-            # check against 1.1.1.1 and stays true off the *previous* network
-            # if nmcli's attempt failed without tearing it down (e.g. wrong
-            # password) — it says nothing about which SSID wlan0 is actually on.
-            if _current_connection() == ssid and network.is_connected():
-                return True, "Connected"
-            time.sleep(1)
-    elif _current_connection() == ssid and network.is_connected():
-        # Exit code said failure, but we're actually online on the target
-        # SSID already (edge case) — trust reality over the exit code.
+    # A nonzero exit means nmcli already knows it failed (e.g. a bad password
+    # fails the handshake almost at once) — check once rather than burn the
+    # poll window; only poll when it reported success but DHCP may lag.
+    polling = result is not None and result.returncode == 0
+    deadline = time.monotonic() + (WIFI_CONNECT_TIMEOUT_SECONDS if polling else 0)
+    if _online_on(attempt, deadline):
+        if not trial:
+            return True, "Connected"
+        # The typed password works: store it in the saved profile and use that.
+        try:
+            if password:
+                _nmcli("connection", "modify", saved, "wifi-sec.psk", password)
+            _nmcli("connection", "up", saved, timeout=WIFI_CONNECT_TIMEOUT_SECONDS + 10)
+        except Exception:
+            pass
+        if _online_on(saved, time.monotonic() + WIFI_CONNECT_TIMEOUT_SECONDS):
+            _delete_profile(trial)
+        # Otherwise keep the trial: it's the profile that's working.
         return True, "Connected"
 
-    # Didn't come up for real — revert to whatever was working before.
+    # Didn't come up for real — remove only a profile this attempt created,
+    # then revert to whatever was working before.
+    if trial:
+        _delete_profile(trial)
+    else:
+        # No profile existed for this SSID before, so any there now is this
+        # attempt's and never connected.
+        created = _wifi_profiles().get(ssid)
+        if created:
+            _delete_profile(created)
     if previous:
         try:
             _nmcli("connection", "up", previous, timeout=WIFI_CONNECT_TIMEOUT_SECONDS)

@@ -10,6 +10,7 @@ import os
 import pwd
 
 from app.constants import SIGNALS_DIR, FILE_OWNER, DEFAULT_ACTIVE_DEVICE, DEVICE_ORDER_FILE
+from app.files import write_text_atomic
 
 _BASE = Path(__file__).parent.parent / SIGNALS_DIR
 _ORDER_PATH = Path(__file__).parent.parent / DEVICE_ORDER_FILE
@@ -78,7 +79,7 @@ def rename_order_keys(old: str, new: str) -> None:
             renamed[key] = value
 
     if changed:
-        _ORDER_PATH.write_text(json.dumps(renamed, indent=2))
+        write_text_atomic(_ORDER_PATH, json.dumps(renamed, indent=2))
 
 
 def rename_device(home: str, old: str, new: str) -> None:
@@ -116,7 +117,7 @@ def rename_device_order(home: str, old: str, new: str) -> None:
         changed = True
 
     if changed:
-        _ORDER_PATH.write_text(json.dumps(data, indent=2))
+        write_text_atomic(_ORDER_PATH, json.dumps(data, indent=2))
 
 
 def _explicit_order(key: str) -> list[str]:
@@ -317,7 +318,7 @@ def save_signal(
     """Write signal data and fix ownership so the file is accessible as *matt*."""
     path = signal_path(home, device, button, location)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(data)
+    write_text_atomic(path, data)
     _chown_to_file_owner(path)
 
 

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from app.exceptions import ConfigError
+from app.files import write_text_atomic
 from services import config_service, signal_service
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
@@ -72,7 +73,7 @@ def _rewrite_home_refs_in_file(path: Path, old: str, new: str) -> None:
     except (OSError, json.JSONDecodeError):
         return
     if _rename_home_in_place(data, old, new):
-        path.write_text(json.dumps(data, indent=2))
+        write_text_atomic(path, json.dumps(data, indent=2))
 
 
 def _rename_home_in_place(node, old: str, new: str) -> bool:
@@ -144,7 +145,7 @@ def _rewrite_json_file(path: Path, mutate) -> None:
     except (OSError, json.JSONDecodeError):
         return
     if mutate(data):
-        path.write_text(json.dumps(data, indent=2))
+        write_text_atomic(path, json.dumps(data, indent=2))
 
 
 def _rename_device_in_place(node, home: str, old: str, new: str) -> bool:

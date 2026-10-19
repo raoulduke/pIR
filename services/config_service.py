@@ -2,6 +2,7 @@ from pathlib import Path
 import json
 
 from app.constants import BACKLIGHT_IDLE_SECONDS, SWEEP_GAP_SECONDS
+from app.files import write_text_atomic
 
 _CONFIG_FILE = Path(__file__).parent.parent / "config" / "settings.json"
 _DEFAULT_HOME = "home"
@@ -17,7 +18,7 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    _CONFIG_FILE.write_text(json.dumps(data, indent=2))
+    write_text_atomic(_CONFIG_FILE, json.dumps(data, indent=2))
 
 
 def get_active_home() -> str:

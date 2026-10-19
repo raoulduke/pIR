@@ -289,6 +289,7 @@ behind the repo before this change):
 | `systemd/journald.conf.d/zz-pihome.conf` | `/etc/systemd/journald.conf.d/` |
 | `systemd/system-shutdown/shutdown-signal.sh` | `/lib/systemd/system-shutdown/` |
 | `etc/rc_maps.cfg`, `etc/rc_keymaps/shutdown.toml` | `/etc/` |
+| `etc/NetworkManager/conf.d/brcmfmac-no-scan-rand-mac.conf` | `/etc/NetworkManager/conf.d/` |
 
 Safe because `/home` is on the root partition, readable from early boot to
 the final shutdown step. systemd still caches unit files and journald its
@@ -460,6 +461,35 @@ sessions, not during them. `config/settings.json`'s `wifi_wake_enabled`
 `wifi_wake_interval_seconds` (float, only used by `"throttled"`), and
 `wifi_wake_target` (string IP, `null` = auto-detect) exist specifically
 so this can be tuned without a code change once more is learned.
+
+## Slow Wi-Fi at boot (2026-10-18)
+
+A boot took 52s to get on Wi-Fi (normal: 16-23s). The router (Rogers
+Xfinity gateway made by Vantiva, one SSID on 2.4 and 5 GHz, channel 11 on
+2.4) ignored six association requests in a row (`ASSOC-REJECT
+status_code=16` with a blank BSSID: the Pi's driver timed out waiting),
+and wpa_supplicant's own 10s/20s back-off after repeated failures added
+~25s of that. Signal was -40 dBm, so not range. The same runs of timeouts
+showed on 3 earlier boots of the last 25; a single timeout followed by
+success a second later is common and harmless. The router also drops the
+Pi often with `reason=6` (105 times in the journal), likely the ~15-minute
+re-association noted under "Wi-Fi Power Save + Speculative Wake".
+
+Fix tried: NetworkManager scanned with a random MAC and switched back to the
+real one right before associating, on every boot and reconnect; Kali's
+`no-mac-addr-change.conf` turns that off only for the `eagle_sdio`/`wl`
+drivers, not this Pi's `brcmfmac`.
+`etc/NetworkManager/conf.d/brcmfmac-no-scan-rand-mac.conf` (symlinked into
+`/etc/NetworkManager/conf.d/`) covers brcmfmac. Tested the same evening:
+5 forced reconnects before (5 random-MAC scans, 0 timeouts) and after
+(0 random-MAC scans, 0 timeouts, all first try), then a reboot: connected
+first try at 14.6s. The problem is intermittent, so this shows the change is
+safe and in effect, not yet that it cures the timeouts — check later boots
+with `journalctl -b <n> -u wpa_supplicant | grep -c ASSOC-REJECT`.
+
+Not changed (router side, user's call): the gateway's band steering
+between 2.4/5 GHz on one SSID is the other likely cause; a separate
+2.4 GHz-only SSID for the Pi (it has no 5 GHz) is the usual remedy.
 
 ## Sweep menu: TV power-code sweep (2026-10-15)
 

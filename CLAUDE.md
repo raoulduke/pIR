@@ -487,9 +487,12 @@ first try at 14.6s. The problem is intermittent, so this shows the change is
 safe and in effect, not yet that it cures the timeouts — check later boots
 with `journalctl -b <n> -u wpa_supplicant | grep -c ASSOC-REJECT`.
 
-Not changed (router side, user's call): the gateway's band steering
-between 2.4/5 GHz on one SSID is the other likely cause; a separate
-2.4 GHz-only SSID for the Pi (it has no 5 GHz) is the usual remedy.
+Not changed (router side, user's call): the Pi's radio is 2.4 GHz only
+(`iw phy` lists Band 1, channels 1-13), so it always joins 2.4 GHz and
+band steering, which targets clients seen on both bands, probably isn't
+acting on it. A separate 2.4 GHz-only SSID would only be an experiment, to
+take the Pi out of the gateway's client management; the router's own logs
+are the better next step if the timeouts continue.
 
 ## Sweep menu: TV power-code sweep (2026-10-15)
 

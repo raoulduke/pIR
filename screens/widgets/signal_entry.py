@@ -12,7 +12,7 @@ from screens.widgets.char_input import read_dpad_text
 from screens.widgets.format import format_name, slugify, crumbs
 from app.constants import (
     STEP_DEVICE, STATEMENT_INVALID_INPUT, STATEMENT_TRY_AGAIN,
-    LABEL_ENTER_LOCATION, LABEL_SINGLE_DEVICE, LABEL_NEW_DEVICE, LABEL_NEW_LOCATION,
+    LABEL_NEW_DEVICE, LABEL_NEW_LOCATION,
 )
 
 
@@ -48,17 +48,9 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
                     result = prompt_text(lcd, crumbs(*trail, LABEL_NEW_LOCATION))
                 else:
                     result = choice  # an existing location, or KEY_QUIT/KEY_BACK — handled below either way
-            elif signal_service.buttons_at_device_level(home, device):
-                # A device with signals directly under it (e.g. "ac"): no location.
-                result = ""
             else:
-                choice = select_from_list(lcd, title, [LABEL_ENTER_LOCATION, LABEL_SINGLE_DEVICE])
-                if choice == LABEL_SINGLE_DEVICE:
-                    result = ""
-                elif choice == LABEL_ENTER_LOCATION:
-                    result = prompt_text(lcd, crumbs(*trail, LABEL_NEW_LOCATION))
-                else:
-                    result = choice  # KEY_QUIT or KEY_BACK
+                # Every device has a location: a new device gets its first one here.
+                result = prompt_text(lcd, crumbs(*trail, LABEL_NEW_LOCATION))
 
         elif i == 2:
             result = prompt_text(lcd, title)

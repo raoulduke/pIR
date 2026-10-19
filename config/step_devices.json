@@ -1,5 +1,5 @@
 {
-  "google_home": [
+  "google_home/living_room": [
     {"name": "Rust", "steps": [
       {"type": "voice", "command": "Rust"},
       {"home": "home", "device": "light", "location": "hall", "button": "off"}

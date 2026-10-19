@@ -1,13 +1,18 @@
 {
   "by_device": {
-    "google_tv": {
-      "1": {"name": "Back", "steps": [{"home": "home", "device": "google_tv", "location": "", "button": "back"}]},
+    "light/bathroom": {
+      "1": {"name": "Red", "steps": [{"home": "michael", "device": "light", "location": "bathroom", "button": "red"}]},
+      "2": {"name": "Green", "steps": [{"home": "michael", "device": "light", "location": "bathroom", "button": "green"}]},
+      "3": {"name": "Blue", "steps": [{"home": "michael", "device": "light", "location": "bathroom", "button": "blue"}]}
+    },
+    "google_tv/living_room": {
+      "1": {"name": "Back", "steps": [{"home": "home", "device": "google_tv", "location": "living_room", "button": "back"}]},
       "2": {"name": "Home", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_HOME"}]},
       "3": {"name": "YouTube", "steps": [{"type": "androidtv_app", "app_link": "https://www.youtube.com/tv"}]},
       "4": {"name": "Captions", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_CAPTIONS"}]}
     },
     "receiver/living_room": {
-      "1": {"name": "Mute", "steps": [{"home": "home", "device": "google_tv", "location": "", "button": "mute"}]}
+      "1": {"name": "Mute", "steps": [{"home": "home", "device": "google_tv", "location": "living_room", "button": "mute"}]}
     },
     "light/bedroom": {
       "1": {"name": "Candlelight", "steps": [{"type": "hue", "ct": 454, "light_id": "3"}]},

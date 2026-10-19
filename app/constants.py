@@ -83,8 +83,6 @@ MENU_DEVICE_SENTINELS = {device: f"__menu_{device}__" for device in MENU_DEVICE_
 MENU_SENTINEL_TO_DEVICE = {sentinel: device for device, sentinel in MENU_DEVICE_SENTINELS.items()}
 
 # Misc
-LABEL_ENTER_LOCATION = "Enter location"
-LABEL_SINGLE_DEVICE = "Single device"
 LABEL_CANCEL = "Cancel"
 LABEL_TRY_AGAIN = "Try again"
 LABEL_OVERWRITE = "Overwrite?"

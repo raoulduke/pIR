@@ -12,7 +12,7 @@
     "label": "AC",
     "home": "home",
     "device": "ac",
-    "location": "",
+    "location": "living_room",
     "up_button": "temp_up",
     "down_button": "temp_down"
   },

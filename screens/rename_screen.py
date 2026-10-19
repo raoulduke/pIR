@@ -83,18 +83,19 @@ def _pick_existing_signal(lcd: LCD, home: str) -> list[str] | str | None:
             options = signal_service.list_devices(home)
         elif i == 1:
             options = signal_service.list_locations(home, values[0])
-            if not options:
-                # No location sub-dirs — buttons live directly under the
-                # device (e.g. "ac") — nothing to pick.
-                values.append("")
-                i += 1
-                continue
         else:
             options = signal_service.list_buttons(home, values[0], values[1])
 
         if not options:
-            # A listed device/location always has signals; don't crash if not.
-            return None
+            # Nothing to pick here (e.g. a device with no locations yet): say
+            # so and go back a step.
+            lcd.write(STATEMENT_NO_SIGNALS, prompt[-16:])
+            time.sleep(1.5)
+            if i == 0:
+                return None
+            values.pop()
+            i -= 1
+            continue
 
         choice = select_from_list(lcd, prompt, options)
         if choice == KEY_QUIT:

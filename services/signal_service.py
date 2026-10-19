@@ -212,14 +212,6 @@ def list_functions(home: str, device: str, location: str = "") -> list[dict]:
     return functions
 
 
-def buttons_at_device_level(home: str, device: str) -> bool:
-    """True when buttons live directly under the device dir (no location sub-dir)."""
-    d = home_dir(home) / device
-    if not d.is_dir():
-        return False
-    return any(f.is_file() for f in d.iterdir())
-
-
 def signal_path(home: str, device: str, button: str, location: str = "") -> Path:
     d = home_dir(home) / device
     if location:

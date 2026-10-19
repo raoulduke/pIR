@@ -1,7 +1,7 @@
 from hardware.lcd import GLYPH_ARROW_UPDOWN, GLYPH_ELLIPSIS
 
 # Words shown in capitals ("google_tv" -> "Google TV").
-_ACRONYMS = {"ac", "tv"}
+_ACRONYMS = {"ac", "tv", "dvd"}
 
 # Single-letter suffixes spelled out ("kitchen_n" -> "Kitchen North").
 _DIRECTIONS = {"n": "North", "s": "South", "e": "East", "w": "West"}

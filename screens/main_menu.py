@@ -11,8 +11,10 @@ DeviceCycledAway) also unwinds out of the menu back to Active Device
 Control.
 
 Returns one of: MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME,
-MENU_NETWORK, MENU_SETTINGS, KEY_QUIT, or None (Up — closed).
-Selecting "Quit" also returns KEY_QUIT. MENU_IP is handled
+MENU_NETWORK, MENU_SETTINGS, KEY_QUIT (a keyboard's quit key), or None
+(Left — closed). No Quit entry: the app runs as pihome.service, so quitting
+from the keypad left nothing to start it again short of a reboot (removed
+2026-10-18). MENU_IP is handled
 inline here rather than returned — it's display-only. MENU_NETWORK
 (labeled "WiFi") is disabled — Enter is a no-op — while
 wifi_service.is_ready() is false, showing "WiFi loading" instead; see
@@ -26,7 +28,7 @@ docs/active-device-control-plan.md's "Superseded" notes.
 
 from app.constants import (
     MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK,
-    MENU_SETTINGS, MENU_QUIT, MENU_IP, MENU_TITLE, MENU_WIFI_POLL_INTERVAL_SECONDS,
+    MENU_SETTINGS, MENU_IP, MENU_TITLE, MENU_WIFI_POLL_INTERVAL_SECONDS,
 )
 from app.state import AppState
 from hardware.lcd import LCD
@@ -40,7 +42,7 @@ from screens.widgets.format import with_arrows
 
 _OPTIONS = [
     MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_SETTINGS,
-    MENU_QUIT, MENU_IP,
+    MENU_IP,
 ]
 
 
@@ -79,9 +81,6 @@ def show(lcd: LCD, state: AppState) -> str | None:
         if key == KEY_DOWN:
             index = (index + 1) % len(_OPTIONS)
         if key in (KEY_ENTER, KEY_RIGHT):
-            if option == MENU_QUIT:
-                lcd.clear()
-                return KEY_QUIT
             if option == MENU_IP:
                 continue
             if option == MENU_NETWORK and not wifi_service.is_ready():

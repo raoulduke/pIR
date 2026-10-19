@@ -41,7 +41,6 @@ MENU_COMMAND = "Command"
 MENU_HOME = "Change Home"
 MENU_SETTINGS = "Settings"
 MENU_NETWORK = "WiFi"
-MENU_QUIT = "Quit"
 MENU_IP = "IP Address"
 
 # Sweep menu (screens/fun_screen.py, screens/code_sweep_screen.py) — the

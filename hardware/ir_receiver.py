@@ -57,8 +57,6 @@ def capture(lcd: "LCD") -> str:
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".txt", prefix="ir_signal_")
     os.close(tmp_fd)
 
-    lcd.write(STATEMENT_RECEIVING, "Press button now")
-
     try:
         with open(tmp_path, "w") as tmp:
             try:
@@ -71,6 +69,9 @@ def capture(lcd: "LCD") -> str:
                 )
             except FileNotFoundError:
                 raise HardwareError("ir-ctl not found") from None
+            # Only once ir-ctl is running, so the prompt never shows while
+            # nothing is listening.
+            lcd.write(STATEMENT_RECEIVING, "Press button now")
 
             captured = False
             last_data_time: float | None = None

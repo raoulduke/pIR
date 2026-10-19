@@ -16,7 +16,8 @@ Paused ("||" on line 2):
                 wrapping — they stop at the first / last code, which
                 the count shows). They auto-repeat when held, since
                 nothing fires.
-  Right         send the code on screen, once per press
+  Right         send the code on screen, once per press ("|| Sending..."
+                on line 2 while it goes out)
   Enter (tap)   resume from the code on screen: sent first unless it
                 already went out since landing on it (paused on it, or
                 fired with Right), so a code never goes out twice in a row
@@ -48,7 +49,7 @@ from screens.widgets.selector import select_from_list
 from screens.widgets.signal_entry import prompt_text
 from screens.widgets.format import format_name, with_arrows, fit_with_suffix
 from app.constants import (
-    PROMPT_NAME, STATEMENT_NO_SIGNALS,
+    PROMPT_NAME, STATEMENT_NO_SIGNALS, STATEMENT_SENDING, ASYNC_SEND_FLASH_SECONDS,
     STATEMENT_FILE_EXISTS, STATEMENT_SAVED, STATEMENT_SAVE_FAILED,
     LABEL_OVERWRITE, LABEL_CANCEL,
 )
@@ -111,7 +112,11 @@ def _sweep(lcd: LCD, device_type: str, signal: str, codes: list[tuple[str, dict]
             elif key == KEY_DOWN and index < last:
                 index += 1
             elif key == KEY_RIGHT:
+                lcd.write(*with_arrows(_line1(codes, index), f"|| {STATEMENT_SENDING}", last > 0))
+                started = time.monotonic()
                 fire()
+                # Long enough to see even when the send itself is quick.
+                time.sleep(max(0.0, ASYNC_SEND_FLASH_SECONDS - (time.monotonic() - started)))
             elif key == KEY_ENTER_HOLD:
                 set_hold_keys({})  # plain Enter while naming it
                 brand, entry = codes[index]

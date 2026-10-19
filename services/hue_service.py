@@ -31,11 +31,6 @@ def _username_path() -> Path | None:
     return Path(value) if value else None
 
 
-def username_exists() -> bool:
-    path = _username_path()
-    return path is not None and path.exists()
-
-
 def _load_username() -> str:
     path = _username_path()
     if path is None:
@@ -71,11 +66,6 @@ def _request(method: str, path: str, body: dict | None = None) -> dict | list:
         return json.loads(response.read().decode("utf-8"))
 
 
-def list_lights() -> dict:
-    """Return the bridge's raw {light_id: {...}} mapping."""
-    return _request("GET", "/lights")
-
-
 def get_light(light_id: str) -> dict:
     return _request("GET", f"/lights/{light_id}")
 
@@ -91,17 +81,6 @@ def turn_on(light_id: str) -> list:
 
 def turn_off(light_id: str) -> list:
     return set_light_state(light_id, on=False)
-
-
-def identify(light_id: str) -> list:
-    """Briefly flash a light (Hue's built-in "select" alert) without
-    otherwise changing its on/off state — for matching a bridge light_id
-    to the physical bulb in a room."""
-    return set_light_state(light_id, alert="select")
-
-
-def rename_light(light_id: str, name: str) -> list:
-    return _request("PUT", f"/lights/{light_id}", {"name": name})
 
 
 def is_reachable(light_id: str) -> bool:

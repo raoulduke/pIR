@@ -63,9 +63,8 @@ def show(lcd: LCD, state: AppState) -> str | None:
             return None
 
     # --- Capture ---
-    lcd.write(STATEMENT_RECEIVING, "Press remote now")
-    time.sleep(1)
-
+    # capture() shows its own prompt once it's listening — no lead-in
+    # here, or a press made as soon as a prompt appears would be lost.
     data = _capture(lcd)
     time.sleep(1)
 
@@ -73,8 +72,6 @@ def show(lcd: LCD, state: AppState) -> str | None:
         answer = select_from_list(lcd, STATEMENT_NO_SIGNAL, [LABEL_TRY_AGAIN, LABEL_CANCEL])
         if answer in (KEY_BACK, KEY_QUIT, LABEL_CANCEL):
             return None
-        lcd.write(STATEMENT_RECEIVING, "Press remote now")
-        time.sleep(1)
         data = _capture(lcd)
         time.sleep(1)
 

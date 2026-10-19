@@ -163,8 +163,8 @@ class InputReader:
             # Ctrl+C, for SSH development sessions only. Raw mode
             # (tty.setraw above) clears ISIG, so the tty driver never turns
             # this into SIGINT — it arrives here as a plain byte instead.
-            # 'q'/Esc are intentionally NOT quit keys — use the menu's Quit
-            # option or the physical shutdown button.
+            # 'q'/Esc are intentionally NOT quit keys — use the physical
+            # shutdown button.
             return KEY_QUIT
         if ch.isprintable():
             return ch

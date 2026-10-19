@@ -3,8 +3,8 @@ import socket
 
 def is_connected(host: str = "1.1.1.1", port: int = 53, timeout: float = 1.0) -> bool:
     try:
-        socket.create_connection((host, port), timeout=timeout)
-        return True
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
     except OSError:
         return False
 

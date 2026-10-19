@@ -87,7 +87,7 @@ config/
   Sweep's paused screen (Up/Down move to the previous/next code, no
   wrapping; its line-1 count shows the ends) follow it in their
   own loops. Up/Down auto-repeat when held and Left doesn't
-  (`hardware.input.use_list_keys()`), so a held Left can't back out several
+  (`hardware.input.use_default_keys()`), so a held Left can't back out several
   levels. The D-pad text entry (`screens/widgets/char_input.py`) matches
   it: Up/Down pick the character, Left deletes / backs out when empty,
   Right commits the character, Enter submits. Text entry's first character

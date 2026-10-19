@@ -36,13 +36,11 @@ def initialize() -> AppState | None:
         # app; Learn reports it when used.
         try:
             ir_receiver.verify()
-            state.ir_rx_available = True
         except HardwareError as e:
             log.warning("IR receiver unavailable: %s", e)
 
     def _check_ir_transmit() -> None:
         ir_transmitter.verify()
-        state.ir_tx_available = True
 
     # The progress bar's denominator comes from this list's own length, not
     # a separately-maintained count — add or remove a check here and the

@@ -1,11 +1,10 @@
 """D-pad-only text entry widget.
 
 The physical 12-wire keypad has no letter keys at all — every button is a
-pre-assigned label (D-pad, presets, Menu; see hardware/keypad.py). Free-text
-entry from it (screens/widgets/text_input.py's read_text) only works from a
-USB keyboard or SSH session, since it just passes raw characters through.
+pre-assigned label (D-pad, presets, Menu; see hardware/keypad.py), and this
+is the app's only text entry.
 
-``read_dpad_text`` fills that gap the way a feature phone's keypad does:
+``read_dpad_text`` does it the way a feature phone's keypad does:
 compose one character at a time by cycling a candidate with Up/Down, commit
 it and move to the next slot with Right. Only Up/Down/Left/Right/Enter are
 used, since those are the only raw keys the bare keypad can ever produce

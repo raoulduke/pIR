@@ -33,7 +33,7 @@ from app.constants import (
 from app.state import AppState
 from hardware.lcd import LCD
 from hardware.input import (
-    read_key, use_list_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT,
+    read_key, use_default_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT,
 )
 from hardware.network import get_ip_address
 from services import wifi_service
@@ -59,7 +59,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
 
     while state.running:
         option = _OPTIONS[index]
-        use_list_keys()
+        use_default_keys()
         lcd.write(*with_arrows(MENU_TITLE, _line2(option), True))
 
         # Only poll while WiFi is the highlighted entry — a plain block

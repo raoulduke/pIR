@@ -11,7 +11,7 @@ selects; Left goes back one level (returned as KEY_BACK).
 
 from hardware.lcd import LCD
 from hardware.input import (
-    read_key, use_list_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
+    read_key, use_default_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
 )
 from screens.widgets.format import format_name, with_arrows
 
@@ -36,7 +36,7 @@ def select_from_list(
     while True:
         # Re-asserted every pass: a quick action (Menu) or another screen
         # may have changed it while this list was waiting.
-        use_list_keys()
+        use_default_keys()
         lcd.write(*with_arrows(title, formatter(options[index]), count > 1))
         key = read_key()
 

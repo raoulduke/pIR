@@ -62,18 +62,9 @@ def rename_home(old: str, new: str) -> None:
     signal_service.rename_order_keys(old, new)
     config_service.rename_active_home_if_matches(old, new)
     for filename in _STEP_REFERENCING_FILES:
-        _rewrite_home_refs_in_file(_CONFIG_DIR / filename, old, new)
-
-
-def _rewrite_home_refs_in_file(path: Path, old: str, new: str) -> None:
-    if not path.exists():
-        return
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return
-    if _rename_home_in_place(data, old, new):
-        write_text_atomic(path, json.dumps(data, indent=2))
+        _rewrite_json_file(
+            _CONFIG_DIR / filename, lambda data: _rename_home_in_place(data, old, new),
+        )
 
 
 def _rename_home_in_place(node, old: str, new: str) -> bool:
@@ -136,8 +127,7 @@ def rename_device(home: str, old: str, new: str) -> None:
 
 def _rewrite_json_file(path: Path, mutate) -> None:
     """Load *path*, apply *mutate* (returns True if it changed anything),
-    write it back if so. Missing/unparsable files are skipped, same as
-    _rewrite_home_refs_in_file()."""
+    write it back if so. Missing/unparsable files are skipped."""
     if not path.exists():
         return
     try:

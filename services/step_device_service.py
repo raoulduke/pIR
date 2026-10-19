@@ -33,7 +33,7 @@ hue bri_inc pair.
 A step device still needs an actual (if empty) directory under
 signals/<home>/<device>[/<location>]/ — a device (and location, if any)
 is just a directory (and sub-directory) name to
-services/signal_service.py's list_leaf_devices()/cycle_leaf_device(), so
+services/signal_service.py's list_leaf_devices(), so
 that's what makes it show up as a cyclable leaf via < Device/Device >
 alongside every IR device, with no changes needed there.
 """

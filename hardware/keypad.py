@@ -47,8 +47,7 @@ from app.constants import (
 from app.exceptions import HardwareError
 from hardware.input import (
     KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_BACK,
-    KEY_BACKSPACE, KEY_LEARN, KEY_DEVICE_PREV, KEY_DEVICE_NEXT,
-    KEY_TV_MUTE, KEY_MENU,
+    KEY_DEVICE_PREV, KEY_DEVICE_NEXT, KEY_MENU,
     KEY_DEVICE_1_UP, KEY_DEVICE_1_DOWN, KEY_DEVICE_2_UP, KEY_DEVICE_2_DOWN,
     KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
@@ -59,16 +58,13 @@ log = logging.getLogger(__name__)
 _MAP_PATH = Path(__file__).parent.parent / KEYPAD_MAP_FILE
 _GPIO_CHIP = "/dev/gpiochip0"
 
-# Labels that map onto the app's existing key vocabulary (hardware/input.py).
-# Anything not listed here passes through to the rest of the app as a raw
-# character, same as a USB keyboard key does.
+# Keypad map labels -> the app's key vocabulary (hardware/input.py). A label
+# not listed here comes through as the label text itself, which no screen
+# acts on.
 _LABEL_ALIASES = {
     "UP": KEY_UP, "DOWN": KEY_DOWN, "LEFT": KEY_LEFT, "RIGHT": KEY_RIGHT,
     "ENTER": KEY_ENTER, "OK": KEY_ENTER,
     "BACK": KEY_BACK, "*": KEY_BACK,
-    "BACKSPACE": KEY_BACKSPACE, "DEL": KEY_BACKSPACE,
-    "LEARN": KEY_LEARN,  # no physical key today — Learn lives in the Menu now
-    "MUTE": KEY_TV_MUTE,  # no physical key today — deferred, see plan doc
     "MENU": KEY_MENU,
     "< DEVICE": KEY_DEVICE_PREV, "DEVICE >": KEY_DEVICE_NEXT,
     "PRESET DEVICE 1 - UP": KEY_DEVICE_1_UP, "PRESET DEVICE 1 - DOWN": KEY_DEVICE_1_DOWN,
@@ -525,9 +521,3 @@ class KeypadScanner:
                 pass
         teardown_pins()
 
-
-def verify() -> bool:
-    """Return True if the map file exists and GPIO is usable."""
-    if not _MAP_PATH.exists():
-        raise HardwareError("keypad map missing — run scripts/keypad_wizard.py")
-    return True

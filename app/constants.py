@@ -22,7 +22,6 @@ STATEMENT_CAPTURED = "Captured!"
 STATEMENT_SAVED = "Saved!"
 STATEMENT_SAVE_FAILED = "Save failed!"
 STATEMENT_SENDING = "Sending..."
-STATEMENT_SENT = "Done!"
 STATEMENT_FAILED = "Failed!"
 STATEMENT_RENAMED = "Renamed!"
 STATEMENT_NO_SIGNALS = "No signals"
@@ -205,7 +204,7 @@ KEYPAD_WAKE_IDLE_SECONDS = 0.05
 
 # Auto-repeat while a scroll key is held (see hardware/keypad.py's
 # KeypadScanner._repeat_while_held) — Up/Down on list screens
-# (hardware.input.use_list_keys()) and in the character picker
+# (hardware.input.use_default_keys()) and in the character picker
 # (screens/widgets/char_input.py); one press at a time is tedious otherwise.
 KEYPAD_REPEAT_DELAY_SECONDS = 0.4     # hold time before repeat kicks in
 KEYPAD_REPEAT_INTERVAL_SECONDS = 0.1  # pace once repeating

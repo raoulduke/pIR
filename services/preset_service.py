@@ -195,6 +195,19 @@ def all_unreachable(steps: list[dict]) -> bool:
     )
 
 
+def _send_ir(step: dict, button: str) -> str:
+    """Transmit *button* of *step*'s home/device/location. Returns "" on
+    success, else what went wrong."""
+    path = signal_service.signal_path(step["home"], step["device"], button, step.get("location", ""))
+    if not path.exists():
+        return f"signal missing: {path}"
+    try:
+        ir_transmitter.transmit(path)
+        return ""
+    except HardwareError as e:
+        return str(e)
+
+
 def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
     """Fire every step in *steps* in order — the shared voice/androidtv/
     androidtv_app/IR step-execution engine. Returns (steps actually sent,
@@ -272,18 +285,10 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                 key = (step["home"], step["device"], step.get("location", ""))
                 now_on = not _ir_toggle_state.get(key, False)
                 button = step["on_button"] if now_on else step["off_button"]
-                path = signal_service.signal_path(
-                    step["home"], step["device"], button, step.get("location", "")
-                )
-                if not path.exists():
-                    error = f"signal missing: {path}"
-                else:
-                    try:
-                        ir_transmitter.transmit(path)
-                        _ir_toggle_state[key] = now_on  # only once it actually went out
-                        sent += 1
-                    except HardwareError as e:
-                        error = str(e)
+                error = _send_ir(step, button)
+                if not error:
+                    _ir_toggle_state[key] = now_on  # only once it actually went out
+                    sent += 1
             elif step.get("type") == "voice_toggle":
                 # Same "no real state readback" caveat as ir_toggle — see
                 # this step type's docstring for why a bare "Toggle X" voice
@@ -296,17 +301,9 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                     _voice_toggle_state[key] = now_on  # only once it actually went out
                     sent += 1
             else:
-                path = signal_service.signal_path(
-                    step["home"], step["device"], step["button"], step.get("location", "")
-                )
-                if not path.exists():
-                    error = f"signal missing: {path}"
-                else:
-                    try:
-                        ir_transmitter.transmit(path)
-                        sent += 1
-                    except HardwareError as e:
-                        error = str(e)
+                error = _send_ir(step, step["button"])
+                if not error:
+                    sent += 1
 
         except Exception as e:
             error = f"bad step: {e!r}"

@@ -150,19 +150,6 @@ def list_devices(home: str) -> list[str]:
     return order + remaining
 
 
-def cycle_device(home: str, current_device: str, direction: int) -> str:
-    """Return the device before (-1) or after (+1) *current_device* in
-    list_devices() order, wrapping around at the ends."""
-    devices = list_devices(home)
-    if not devices:
-        return current_device
-    try:
-        index = devices.index(current_device)
-    except ValueError:
-        index = 0
-    return devices[(index + direction) % len(devices)]
-
-
 def list_leaf_devices(home: str) -> list[tuple[str, str]]:
     """Every cyclable "leaf" device under *home*, as (device, location)
     pairs — used by screens.active_device_screen and the < Device/Device >
@@ -179,23 +166,6 @@ def list_leaf_devices(home: str) -> list[tuple[str, str]]:
         else:
             leaves.append((device, ""))
     return leaves
-
-
-def cycle_leaf_device(
-        home: str, current: tuple[str, str], direction: int
-) -> tuple[str, str]:
-    """Return the leaf before (-1) or after (+1) *current* in
-    list_leaf_devices() order, wrapping around. Falls back to the first
-    leaf if *current* isn't found (or the home has none at all, in which
-    case *current* is returned unchanged)."""
-    leaves = list_leaf_devices(home)
-    if not leaves:
-        return current
-    try:
-        index = leaves.index(current)
-    except ValueError:
-        return leaves[0]
-    return leaves[(index + direction) % len(leaves)]
 
 
 def default_leaf_device(home: str) -> tuple[str, str]:
@@ -301,11 +271,6 @@ def signal_path(home: str, device: str, button: str, location: str = "") -> Path
 
 def signal_exists(home: str, device: str, button: str, location: str = "") -> bool:
     return signal_path(home, device, button, location).exists()
-
-
-def load_signal(home: str, device: str, button: str, location: str = "") -> Path:
-    """Return the Path to the signal file (callers pass it to ir-ctl)."""
-    return signal_path(home, device, button, location)
 
 
 def save_signal(

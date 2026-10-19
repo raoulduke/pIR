@@ -27,7 +27,7 @@ battery on nmcli rescans forever.
 import time
 from hardware.lcd import LCD
 from hardware.input import (
-    read_key, use_list_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
+    read_key, use_default_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK,
 )
 from services import wifi_service
 from screens.widgets.char_input import read_dpad_text
@@ -83,7 +83,7 @@ def _pick_network(lcd: LCD) -> dict | str | None:
     scanning = True
 
     while True:
-        use_list_keys()
+        use_default_keys()
         if not ssids:
             # Distinguish "genuinely nothing in range" from "NetworkManager
             # itself isn't answering yet" (see wifi_service.is_ready()) —

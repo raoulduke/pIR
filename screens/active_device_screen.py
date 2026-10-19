@@ -278,6 +278,20 @@ def _fire_paired(lcd: LCD, home: str, device: str, location: str, function: dict
         _run_step_function(lcd, device, location, function[f"{direction}_steps"])
 
 
+def _fire_mapped(lcd: LCD, home: str, device: str, location: str, key: str,
+                 power: dict | None, paired: dict | None) -> bool:
+    """Enter fires *power*, Up/Down fire *paired* — the fixed key mapping
+    shared by fixed-mapping devices and Lights leaves. Returns True if it
+    fired (the screen then needs redrawing)."""
+    if key == KEY_ENTER and power:
+        _fire_power(lcd, home, device, location, power)
+    elif key in (KEY_UP, KEY_DOWN) and paired:
+        _fire_paired(lcd, home, device, location, paired, "up" if key == KEY_UP else "down")
+    else:
+        return False
+    return True
+
+
 def _cycle_line2(functions: list[dict], function: dict) -> str:
     """Line-2 text for the plain multi-function Left/Right-cycling
     branch — the selected function's name, framed in <> when there's more
@@ -771,14 +785,7 @@ def show(lcd: LCD, state: AppState) -> None:
                     _check_hue(lcd, state, device, location, hue_ids, control_label)
                     continue
                 power, paired = _menu_power_paired(functions)
-                if key == KEY_ENTER and power:
-                    _fire_power(lcd, home, device, location, power)
-                    dpad_needs_redraw = True
-                elif key == KEY_UP and paired:
-                    _fire_paired(lcd, home, device, location, paired, "up")
-                    dpad_needs_redraw = True
-                elif key == KEY_DOWN and paired:
-                    _fire_paired(lcd, home, device, location, paired, "down")
+                if _fire_mapped(lcd, home, device, location, key, power, paired):
                     dpad_needs_redraw = True
                 # Preset Function 1-4 are intentionally not handled here —
                 # colour/temp presets are handled globally by
@@ -815,14 +822,7 @@ def show(lcd: LCD, state: AppState) -> None:
                     return
                 if (state.active_device, state.active_location) != (device, location):
                     continue
-                if key == KEY_ENTER and power:
-                    _fire_power(lcd, home, device, location, power)
-                    dpad_needs_redraw = True
-                elif key == KEY_UP and paired:
-                    _fire_paired(lcd, home, device, location, paired, "up")
-                    dpad_needs_redraw = True
-                elif key == KEY_DOWN and paired:
-                    _fire_paired(lcd, home, device, location, paired, "down")
+                if _fire_mapped(lcd, home, device, location, key, power, paired):
                     dpad_needs_redraw = True
                 # Left/Right intentionally not handled — nothing to cycle to.
                 continue

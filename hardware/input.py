@@ -27,10 +27,8 @@ KEY_RIGHT     = "RIGHT"
 KEY_ENTER     = "ENTER"
 KEY_QUIT      = "QUIT"
 KEY_BACK      = "BACK"
-KEY_BACKSPACE = "BACKSPACE"
 KEY_ENTER_HOLD = "ENTER_HOLD"  # Enter held — only on screens that opt in, see set_hold_keys()
 
-_COMMANDS = {KEY_UP, KEY_DOWN, KEY_RIGHT, KEY_LEFT, KEY_ENTER, KEY_QUIT, KEY_BACKSPACE}
 
 # ---------------------------------------------------------------------------
 # Keypad quick-action keys — physical shortcuts with no on-screen equivalent.
@@ -53,8 +51,6 @@ KEY_PRESET_1      = "PRESET_1"
 KEY_PRESET_2      = "PRESET_2"
 KEY_PRESET_3      = "PRESET_3"
 KEY_PRESET_4      = "PRESET_4"
-KEY_LEARN         = "LEARN"
-KEY_TV_MUTE       = "TV_MUTE"
 KEY_MENU          = "MENU"
 
 class DeviceCycledAway(Exception):
@@ -86,11 +82,7 @@ QUICK_ACTION_KEYS = frozenset({
 # screens.active_device_screen's active device — global, like everything
 # else above, per docs/active-device-control-plan.md. KEY_MENU opens the
 # escape-hatch menu (screens/main_menu.py) from anywhere.
-#
-# KEY_LEARN and KEY_TV_MUTE are no longer bound to physical keys (Learn
-# moved into the Menu; Mute is deferred — see the plan doc) and so are no
-# longer quick actions, but the constants stay defined since
-# hardware/keypad.py's label aliases still recognize them.
+
 
 
 class InputReader:
@@ -163,8 +155,6 @@ class InputReader:
         ch = data[0]
         if ch in ("\r", "\n"):
             return KEY_ENTER
-        if ch == "\x7f":
-            return KEY_BACKSPACE
         if ch == "\x03":
             # Ctrl+C, for SSH development sessions only. Raw mode
             # (tty.setraw above) clears ISIG, so the tty driver never turns
@@ -172,57 +162,24 @@ class InputReader:
             # 'q'/Esc are intentionally NOT quit keys — use the physical
             # shutdown button.
             return KEY_QUIT
-        if ch.isprintable():
-            return ch
-
         return None
 
+    # USB keyboard / remote keys -> app keys. Only navigation: nothing in the
+    # app takes typed text (the D-pad composer, screens/widgets/char_input.py,
+    # is how names are entered).
+    _USB_KEYS = {
+        "KEY_UP": KEY_UP, "KEY_DOWN": KEY_DOWN, "KEY_LEFT": KEY_LEFT, "KEY_RIGHT": KEY_RIGHT,
+        "KEY_ENTER": KEY_ENTER, "KEY_KPENTER": KEY_ENTER, "BTN_RIGHT": KEY_ENTER,
+    }
+
     def _read_usb_key(self, fd: int) -> str | None:
-        device = self.devices[fd]
-
-        for event in device.read():
+        for event in self.devices[fd].read():
             if event.type == ecodes.EV_KEY and event.value == 1:
-                key_event = categorize(event)
-                keycode = key_event.keycode
-
+                keycode = categorize(event).keycode
                 if isinstance(keycode, (list, tuple)):
                     keycode = keycode[0]
-
-                _direct = {
-                    "KEY_UP":        KEY_UP,
-                    "KEY_DOWN":      KEY_DOWN,
-                    "KEY_LEFT":      KEY_LEFT,
-                    "KEY_RIGHT":     KEY_RIGHT,
-                    "KEY_ENTER":     KEY_ENTER,
-                    "KEY_KPENTER":   KEY_ENTER,
-                    "BTN_RIGHT":     KEY_ENTER,
-                    "KEY_BACKSPACE": KEY_BACKSPACE,
-                    "KEY_DELETE":    KEY_BACKSPACE,
-                }
-                if keycode in _direct:
-                    return _direct[keycode]
-
-                if isinstance(keycode, str) and keycode.startswith("KEY_"):
-                    key_char = keycode[4:]
-
-                    if len(key_char) == 1 and key_char.isalpha():
-                        return key_char.lower()
-                    if len(key_char) == 1 and key_char.isdigit():
-                        return key_char
-                    if key_char.startswith("KP") and len(key_char) == 3:
-                        return key_char[2]
-
-                    _special = {
-                        "SPACE": " ", "MINUS": "-", "EQUAL": "=",
-                        "LEFTBRACE": "[", "RIGHTBRACE": "]", "SEMICOLON": ";",
-                        "APOSTROPHE": "'", "GRAVE": "`", "BACKSLASH": "\\",
-                        "COMMA": ",", "DOT": ".", "SLASH": "/",
-                        "KPASTERISK": "*", "KPMINUS": "-", "KPPLUS": "+",
-                        "KPDOT": ".", "KPSLASH": "/",
-                    }
-                    if key_char in _special:
-                        return _special[key_char]
-
+                if keycode in self._USB_KEYS:
+                    return self._USB_KEYS[keycode]
         return None
 
     def read_key(self, timeout: float | None = None) -> str | None:
@@ -309,25 +266,17 @@ def set_repeatable_keys(extra: set[str], exclude: set[str] = frozenset()) -> Non
     self.keypad. Up/Down repeat by default; *extra* adds more keys on top
     and *exclude* removes baseline ones, for as long as the caller keeps
     re-asserting it — see screens/active_device_screen.py for the Google
-    TV D-pad use, and use_list_keys() below for list screens."""
+    TV D-pad use, and use_default_keys() below for list screens."""
     reader = _get_reader()
     if reader.keypad is not None:
         reader.keypad.set_repeatable_keys(extra, exclude)
 
 
-def use_list_keys() -> None:
-    """Hold behavior for every list screen (the app-wide navigation
-    convention — see CLAUDE.md's "Navigation convention"): Up/Down repeat
-    so a long list scrolls while held, Left (Back) doesn't so a hold can't
-    back out several levels. Same as the baseline today; kept as its own
-    call so list screens state their intent and override anything a
-    previous screen (Google TV's D-pad repeat) left behind."""
-    set_repeatable_keys(set())
-    set_repeat_interval(None)
-
-
 def use_default_keys() -> None:
-    """Restore the baseline: Up/Down repeat, nothing else."""
+    """The baseline hold behaviour, for list screens and anything resetting
+    a previous screen's (e.g. Google TV's D-pad repeat): Up/Down repeat so a
+    long list scrolls while held; Left (Back) doesn't, so a hold can't back
+    out several levels."""
     set_repeatable_keys(set())
     set_repeat_interval(None)
 

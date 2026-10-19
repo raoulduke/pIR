@@ -5,10 +5,7 @@ to ``hardware.ir_receiver`` and persistence to ``services.signal_service``.
 
 Text entry uses screens/widgets/char_input.py's D-pad-only composer, same
 as network_screen.py's Wi-Fi password prompt and command_screen.py's
-Command entry — the bare physical keypad has no letter keys (see that
-widget's docstring), so screens/widgets/text_input.py's read_text() (raw
-characters from a USB keyboard or SSH session only) just sat there
-unresponsive to every physical keypress here.
+Command entry — the physical keypad has no letter keys.
 """
 
 import logging

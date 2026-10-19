@@ -16,5 +16,3 @@ class AppState:
         self.active_device: str | None = None
         self.active_location: str | None = None
 
-        self.ir_tx_available: bool = False
-        self.ir_rx_available: bool = False

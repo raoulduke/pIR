@@ -456,9 +456,13 @@ ran back-to-back with a lot of other SSH activity already keeping the
 radio warm, so it couldn't isolate a genuinely cold re-doze interval; see
 git history around 2026-09-09 for the actual measurements). Rather than
 guess an interval and have it silently stop helping partway through a
-session, every keypress fires the (cheap, non-blocking) nudge; the real
+session, every keypress fires the (cheap, non-blocking) nudge, at most
+once a second (`_MIN_GAP_SECONDS`, 2026-10-18: a held Up/Down repeats ~10
+times a second and used to start a thread and a ping for each); the real
 battery savings are in the long idle stretches between button-pressing
-sessions, not during them. `config/settings.json`'s `wifi_wake_enabled`
+sessions, not during them. The gateway target is cached only once found —
+it used to cache "none" if the first press came before Wi-Fi was up, which
+disabled the wake for the whole session. `config/settings.json`'s `wifi_wake_enabled`
 (bool), `wifi_wake_mode` (`"every_key"`/`"throttled"`),
 `wifi_wake_interval_seconds` (float, only used by `"throttled"`), and
 `wifi_wake_target` (string IP, `null` = auto-detect) exist specifically

@@ -29,6 +29,15 @@ DefaultDependencies=no
 After=systemd-udevd.service
 Conflicts=shutdown.target
 Before=shutdown.target
+# Retry limit for Restart=on-failure below: the app exits nonzero after a
+# crash or failed startup (2026-10-18), and a permanent failure (a broken
+# config) would otherwise restart forever. 5 starts within 5 minutes, then
+# systemd gives up and leaves the last error on the LCD. A rare crash after
+# normal use is far outside that window, so it still restarts.
+# `sudo systemctl reset-failed pihome.service && sudo systemctl start
+# pihome.service` starts it again after fixing the cause.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 # Tried pinning the CPU governor to "performance" via a Wants=/After=
 # cpufreq-performance.service pair ahead of this (2026-08-31) on the theory
 # that ondemand's ~800-900MHz during the import burst below was costing

@@ -33,8 +33,9 @@ other SSH activity on the same radio and could not cleanly isolate a
 genuinely cold, multi-minute-idle re-doze timing, nor whether a full TCP
 handshake/HTTP response (what the real Wi-Fi actions actually need)
 behaves the same as a bare ICMP reply. Given that uncertainty, the
-default (get_wifi_wake_mode() == "every_key") does not throttle at all —
-better to fire on every press than to guess an interval and have it
+default (get_wifi_wake_mode() == "every_key") fires on every press, at most
+once a second (_MIN_GAP_SECONDS, so a held key's ~10 repeats a second don't
+each start a ping) — better than guessing a longer interval and having it
 silently stop helping partway through a session. config/settings.json's
 wifi_wake_* keys (services/config_service.py) exist so this can be tuned
 without a code change once more is learned:
@@ -51,23 +52,27 @@ import time
 from services import config_service
 
 _PING_TIMEOUT_SECONDS = 1
+# Pings closer together than this are skipped even in "every_key" mode — a
+# held Up/Down repeats ~10 times a second, and the radio is awake anyway
+# while keys are being pressed.
+_MIN_GAP_SECONDS = 1.0
 
 _lock = threading.Lock()
 _last_fire = 0.0
 _gateway: str | None = None
-_gateway_checked = False
 
 
 def _default_gateway() -> str | None:
-    """The LAN default gateway, parsed from `ip route` once and cached for
-    the life of the process — a reliable always-present ping target with
-    no config needed. Re-checked never, not just per-call: if the gateway
-    genuinely changes (new network), a restart already happens for every
-    other reason a network change would matter to this app."""
-    global _gateway, _gateway_checked
-    if _gateway_checked:
+    """The LAN default gateway from `ip route` — a reliable always-present
+    ping target with no config needed. Cached for the life of the process
+    once found: if the gateway genuinely changes (new network), a restart
+    already happens for every other reason a network change would matter
+    to this app."""
+    global _gateway
+    if _gateway is not None:
         return _gateway
-    _gateway_checked = True
+    # Not found yet (the app starts before Wi-Fi is up): look again next
+    # time rather than remember "none" for the whole session.
     try:
         result = subprocess.run(
             ["ip", "route", "show", "default"],
@@ -86,10 +91,9 @@ def _target() -> str | None:
 
 
 def _fire() -> None:
-    """Runs on its own thread (see wake()) — a detached, fire-and-forget
-    ping. The reply doesn't matter and is never read; only the act of
-    transmitting does. subprocess.Popen (not .run) so this thread doesn't
-    block waiting for the ping to actually finish either."""
+    """A detached, fire-and-forget ping. The reply doesn't matter and is
+    never read; only the act of transmitting does. subprocess.Popen (not
+    .run) returns as soon as ping starts, so the caller never waits on it."""
     target = _target()
     if not target:
         return
@@ -107,19 +111,21 @@ def wake(key: str = "") -> None:
     set_key_observer()/read_key(). *key* is accepted (and ignored) only to
     match that observer contract; nothing here cares which key it was.
 
-    Never blocks: a no-op check (config read + a lock for the throttled
-    case) on the calling thread, then the actual ping runs detached on its
-    own thread. No-op entirely if disabled in config/settings.json."""
+    Doesn't wait on the ping (see _fire()); at most one every
+    _MIN_GAP_SECONDS ("every_key") or wifi_wake_interval_seconds
+    ("throttled"), so a held key's repeats don't each start a ping. No-op
+    entirely if disabled in config/settings.json."""
     if not config_service.get_wifi_wake_enabled():
         return
 
+    interval = _MIN_GAP_SECONDS
     if config_service.get_wifi_wake_mode() == "throttled":
-        interval = config_service.get_wifi_wake_interval_seconds()
-        global _last_fire
-        with _lock:
-            now = time.monotonic()
-            if now - _last_fire < interval:
-                return
-            _last_fire = now
+        interval = max(interval, config_service.get_wifi_wake_interval_seconds())
+    global _last_fire
+    with _lock:
+        now = time.monotonic()
+        if now - _last_fire < interval:
+            return
+        _last_fire = now
 
-    threading.Thread(target=_fire, daemon=True).start()
+    _fire()

@@ -11,7 +11,7 @@
 # multi-channel probe test retuned the shared radio anyway and dropped
 # wlan0 with nothing watching to recover it):
 #
-#   sudo systemd-run --unit=wifi-watchdog "$PWD/scripts/wifi_watchdog.sh" [duration_seconds]
+#   sudo systemd-run --unit=wifi-watchdog "$PWD/scripts/wifi_watchdog.sh" [duration_seconds] [start_delay_seconds]
 #
 # (from the project root — systemd-run needs the absolute path)
 #
@@ -27,6 +27,11 @@
 set -u
 
 WATCH_DURATION_SECONDS="${1:-600}"
+# Wait this long before watching at all. services/wifi_service.py's
+# connect() passes its own worst-case duration, so a legitimate (slow) Wi-Fi
+# switch or revert finishes before any remediation could interrupt it; the
+# watchdog is only there for the app crashing or hanging mid-attempt.
+START_DELAY_SECONDS="${2:-0}"
 CHECK_INTERVAL_SECONDS=5
 FAIL_THRESHOLD=3       # consecutive failed checks before declaring it down (~15s)
 GRACE_SECONDS=15       # wait after each remediation step before rechecking
@@ -70,7 +75,8 @@ restart_network_stack() {
     systemctl restart NetworkManager.service 2>/dev/null
 }
 
-log "wifi-watchdog started, watching for ${WATCH_DURATION_SECONDS}s"
+log "wifi-watchdog started, watching for ${WATCH_DURATION_SECONDS}s after a ${START_DELAY_SECONDS}s delay"
+sleep "$START_DELAY_SECONDS"
 
 fail_streak=0
 elapsed=0

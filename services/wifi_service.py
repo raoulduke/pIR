@@ -33,6 +33,11 @@ _NMCLI_TIMEOUT_SECONDS = 15
 # working directory.
 _WATCHDOG_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "wifi_watchdog.sh"
 _WATCHDOG_DURATION_SECONDS = 90
+# connect()'s worst case is ~80s (25s attempt + 15s DHCP poll, then for a
+# saved SSID another 25s + 15s bringing the saved profile up); the watchdog
+# waits that out so it never disconnects or restarts NetworkManager under a
+# legitimate attempt.
+_WATCHDOG_START_DELAY_SECONDS = 90
 
 
 def _nmcli(*args: str, timeout: float = _NMCLI_TIMEOUT_SECONDS) -> subprocess.CompletedProcess:
@@ -116,7 +121,8 @@ def _start_watchdog() -> None:
     try:
         subprocess.run(
             ["systemd-run", f"--unit=wifi-watchdog-{int(time.time())}",
-             str(_WATCHDOG_SCRIPT), str(_WATCHDOG_DURATION_SECONDS)],
+             str(_WATCHDOG_SCRIPT), str(_WATCHDOG_DURATION_SECONDS),
+             str(_WATCHDOG_START_DELAY_SECONDS)],
             capture_output=True, timeout=5,
         )
     except Exception:

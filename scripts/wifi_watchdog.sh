@@ -11,7 +11,9 @@
 # multi-channel probe test retuned the shared radio anyway and dropped
 # wlan0 with nothing watching to recover it):
 #
-#   sudo systemd-run --unit=wifi-watchdog /home/matt/dev/ir/scripts/wifi_watchdog.sh [duration_seconds]
+#   sudo systemd-run --unit=wifi-watchdog "$PWD/scripts/wifi_watchdog.sh" [duration_seconds]
+#
+# (from the project root — systemd-run needs the absolute path)
 #
 # Check progress or stop it early:
 #   journalctl -u wifi-watchdog -f

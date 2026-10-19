@@ -132,7 +132,13 @@ def capture(lcd: "LCD") -> str:
 
             finally:
                 proc.send_signal(signal.SIGINT)
-                proc.wait(timeout=1)
+                try:
+                    proc.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    # Left running, it would keep /dev/lirc1 busy for the
+                    # next capture.
+                    proc.kill()
+                    proc.wait()
 
         if os.path.getsize(tmp_path) > 0:
             with open(tmp_path, "r") as f:

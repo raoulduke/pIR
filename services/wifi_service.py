@@ -23,12 +23,15 @@ Two independent layers of backup if a new network doesn't actually work:
 import re
 import subprocess
 import time
+from pathlib import Path
 
 from app.constants import WIFI_INTERFACE, WIFI_CONNECT_TIMEOUT_SECONDS
 from hardware import network
 
 _NMCLI_TIMEOUT_SECONDS = 15
-_WATCHDOG_SCRIPT = "/home/matt/dev/ir/scripts/wifi_watchdog.sh"
+# Absolute, from this checkout: systemd-run starts it outside the app's
+# working directory.
+_WATCHDOG_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "wifi_watchdog.sh"
 _WATCHDOG_DURATION_SECONDS = 90
 
 
@@ -113,7 +116,7 @@ def _start_watchdog() -> None:
     try:
         subprocess.run(
             ["systemd-run", f"--unit=wifi-watchdog-{int(time.time())}",
-             _WATCHDOG_SCRIPT, str(_WATCHDOG_DURATION_SECONDS)],
+             str(_WATCHDOG_SCRIPT), str(_WATCHDOG_DURATION_SECONDS)],
             capture_output=True, timeout=5,
         )
     except Exception:

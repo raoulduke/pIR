@@ -170,7 +170,10 @@ def list_buttons(home: str, device: str, location: str = "") -> list[str]:
         d = d / location
     if not d.is_dir():
         return []
-    return sorted(f.stem for f in d.iterdir() if f.is_file())
+    # Only visible .txt files: not .keep, or the hidden temp file an
+    # interrupted atomic write can leave behind.
+    return sorted(f.stem for f in d.iterdir()
+                  if f.is_file() and f.suffix == ".txt" and not f.name.startswith("."))
 
 
 def list_functions(home: str, device: str, location: str = "") -> list[dict]:

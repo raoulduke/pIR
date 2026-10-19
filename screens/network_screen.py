@@ -66,7 +66,9 @@ def _pick_network(lcd: LCD) -> dict | str | None:
         timeout = None if not scanning else max(WIFI_RESCAN_INTERVAL_SECONDS - (time.monotonic() - last_scan), 0)
         key = read_key(timeout=timeout)
 
-        if key is None:  # rescan on timeout — only line 1 changes here.
+        if key is None:
+            if not scanning or time.monotonic() - last_scan < WIFI_RESCAN_INTERVAL_SECONDS:
+                continue  # a quick action drew over the screen, not the rescan timer: redraw
             # Background rescans touch only line 1, so scrolling isn't interrupted.
             current = ssids[index] if ssids else None
             lcd.write_line1("Scanning...")
@@ -122,6 +124,7 @@ def show(lcd: LCD) -> str | None:
 
         lcd.write(ssid[:16], "Connecting...")
         success, message = wifi_service.connect(ssid, password)
+        lcd.wake()  # connecting can outlast the backlight timeout
         lcd.write(ssid[:16], message[:16])
         time.sleep(2)
 

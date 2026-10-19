@@ -38,7 +38,13 @@ def _base_url() -> str:
     return f"http://{bridge_ip}/api/{username}"
 
 
+class HueError(ValueError):
+    """The bridge answered with an error (it reports most failures as HTTP 200
+    with a list of {"error": ...} entries)."""
+
+
 def _request(method: str, path: str, body: dict | None = None) -> dict | list:
+    """The bridge's JSON reply. Raises HueError if it reports an error."""
     # Imported here: urllib.request is slow to import (~125ms) and rarely needed.
     import urllib.request
     import urllib.error
@@ -53,7 +59,12 @@ def _request(method: str, path: str, body: dict | None = None) -> dict | list:
         method=method,
     )
     with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as response:
-        return json.loads(response.read().decode("utf-8"))
+        reply = json.loads(response.read().decode("utf-8"))
+    if isinstance(reply, list):
+        errors = [item["error"] for item in reply if isinstance(item, dict) and "error" in item]
+        if errors:
+            raise HueError("; ".join(e.get("description", str(e)) for e in errors))
+    return reply
 
 
 def get_light(light_id: str) -> dict:
@@ -93,7 +104,7 @@ def check_reachable_background(light_ids: list[str], on_done) -> None:
         for light_id in light_ids:
             try:
                 _reachable[light_id] = is_reachable(light_id)
-            except (OSError, ValueError) as e:
+            except Exception as e:
                 log.warning("Hue reachability check failed (light %s): %r", light_id, e)
                 _reachable[light_id] = None
         on_done()

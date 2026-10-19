@@ -41,3 +41,16 @@ def list_functions(device: str, location: str = "") -> list[dict]:
         else:
             functions.append({"name": entry["name"], "type": "step", "steps": entry["steps"]})
     return functions
+
+
+def sends_own_ir(home: str, device: str, location: str = "") -> bool:
+    """True if this step device's steps send IR signals stored under its own
+    location (Hall: an ir_toggle for Power, IR steps for Brightness), so its
+    signals still need learning."""
+    for entry in _load().get(_device_key(device, location), []):
+        for key in ("steps", "up_steps", "down_steps"):
+            for step in entry.get(key, []):
+                if step.get("type", "ir") in ("ir", "ir_toggle") and (
+                        step.get("home"), step.get("device"), step.get("location", "")) == (home, device, location):
+                    return True
+    return False

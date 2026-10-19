@@ -7,7 +7,7 @@ import time
 from hardware.lcd import LCD
 from hardware import ir_receiver
 from hardware.input import KEY_QUIT, KEY_BACK
-from services import home_service, step_device_service
+from services import home_service
 from services.signal_service import signal_exists, save_signal
 from screens.widgets.selector import select_from_list
 from screens.widgets.format import format_name
@@ -16,7 +16,7 @@ from app.constants import (
     PROMPT_BUTTON, MENU_TITLE, MENU_LEARN,
     STATEMENT_NO_SIGNAL, STATEMENT_RECEIVING,
     STATEMENT_FILE_EXISTS, STATEMENT_SAVED, STATEMENT_SAVE_FAILED,
-    LABEL_TRY_AGAIN, LABEL_CANCEL, LABEL_OVERWRITE, LABEL_LEARN_ANYWAY, MIN_SIGNAL_LENGTH,
+    LABEL_TRY_AGAIN, LABEL_CANCEL, LABEL_OVERWRITE, MIN_SIGNAL_LENGTH,
 )
 from app.exceptions import HardwareError
 from app.state import AppState
@@ -35,15 +35,6 @@ def show(lcd: LCD, state: AppState) -> str | None:
         return KEY_QUIT
 
     device, location, button = values
-
-    # A step device's functions come from config/step_devices.json, so an IR
-    # signal learned there is saved but never shown or sent.
-    if step_device_service.is_step_device(device, location):
-        lcd.write("Step device:", "IR won't be used")
-        time.sleep(2)
-        answer = select_from_list(lcd, "Learn anyway?", [LABEL_LEARN_ANYWAY, LABEL_CANCEL])
-        if answer != LABEL_LEARN_ANYWAY:
-            return KEY_QUIT if answer == KEY_QUIT else None
 
     lcd.write(PROMPT_BUTTON, format_name(button)[:16])
     time.sleep(0.5)

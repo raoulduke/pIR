@@ -6,7 +6,7 @@ one), then type the button. Line 1 is the breadcrumb ("Learn > Device",
 import time
 from hardware.lcd import LCD
 from hardware.input import KEY_QUIT, KEY_BACK
-from services import signal_service
+from services import signal_service, step_device_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.char_input import read_dpad_text
 from screens.widgets.format import format_name, slugify, crumbs
@@ -29,7 +29,7 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
         result = None
 
         if i == 0:
-            devices = signal_service.list_devices(home)
+            devices = [d for d in signal_service.list_devices(home) if _ir_locations(home, d) is not None]
             if devices:
                 choice = select_from_list(lcd, title, [LABEL_NEW_DEVICE] + devices)
                 if choice == LABEL_NEW_DEVICE:
@@ -41,7 +41,7 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
 
         elif i == 1:
             device = values[0]
-            locations = signal_service.list_locations(home, device)
+            locations = _ir_locations(home, device) or []
             if locations:
                 choice = select_from_list(lcd, title, [LABEL_NEW_LOCATION] + locations)
                 if choice == LABEL_NEW_LOCATION:
@@ -64,10 +64,32 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
             i -= 1
             continue
 
+        if i == 1 and not _takes_ir(home, values[0], result):
+            # A typed name that is a step device: its buttons come from steps.
+            lcd.write("Step device:", "no IR signals")
+            time.sleep(1.5)
+            continue
+
         values.append(result)
         i += 1
 
     return values
+
+
+def _takes_ir(home: str, device: str, location: str) -> bool:
+    """Whether signals learned into this location get used: any IR device,
+    or a step device whose steps send IR from its own location (Hall). Other
+    step devices (Hue, voice) run their steps and would ignore a signal."""
+    return (not step_device_service.is_step_device(device, location)
+            or step_device_service.sends_own_ir(home, device, location))
+
+
+def _ir_locations(home: str, device: str) -> list[str] | None:
+    """*device*'s locations that take IR signals (_takes_ir()). None if it
+    has locations but none take IR; [] if it has none yet."""
+    locations = signal_service.list_locations(home, device)
+    ir = [loc for loc in locations if _takes_ir(home, device, loc)]
+    return None if locations and not ir else ir
 
 
 def prompt_text(lcd: LCD, prompt: str) -> str:

@@ -4,8 +4,8 @@
 LCD and returns the chosen option string, KEY_BACK, or KEY_QUIT.
 
 Follows the app-wide navigation convention (CLAUDE.md's "Navigation
-convention"): Up/Down scroll (wrapping), with "^"/"v" in the last column
-of lines 1/2 whenever there's more than one option; Enter or Right
+convention"): Up/Down scroll (wrapping), with the up/down glyph in line
+2's last column whenever there's more than one option; Enter or Right
 selects; Left goes back one level (returned as KEY_BACK).
 """
 
@@ -37,8 +37,7 @@ def select_from_list(
         # Re-asserted every pass: a quick action (Menu) or another screen
         # may have changed it while this list was waiting.
         use_list_keys()
-        scrollable = count > 1
-        lcd.write(*with_arrows(title, formatter(options[index]), scrollable, scrollable))
+        lcd.write(*with_arrows(title, formatter(options[index]), count > 1))
         key = read_key()
 
         if key == KEY_QUIT:

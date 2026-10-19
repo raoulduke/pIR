@@ -39,21 +39,21 @@ GLYPH_CC_RIGHT = chr(3)
 GLYPH_BACK_ARROW = chr(4)
 GLYPH_BACK_SHAFT = chr(5)
 
-# Down arrow for list screens (screens/widgets/format.py's with_arrows()):
-# the ROM's "^" (A00 0x5E: rows 0-2) mirrored top to bottom within the
-# glyph's 7 rows, since the ROM has no down arrow. Slot 0 — the one slot
-# neither the progress bar nor the preset glyphs use — so it's loaded once
-# at startup and never replaced.
-GLYPH_ARROW_DOWN = chr(0)
-_ARROW_DOWN_ROWS = [
-    0b00000,
-    0b00000,
-    0b00000,
-    0b00000,
-    0b10001,
-    0b01010,
+# Scroll indicator for list screens (screens/widgets/format.py's
+# with_arrows()): solid up and down triangles stacked in one cell, in line
+# 2's last column. Slot 0 — the one slot neither the progress bar nor the
+# preset glyphs use — so it's loaded once at startup and never replaced.
+# Replaced a ROM "^" in line 1 plus a custom "v" in line 2 (2026-10-18).
+GLYPH_ARROW_UPDOWN = chr(0)
+_ARROW_UPDOWN_ROWS = [
     0b00100,
+    0b01110,
+    0b11111,
     0b00000,
+    0b00000,
+    0b11111,
+    0b01110,
+    0b00100,
 ]
 # Ellipsis for a name cut short (screens/widgets/format.py's
 # fit_with_suffix()): three 1px dots on the baseline row, one cell instead
@@ -142,7 +142,7 @@ class LCD:
         )
         for location, bits in _BAR_PARTIAL_BITS.items():
             self._lcd.create_char(location, [bits] * 8)
-        self._lcd.create_char(0, _ARROW_DOWN_ROWS)
+        self._lcd.create_char(0, _ARROW_UPDOWN_ROWS)
         self._lcd.create_char(6, _ELLIPSIS_ROWS)
         # Status character in line 1's last column (write_with_status()).
         # _status_shown is True only while the screen that drew it is

@@ -28,9 +28,9 @@ _CARRIERS = {
     "Kaseikyo": 37000,
 }
 
-# LCD names, short enough that "#38 NEC 7F00:0A" fits in 15 characters,
-# leaving column 16 for the paused sweep's "^". NECext shows as NEC: its
-# 4-digit address already sets it apart from NEC's 2-digit one.
+# LCD names, short enough that "#38 NEC 7F00:0A" fits in 15 characters
+# (the sweep's save screen). NECext shows as NEC: its 4-digit address
+# already sets it apart from NEC's 2-digit one.
 _ABBREVIATIONS = {
     "NECext": "NEC", "Samsung32": "Sam32", "Samsung36": "Sam36",
     "Kaseikyo": "Kase",

@@ -92,8 +92,7 @@ def _pick_network(lcd: LCD) -> dict | str | None:
             # is guaranteed to be up.
             lcd.write(_title(ssids), "No networks" if wifi_service.is_ready() else "Wi-Fi starting")
         else:
-            scrollable = len(ssids) > 1
-            lcd.write(*with_arrows(_title(ssids), format_name(ssids[index]), scrollable, scrollable))
+            lcd.write(*with_arrows(_title(ssids), format_name(ssids[index]), len(ssids) > 1))
 
         # No more timeout once scanning has given up — just block for a
         # real key, same as any other screen, instead of waking up every

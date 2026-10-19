@@ -73,17 +73,19 @@ config/
 - Boot launches directly to `active_device_screen` (the most-used screen) — no menu detour on startup. `send_screen`/"Full Device List" was the boot screen in an earlier design; it was superseded by Active Device Control and later removed outright as redundant with `< Device/Device >` (see `docs/active-device-control-plan.md`'s "Superseded" notes) — it no longer exists.
 - **Navigation convention** (2026-10-15, keys changed 2026-10-17): every
   screen that scrolls through options uses the same keys — **Up/Down**
-  scroll (wrapping), with `^` in line 1's last column and `v` in line 2's
+  scroll (wrapping), with one up/down glyph in line 2's last column
   (`screens/widgets/format.py`'s `with_arrows()`) whenever there's more than
   one option; **Enter** or **Right** selects; **Left** goes back one level
-  (the main Menu's Left closes it, back to Active Device Control). Line 2's
-  option text gets 15 characters. The `v` is a custom CGRAM glyph (slot 0,
-  `hardware/lcd.py`'s `GLYPH_ARROW_DOWN`) mirroring the ROM's `^` — the
-  HD44780 ROM has no down arrow. `screens/widgets/selector.py`'s `select_from_list`
+  (the main Menu's Left closes it, back to Active Device Control). Line 1
+  gets all 16 columns; line 2's option text gets 15. The glyph is solid up
+  and down triangles stacked in one custom CGRAM cell (slot 0,
+  `hardware/lcd.py`'s `GLYPH_ARROW_UPDOWN`). It replaced a ROM `^` at the
+  end of line 1 plus a custom `v` at the end of line 2 (2026-10-18), freeing
+  line 1's last column. `screens/widgets/selector.py`'s `select_from_list`
   implements it for every list (Sweep, Learn, Rename, Change Home, Command,
   Overwrite?/Try again prompts); the main Menu, Wi-Fi network list and
-  Sweep's paused screen (Up/Down step to the previous/next code, no
-  wrapping, arrows only where there's one to step to) follow it in their
+  Sweep's paused screen (Up/Down move to the previous/next code, no
+  wrapping; its line-1 count shows the ends) follow it in their
   own loops. Up/Down auto-repeat when held and Left doesn't
   (`hardware.input.use_list_keys()`), so a held Left can't back out several
   levels. The D-pad text entry (`screens/widgets/char_input.py`) matches
@@ -101,9 +103,8 @@ config/
   screen you're on, joined with ` > `: `Menu > Rename`, `Learn > Device`
   (Learn's first list is the "Device" step), `Device > TV` (TV's location
   list), `TV > Living Room` (typing the button). `screens/widgets/format.py`'s
-  `crumbs()` drops names from the left until it fits 15 characters (the
-  16th column holds the `^`)
-  (`Menu > Sweep > TV` → `Sweep > TV`); the last name always stays. The
+  `crumbs()` drops names from the left until it fits 16 characters
+  (`Menu > Sweep > TV > Hisense` → `TV > Hisense`); the last name always stays. The
   main Menu's own line 1 stays plain `Menu`. Transient status/confirmation
   screens (Saved!, Overwrite?, No signal!, the running sweep's code
   display, the sweep's save-name entry) keep their own line 1.
@@ -442,13 +443,13 @@ sets it to 1s (default, `SWEEP_GAP_SECONDS`), 0.5s or 0.25s, saved as
 `config/settings.json`'s `sweep_gap_seconds`. 1s keeps the code on screen
 when the TV reacts (0.3-1s after a power code); faster means pausing a
 code or more past it and stepping back. Line 1 is the
-code's brand and its position in the sweep (`Hisense    4/5`), the count
-right against the paused `^`; a brand too long for that is cut with an
-ellipsis glyph (`Westingho…38/38^`, CGRAM slot 6, `format.py`'s
+code's brand and its position in the sweep (`Hisense      4/5`), the count
+ending in the last column (`38/38` marks the end); a brand too long for
+that is cut with an ellipsis glyph (`Westinghou…38/38`, CGRAM slot 6, `format.py`'s
 `fit_with_suffix()`). The code itself (protocol/address) isn't shown —
 changed 2026-10-18, it meant nothing at a glance. Tap Enter to pause/resume. While paused,
 Up/Down only move to the previous/next code, sending nothing (no wrapping,
-`^`/`v` only where there's one to step to; they auto-repeat when held),
+they stop at the first/last code; they auto-repeat when held),
 **Right** sends the code on screen once per press, and Enter resumes from
 the code on screen, sending it first unless it already went out since
 landing on it, so no code goes out twice in a row (2026-10-18; Up/Down

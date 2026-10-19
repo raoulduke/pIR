@@ -1,4 +1,4 @@
-from hardware.lcd import GLYPH_ARROW_DOWN, GLYPH_ELLIPSIS
+from hardware.lcd import GLYPH_ARROW_UPDOWN, GLYPH_ELLIPSIS
 
 # Known acronyms, uppercased in full rather than title-cased — checked
 # per word, not on the whole name, so "google_tv" -> "Google TV" the same
@@ -42,13 +42,6 @@ def frame(text: str) -> str:
     return f"<{text[:14].center(14)}>"
 
 
-# Scroll indicators in the last column of each line — "^" is in the
-# HD44780's ROM; it has no down arrow, so hardware/lcd.py defines a custom
-# glyph mirroring it.
-ARROW_UP = "^"
-ARROW_DOWN = GLYPH_ARROW_DOWN
-
-
 def fit_with_suffix(name: str, suffix: str, width: int) -> str:
     """*name* left, *suffix* right-aligned, *width* characters in all, at
     least one space between. A name too long for that is cut and ends in
@@ -59,25 +52,24 @@ def fit_with_suffix(name: str, suffix: str, width: int) -> str:
     return name[:room - 1] + GLYPH_ELLIPSIS + suffix
 
 
-def with_arrows(line1: str, line2: str, up: bool, down: bool) -> tuple[str, str]:
+def with_arrows(line1: str, line2: str, scrollable: bool) -> tuple[str, str]:
     """Both lines of a scrolling screen (the app-wide navigation
-    convention — see CLAUDE.md's "Navigation convention"): each cut to 15
-    characters, with "^" in line 1's last column when Up has somewhere to
-    go and "v" in line 2's when Down does."""
+    convention — see CLAUDE.md's "Navigation convention"): line 1 gets all
+    16 columns; line 2 is cut to 15, with the up/down glyph in its last
+    column when Up/Down have somewhere to go."""
     return (
-        line1[:15].ljust(15) + (ARROW_UP if up else " "),
-        line2[:15].ljust(15) + (ARROW_DOWN if down else " "),
+        line1[:16],
+        line2[:15].ljust(15) + (GLYPH_ARROW_UPDOWN if scrollable else " "),
     )
 
 
 def crumbs(*names: str) -> str:
     """Line-1 breadcrumb for a sub-menu — the path of names that led here,
     ending with the screen you're on: "Menu > Rename". When it's longer
-    than 15 characters (the 16th column holds a list's "^"), names are
-    dropped from the left until it fits ("Menu > Sweep > TV" ->
-    "Sweep > TV"); the last one always stays. Empty names (a device with
-    no location) are skipped."""
+    than 16 characters, names are dropped from the left until it fits
+    ("Menu > Sweep > TV > Hisense" -> "TV > Hisense"); the last one
+    always stays. Empty names (a device with no location) are skipped."""
     parts = [n for n in names if n]
-    while len(parts) > 1 and len(" > ".join(parts)) > 15:
+    while len(parts) > 1 and len(" > ".join(parts)) > 16:
         parts.pop(0)
-    return " > ".join(parts)[:15]
+    return " > ".join(parts)[:16]

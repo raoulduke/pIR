@@ -4,8 +4,8 @@ worked), reached from screens/fun_screen.py. All Brands sweeps every
 brand's codes in one go; a save goes under the brand of the code on
 screen.
 
-Line 1 is that brand and the position in the sweep ("Hisense  15/38^"),
-the count right against the "^" column.
+Line 1 is that brand and the position in the sweep ("Hisense    15/38"),
+the count ending in the last column; "38/38" marks the end.
 
 Running: one code per gap (Menu > Settings > Sweep Speed: 1s, 0.5s or
 0.25s), line 1 naming the code just sent. Enter pauses on it, Left goes
@@ -13,9 +13,9 @@ back a level (the signal list).
 
 Paused ("||" on line 2):
   Up / Down     move to the previous / next code without sending it (no
-                wrapping — they stop at the first / last code; "^"/"v"
-                only show where there's a code to step to). They
-                auto-repeat when held, since nothing fires.
+                wrapping — they stop at the first / last code, which
+                the count shows). They auto-repeat when held, since
+                nothing fires.
   Right         send the code on screen, once per press
   Enter (tap)   resume from the code on screen: sent first unless it
                 already went out since landing on it (paused on it, or
@@ -158,19 +158,16 @@ def _draw_running(lcd: LCD, codes: list[tuple[str, dict]], index: int) -> None:
     # No key presses while it runs, but the code on screen is the whole
     # point — keep the backlight's idle timer from darkening it.
     lcd.wake()
-    lcd.write(_line1(codes, index) + " ", "Enter=Pause")
+    lcd.write(_line1(codes, index), "Enter=Pause")
 
 
 def _draw_paused(lcd: LCD, codes: list[tuple[str, dict]], index: int, last: int) -> None:
-    line1, line2 = with_arrows(_line1(codes, index), "|| Hold=Save", index > 0, index < last)
-    if index == last:
-        line2 = "||Done Hold=Save"  # no "v" on the last code, so all 16 columns are free
-    lcd.write(line1, line2)
+    lcd.write(*with_arrows(_line1(codes, index), "|| Hold=Save", last > 0))
 
 
 def _line1(codes: list[tuple[str, dict]], index: int) -> str:
-    """15 columns: the code's brand, then "15/38" ending in the last."""
-    return fit_with_suffix(codes[index][0], f"{index + 1}/{len(codes)}", 15)
+    """The code's brand, then "15/38" ending in the last column."""
+    return fit_with_suffix(codes[index][0], f"{index + 1}/{len(codes)}", 16)
 
 
 def _send(lcd: LCD, codes: list[tuple[str, dict]], index: int) -> bool:

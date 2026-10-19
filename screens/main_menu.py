@@ -3,7 +3,7 @@
 (that's screens/active_device_screen.py — see
 docs/active-device-control-plan.md).
 
-Up/Down cycle the options, with "^"/"v" in the last column like any other
+Up/Down cycle the options, with the up/down glyph in line 2's last column like any other
 list; Enter or Right selects; Left goes back up a level — closes the menu,
 back to Active Device Control (the app-wide navigation convention,
 CLAUDE.md's "Navigation convention"). < Device/Device > (hardware.input.
@@ -58,7 +58,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
     while state.running:
         option = _OPTIONS[index]
         use_list_keys()
-        lcd.write(*with_arrows(MENU_TITLE, _line2(option), True, True))
+        lcd.write(*with_arrows(MENU_TITLE, _line2(option), True))
 
         # Only poll while WiFi is the highlighted entry — a plain block
         # everywhere else, same as before. Without this, "WiFi loading"

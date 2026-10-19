@@ -27,17 +27,18 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
         trail = [*path, STEP_DEVICE, *(format_name(v) for v in values)]
         title = crumbs(*trail)
         result = None
+        typed = False  # a new name typed, rather than picked from a list
 
         if i == 0:
             devices = [d for d in signal_service.list_devices(home) if _ir_locations(home, d) is not None]
             if devices:
                 choice = select_from_list(lcd, title, [LABEL_NEW_DEVICE] + devices)
                 if choice == LABEL_NEW_DEVICE:
-                    result = prompt_text(lcd, crumbs(*trail, LABEL_NEW_DEVICE))
+                    result, typed = prompt_text(lcd, crumbs(*trail, LABEL_NEW_DEVICE)), True
                 else:
                     result = choice  # an existing device, or KEY_QUIT/KEY_BACK — handled below either way
             else:
-                result = prompt_text(lcd, crumbs(*trail, LABEL_NEW_DEVICE))
+                result, typed = prompt_text(lcd, crumbs(*trail, LABEL_NEW_DEVICE)), True
 
         elif i == 1:
             device = values[0]
@@ -45,12 +46,12 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
             if locations:
                 choice = select_from_list(lcd, title, [LABEL_NEW_LOCATION] + locations)
                 if choice == LABEL_NEW_LOCATION:
-                    result = prompt_text(lcd, crumbs(*trail, LABEL_NEW_LOCATION))
+                    result, typed = prompt_text(lcd, crumbs(*trail, LABEL_NEW_LOCATION)), True
                 else:
                     result = choice  # an existing location, or KEY_QUIT/KEY_BACK — handled below either way
             else:
                 # Every device has a location: a new device gets its first one here.
-                result = prompt_text(lcd, crumbs(*trail, LABEL_NEW_LOCATION))
+                result, typed = prompt_text(lcd, crumbs(*trail, LABEL_NEW_LOCATION)), True
 
         elif i == 2:
             result = prompt_text(lcd, title)
@@ -62,6 +63,13 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
                 return None
             values.pop()
             i -= 1
+            continue
+
+        if typed and result in (signal_service.list_devices(home) if i == 0
+                                else signal_service.list_locations(home, values[0])):
+            # New means new: an existing one is picked from the list.
+            lcd.write("Already exists", format_name(result)[:16])
+            time.sleep(1.5)
             continue
 
         if i == 1 and not _takes_ir(home, values[0], result):

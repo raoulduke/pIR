@@ -252,7 +252,7 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
    ```bash
    sudo scripts/disable-unused-services.sh
    ```
-   It also switches off the tty1 console auto-login (see "Console auto-login removed" under "Pi OS boot time"). `sysstat-collect.timer` is the one that matters most — it wakes the CPU every 10 minutes around the clock to log stats nothing reads here, defeating idle power states all day for no benefit.
+   It also disables `cron.service` (2026-10-18: every cron job here is a no-op under systemd or disabled, but the daemon woke every minute; a crontab entry added later needs `sudo systemctl enable --now cron`) and switches off the tty1 console auto-login (see "Console auto-login removed" under "Pi OS boot time"). `sysstat-collect.timer` is the one that matters most — it wakes the CPU every 10 minutes around the clock to log stats nothing reads here, defeating idle power states all day for no benefit.
 4. Install the journal size/age caps (see "Log retention" below):
    ```bash
    sudo mkdir -p /etc/systemd/journald.conf.d
@@ -559,6 +559,8 @@ pulled-up inputs with edge detection (consumer `pihome-keypad` in
 missing or its request fails, it logs a warning and polls as before.
 Side benefit: a press too short for the old 10ms gap still fires the
 edge.
+Verified by hand 2026-10-18: taps, held Up/Down, the smooth volume hold
+and hold-Enter in a paused Sweep all work.
 
 ## IR Tools & Integrations
 

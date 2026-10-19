@@ -17,6 +17,13 @@
 # (journalctl is the log), and the journal itself is size-capped by
 # systemd/journald.conf.d/zz-pihome.conf.
 #
+# cron.service: every job it has here is a no-op — the Debian cron.d/
+# cron.daily scripts skip themselves when systemd is running (their
+# systemd timers do the work), sysstat's cron copy exits on
+# ENABLED="false", and no user crontab has an active line. The daemon
+# still woke every minute to check its schedule. A crontab entry added
+# later won't run until `systemctl enable --now cron`.
+#
 # The tty1 console auto-login (a getty@tty1 drop-in, added by hand in Jan
 # 2026 for an HDMI monitor that's no longer used) is switched off too: it
 # kept the user's systemd session up all day, which started PipeWire,
@@ -44,6 +51,7 @@ UNITS=(
     accounts-daemon.service
     runonce.service
     rsyslog.service
+    cron.service
 )
 
 systemctl disable --now "${UNITS[@]}"

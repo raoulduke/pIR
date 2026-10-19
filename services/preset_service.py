@@ -324,24 +324,31 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
     return sent, len(steps), failed_step
 
 
-# (steps, on_result) pairs waiting to run — see run_steps_background()
-# below. Unbounded: nothing here is fast enough to queue up faster than a
-# human can press keypad buttons.
-_task_queue: "queue.Queue[tuple[list[dict], object]]" = queue.Queue()
+# (steps, on_result, queued at) waiting to run — see run_steps_background()
+# below. Steps that couldn't start within _STALE_SECONDS of being queued are
+# skipped: a press that long ago (stuck behind voice commands timing out at
+# up to 15s each) is no longer what anyone wants to happen now.
+_STALE_SECONDS = 10
+_task_queue: "queue.Queue[tuple[list[dict], object, float]]" = queue.Queue()
 _worker_started = False
 _worker_start_lock = threading.Lock()
 
 
 def _worker_loop() -> None:
     while True:
-        steps, on_result = _task_queue.get()
-        # An unexpected exception here would otherwise kill this thread
-        # silently, leaving every later queued step waiting forever.
-        try:
-            result = run_steps(steps)
-        except Exception:
-            log.exception("Background steps crashed: %r", steps)
+        steps, on_result, queued_at = _task_queue.get()
+        waited = time.monotonic() - queued_at
+        if waited > _STALE_SECONDS:
+            log.warning("Skipped steps queued %.1fs ago: %r", waited, steps)
             result = (0, len(steps), steps[0] if steps else None)
+        else:
+            # An unexpected exception here would otherwise kill this thread
+            # silently, leaving every later queued step waiting forever.
+            try:
+                result = run_steps(steps)
+            except Exception:
+                log.exception("Background steps crashed: %r", steps)
+                result = (0, len(steps), steps[0] if steps else None)
         if on_result:
             try:
                 on_result(*result)
@@ -361,8 +368,9 @@ def run_steps_background(steps: list[dict], on_result=None) -> None:
     """Queue *steps* for the background worker and return immediately —
     see this module's docstring for why. on_result, if given, is called
     as on_result(sent, total, failed_step) from the worker thread once
-    these steps finish running."""
+    these steps finish running (or are skipped as stale — see
+    _STALE_SECONDS — reported as failed)."""
     _ensure_worker()
-    _task_queue.put((steps, on_result))
+    _task_queue.put((steps, on_result, time.monotonic()))
 
 

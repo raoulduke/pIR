@@ -10,7 +10,6 @@ import select
 import os
 import tempfile
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.constants import (
@@ -22,6 +21,7 @@ from app.constants import (
     STATEMENT_CAPTURED,
 )
 from app.exceptions import HardwareError
+from hardware import lirc
 
 if TYPE_CHECKING:
     from hardware.lcd import LCD
@@ -153,7 +153,7 @@ def capture(lcd: "LCD") -> str:
 
 
 def verify() -> bool:
-    """Return True if the GPIO subsystem is present (basic sanity check)."""
-    if not Path("/sys/class/gpio").exists():
-        raise HardwareError("GPIO subsystem unavailable")
+    """Return True if the RX device exists and can record; raises
+    HardwareError otherwise."""
+    lirc.require(LIRC_RX_DEVICE, lirc.CAN_REC_MODE2, "receive")
     return True

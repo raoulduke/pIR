@@ -25,6 +25,7 @@ from array import array
 from pathlib import Path
 
 from app.constants import LIRC_TX_DEVICE
+from hardware import lirc
 from app.exceptions import HardwareError
 
 log = logging.getLogger(__name__)
@@ -215,7 +216,7 @@ def _run_ir_ctl(args: list[str]) -> None:
 
 
 def verify() -> bool:
-    """Return True if the GPIO subsystem is present (basic sanity check)."""
-    if not Path("/sys/class/gpio").exists():
-        raise HardwareError("GPIO subsystem unavailable")
+    """Return True if the TX device exists and can send; raises
+    HardwareError otherwise."""
+    lirc.require(LIRC_TX_DEVICE, lirc.CAN_SEND_PULSE, "send")
     return True

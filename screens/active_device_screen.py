@@ -957,9 +957,11 @@ def _run_step_function(lcd: LCD, device: str, location: str, steps: list[dict]) 
     already moved on."""
     label = _device_label(device, location)
     lcd.write(label, "Sending...")
+    pressed = input_hw.press_count()
 
     def _on_result(sent, total, failed_step):
-        if failed_step is not None:
+        # Only over this screen: a key since means it's moved on (logged anyway).
+        if failed_step is not None and input_hw.press_count() == pressed:
             lcd.write(label, f"Failed: {preset_service.describe_step(failed_step)}"[:16])
 
     preset_service.run_steps_background(steps, _on_result)

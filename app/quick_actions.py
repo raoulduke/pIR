@@ -20,7 +20,7 @@ from hardware.input import (
     KEY_DEVICE_3_UP, KEY_DEVICE_3_DOWN, KEY_DEVICE_4_UP, KEY_DEVICE_4_DOWN,
     KEY_PRESET_1, KEY_PRESET_2, KEY_PRESET_3, KEY_PRESET_4,
     KEY_DEVICE_PREV, KEY_DEVICE_NEXT, KEY_MENU, KEY_QUIT,
-    DeviceCycledAway, is_key_held,
+    DeviceCycledAway, is_key_held, press_count,
 )
 from services import (
     device_slot_service, preset_service, signal_service, config_service, home_service,
@@ -150,6 +150,16 @@ def _stream_device(key: str, label: str, button: str, path) -> None:
     time.sleep(max(0.0, ASYNC_SEND_FLASH_SECONDS - (time.monotonic() - started)))
 
 
+def _still_on_screen():
+    """A check for a late background failure message: True while no key has
+    been pressed since this call and no Menu screen is up (then or now) —
+    a Menu screen behind a quick action isn't the screen the message is
+    about. Otherwise the failure is only logged."""
+    pressed = press_count()
+    in_menu = _in_menu
+    return lambda: not in_menu and not _in_menu and press_count() == pressed
+
+
 def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
     command = slot.get(f"{direction}_command")
     if not command:
@@ -167,9 +177,10 @@ def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
     # then returns; a failure overwrites the label whenever it's actually
     # known, a success needs no follow-up message.
     lcd.write(label, "Sending...")
+    still_here = _still_on_screen()
 
     def _on_result(sent, total, failed_step):
-        if failed_step is not None:
+        if failed_step is not None and still_here():
             lcd.write(label, f"Err: {preset_service.describe_step(failed_step)}"[:16])
 
     preset_service.run_steps_background([{"type": "voice", "command": command}], _on_result)
@@ -215,9 +226,10 @@ def _handle_preset(number: int) -> None:
     # multi-step one (e.g. "Rust"'s voice command + IR signal) — a full
     # success needs no follow-up message.
     lcd.write(label, "Running...")
+    still_here = _still_on_screen()
 
     def _on_result(sent, total, failed_step):
-        if failed_step is not None:
+        if failed_step is not None and still_here():
             lcd.write(label, f"Failed: {preset_service.describe_step(failed_step)}"[:16])
 
     preset_service.run_steps_background(steps, _on_result)

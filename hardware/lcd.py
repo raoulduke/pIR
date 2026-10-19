@@ -7,8 +7,6 @@ and ``lcd.clear()``.
 
 import threading
 
-from RPLCD.i2c import CharLCD
-
 from app.constants import BACKLIGHT_IDLE_SECONDS
 
 # Custom CGRAM characters for a sub-cell-resolution progress bar: each 5px-
@@ -131,6 +129,7 @@ class LCD:
         # interleaved order could corrupt what's on screen, not just which
         # message wins.
         self._lock = threading.Lock()
+        from RPLCD.i2c import CharLCD  # here, not at import: see _LazyLCD
         self._lcd = CharLCD(
             i2c_expander="PCF8574",
             address=0x27,
@@ -229,9 +228,11 @@ class LCD:
             self._lcd.clear()
 
     def write(self, line1: str = "", line2: str = "") -> None:
+        """Both lines, each padded to 16 columns so every cell is rewritten
+        — no clear() first: on this bit-banged bus it's a slow extra command
+        and makes the screen flicker, for nothing the padding doesn't do."""
         with self._lock:
             self._status_shown = False
-            self._lcd.clear()
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(line1[:16].ljust(16))
             self._lcd.cursor_pos = (1, 0)
@@ -264,7 +265,6 @@ class LCD:
         until something else redraws line 1. Used by the Google TV screen
         (screens/active_device_screen.py) for its connection status."""
         with self._lock:
-            self._lcd.clear()
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(line1[:15].ljust(15) + self._status_char)
             self._lcd.cursor_pos = (1, 0)
@@ -313,5 +313,20 @@ class LCD:
             self._lcd.write_string(bar)
 
 
+class _LazyLCD:
+    """Stands in for the shared LCD and opens the hardware on first use, so
+    importing this module (every screen does, for the LCD type) has no side
+    effects — no I2C traffic, and it works where RPLCD isn't installed (the
+    build scripts, WSL2). First use is startup's progress bar, on the main
+    thread before any other thread exists."""
+
+    _real: LCD | None = None
+
+    def __getattr__(self, name):
+        if _LazyLCD._real is None:
+            _LazyLCD._real = LCD()
+        return getattr(_LazyLCD._real, name)
+
+
 # Module-level singleton — imported by screens and startup alike.
-lcd = LCD()
+lcd = _LazyLCD()

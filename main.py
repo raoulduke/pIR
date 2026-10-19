@@ -6,10 +6,12 @@ Startup → Active Device Control (main loop) → shutdown. Everything else
 Menu key from anywhere — see docs/active-device-control-plan.md.
 """
 
+import _thread
 import logging
 import os
 import signal
 import sys
+import threading
 
 # Device failures (IR TX/RX, voice, Hue, Android TV) log here as well as
 # the LCD — the LCD message is gone the moment the screen redraws, the
@@ -23,7 +25,8 @@ from app import quick_actions
 from app.constants import ANDROIDTV_STATUS_CHARS, STATEMENT_SHUTTING_DOWN
 from hardware.lcd import lcd
 from hardware.input import (
-    set_quick_action_handler, set_key_observer, set_wake_handler, close as close_input,
+    set_quick_action_handler, set_key_observer, set_wake_handler, request_quit,
+    close as close_input,
 )
 from services import androidtv_service, config_service, wifi_wake_service
 import screens.active_device_screen as active_device_screen
@@ -42,6 +45,21 @@ def _powering_off() -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     return "poweroff.target" in jobs or "halt.target" in jobs
+
+
+# Seconds a requested stop may take to unwind through the screens before
+# main.py falls back to raising KeyboardInterrupt (pihome.service's
+# TimeoutStopSec is 5).
+_QUIT_GRACE_SECONDS = 3
+
+
+def _write_exit_message() -> None:
+    """The exit screen: "Shutting down..." during a power-off (the system
+    shutdown hook darkens it at the last moment), else "Program stopped"."""
+    try:
+        lcd.write(STATEMENT_SHUTTING_DOWN if _powering_off() else "Program stopped")
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -70,15 +88,25 @@ def main() -> None:
         lambda status: lcd.set_status_char(ANDROIDTV_STATUS_CHARS[status])
     )
 
+    stopping = False
+    quit_timer: threading.Timer | None = None
+
     def _handle_signal(signum, frame):
+        # First signal: stop politely — every read_key() returns KEY_QUIT, so
+        # the screens unwind normally rather than an exception landing in the
+        # middle of an LCD write. If that hasn't finished in
+        # _QUIT_GRACE_SECONDS (e.g. stuck in a long nmcli call), or on a
+        # second signal, raise KeyboardInterrupt as before.
+        nonlocal stopping, quit_timer
         print(f"[BOOT] signal {signum}")
         state.running = False
-        # read_key() blocks in a plain select() with no timeout (see
-        # hardware/input.py). Per PEP 475, a handler that returns normally
-        # just causes that interrupted select() to be retried, so Ctrl+C
-        # would otherwise be swallowed until the next keypress. Raising here
-        # actually breaks out of the blocked call.
-        raise KeyboardInterrupt
+        if stopping:
+            raise KeyboardInterrupt
+        stopping = True
+        request_quit()
+        quit_timer = threading.Timer(_QUIT_GRACE_SECONDS, _thread.interrupt_main)
+        quit_timer.daemon = True
+        quit_timer.start()
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -93,18 +121,11 @@ def main() -> None:
         # is reached via the Menu key (app/quick_actions.py), not through
         # this loop.
         active_device_screen.show(lcd, state)
-
-        lcd.write("Program stopped")
+        _write_exit_message()
 
     except KeyboardInterrupt:
         print("[BOOT] interrupted")
-        try:
-            if _powering_off():
-                lcd.write(STATEMENT_SHUTTING_DOWN)
-            else:
-                lcd.write("Program stopped")
-        except Exception:
-            pass
+        _write_exit_message()
 
     except Exception as e:
         exit_code = 1
@@ -117,6 +138,8 @@ def main() -> None:
             pass
 
     finally:
+        if quit_timer is not None:
+            quit_timer.cancel()  # unwound in time; don't interrupt cleanup
         try:
             lcd.stop_idle_timer()  # keep the exit message readable
         except Exception:

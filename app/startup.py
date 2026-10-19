@@ -32,8 +32,13 @@ def initialize() -> AppState | None:
         state.active_home = home_service.verify_active_home()
 
     def _check_ir_receive() -> None:
-        ir_receiver.verify()
-        state.ir_rx_available = True
+        # Only Learn needs the receiver, so a failure here doesn't stop the
+        # app; Learn reports it when used.
+        try:
+            ir_receiver.verify()
+            state.ir_rx_available = True
+        except HardwareError as e:
+            log.warning("IR receiver unavailable: %s", e)
 
     def _check_ir_transmit() -> None:
         ir_transmitter.verify()

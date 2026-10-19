@@ -21,7 +21,7 @@ several "Turn on X"s in a row, is the common case):
 
 import time
 from hardware.lcd import LCD
-from hardware.input import KEY_QUIT, KEY_BACK
+from hardware.input import KEY_QUIT, KEY_BACK, press_count
 from services import preset_service, voice_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.char_input import read_dpad_text
@@ -91,9 +91,11 @@ def show(lcd: LCD) -> str | None:
         # a failure overwrites whatever's on screen by then, a success
         # needs no follow-up message.
         lcd.write(STATEMENT_SENDING, command[:16])
+        pressed = press_count()
 
-        def _on_result(sent, total, failed_step, command=command):
-            if failed_step is not None:
+        def _on_result(sent, total, failed_step, command=command, pressed=pressed):
+            # Only over this screen: a key since means it's moved on (logged anyway).
+            if failed_step is not None and press_count() == pressed:
                 lcd.write(STATEMENT_FAILED, command[:16])
 
         preset_service.run_steps_background([{"type": "voice", "command": command}], _on_result)

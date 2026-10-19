@@ -8,6 +8,7 @@ The rest of the application only ever calls ``read_key()``.
 Adding a GPIO navigation module in the future means only this file changes.
 """
 
+import os
 import sys
 import termios
 import tty
@@ -144,17 +145,22 @@ class InputReader:
         except Exception:
             pass
 
-    @staticmethod
-    def _read_stdin_key() -> str | None:
-        ch = sys.stdin.read(1)
-
-        if ch == "\x1b":
-            ch2 = sys.stdin.read(1)
-            if ch2 == "[":
-                ch3 = sys.stdin.read(1)
-                return {"A": KEY_UP, "B": KEY_DOWN, "C": KEY_RIGHT, "D": KEY_LEFT}.get(ch3)
+    def _read_stdin_key(self) -> str | None:
+        """One key from the SSH terminal (raw mode). Reads whatever bytes are
+        waiting straight from the fd: going through sys.stdin's buffer left
+        bytes select() couldn't see (so arrow keys lagged), and an escape
+        sequence's later bytes arrive in the same read, so a lone Esc no
+        longer blocks waiting for more."""
+        data = os.read(self.stdin_fd, 16).decode(errors="ignore")
+        if not data:
             return None
 
+        if data.startswith("\x1b"):
+            if data.startswith("\x1b[") and len(data) >= 3:
+                return {"A": KEY_UP, "B": KEY_DOWN, "C": KEY_RIGHT, "D": KEY_LEFT}.get(data[2])
+            return None
+
+        ch = data[0]
         if ch in ("\r", "\n"):
             return KEY_ENTER
         if ch == "\x7f":
@@ -245,6 +251,7 @@ class InputReader:
                 raise SystemExit(1)  # nonzero: systemd retries, in case it was transient
 
             read_fds = list(self.devices.keys())
+            read_fds.append(_quit_r)
             if self.stdin_fd is not None:
                 read_fds.append(self.stdin_fd)
             if self.keypad is not None:
@@ -256,6 +263,8 @@ class InputReader:
             if not r:
                 return None  # only reachable with a timeout set
 
+            if _quit_r in r:
+                return KEY_QUIT
             for fd in r:
                 if fd == self.stdin_fd:
                     result = self._read_stdin_key()
@@ -270,7 +279,16 @@ class InputReader:
 # ---------------------------------------------------------------------------
 # Module-level singleton and convenience function
 # ---------------------------------------------------------------------------
+# request_quit(): once set, every read_key() returns KEY_QUIT, so whichever
+# screens are waiting unwind through their normal quit path. The pipe wakes a
+# read already blocked in select().
+_quit_requested = False
+_quit_r, _quit_w = os.pipe()
+
 _reader: InputReader | None = None
+# Keys read_key() has received, so a late background result can tell
+# whether anything was pressed since it started (see press_count()).
+_press_count = 0
 _quick_handler = None
 _key_observer = None
 _wake_handler = None
@@ -395,10 +413,14 @@ def read_key(timeout: float | None = None) -> str | None:
     deadline = None if timeout is None else time.monotonic() + timeout
 
     while True:
+        if _quit_requested:
+            return KEY_QUIT
         remaining = None if deadline is None else max(deadline - time.monotonic(), 0)
         key = _get_reader().read_key(remaining)
         if key is None:
             return None
+        global _press_count
+        _press_count += 1
         if _key_observer is not None:
             _key_observer(key)
         if _wake_handler is not None and _wake_handler(key):
@@ -408,6 +430,27 @@ def read_key(timeout: float | None = None) -> str | None:
                 return None
             continue
         return key
+
+
+def request_quit() -> None:
+    """Make every read_key() return KEY_QUIT from now on, waking one already
+    blocked — main.py's signal handler, for a stop (SIGTERM/Ctrl+C) that
+    unwinds the screens normally instead of raising mid-operation.
+    Signal-safe: a flag and a one-byte pipe write."""
+    global _quit_requested
+    _quit_requested = True
+    try:
+        os.write(_quit_w, b"\x00")
+    except OSError:
+        pass
+
+
+def press_count() -> int:
+    """How many keys have been pressed so far. A background step's late
+    failure message compares it with the count when the step started, and
+    only draws if nothing was pressed in between — the screen it would
+    overwrite is still the one the step was started from."""
+    return _press_count
 
 
 def close() -> None:

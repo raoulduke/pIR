@@ -352,18 +352,23 @@ def _describe_chain(exc: BaseException) -> str:
 
 def _run(name: str, action) -> tuple[bool, str]:
     """Runs *action* via _send(), returning (success, LCD-sized message).
-    A failure is also logged in full — the whole exception chain on one
-    line, how long the call ran, and the traceback (which for a timeout
-    shows the await it was stuck in) — since the LCD message alone can't
-    tell one failure mode from another."""
+    A failure is also logged — the whole exception chain on one line and
+    how long the call ran — since the LCD message alone can't tell one
+    failure mode from another. The traceback is added only for an
+    unexpected exception: the expected ones (TV off or unreachable, a
+    dropped connection, a timeout, not paired) are fully described by the
+    chain, and a traceback each time (~40 lines) flooded the journal
+    whenever the TV was off."""
     started = time.monotonic()
     try:
         _call(_send(action))
         return True, "Sent"
     except Exception as e:
+        expected = isinstance(e, (InvalidAuth, CannotConnect, ConnectionClosed, TimeoutError))
         log.warning(
             "%s failed after %.1fs: %s",
-            name, time.monotonic() - started, _describe_chain(e), exc_info=e,
+            name, time.monotonic() - started, _describe_chain(e),
+            exc_info=None if expected else e,
         )
         if isinstance(e, InvalidAuth):
             return False, "Not paired"

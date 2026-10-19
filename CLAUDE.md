@@ -189,6 +189,23 @@ only for whatever's actually in `pihome.service`'s own dependency chain):
   rejected — it directly conflicts with the `systemd-fsck@...` decision
   above.
 
+**Console auto-login removed** (2026-10-18): a hand-added
+`/etc/systemd/system/getty@tty1.service.d/override.conf`
+(`agetty --autologin matt`, Jan 2026, from when an HDMI monitor and
+keyboard were attached) logged `matt` in on tty1 at every boot. With HDMI
+now off (`hdmi_ignore_hotplug=1`) and the USB data port in gadget mode,
+nothing could see or type into that console, but the login kept the
+user's systemd manager up all day, starting PipeWire, WirePlumber,
+mpris-proxy and a per-user Mosquitto broker (enabled globally by the
+package, a dependency of OpenVAS's notus-scanner; empty config, localhost
+only, nothing connects; Home Assistant is reached over HTTPS, not MQTT).
+Mosquitto alone measured ~10 wakeups/s idle; the set used ~53MB RAM. The
+drop-in is now `override.conf.disabled` (`scripts/disable-unused-services.sh`
+does the rename), so tty1 shows a normal password login prompt. Verified
+after a reboot: SSH key login works, `pihome.service` runs, and with no one
+logged in neither Mosquitto nor PipeWire runs (they start with an SSH
+session and stop ~10s after it ends). Undo: rename it back and reboot.
+
 Applying the `pihome.service` ordering change (or any future edit to it) on
 the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
 && sudo systemctl daemon-reload && sudo systemctl restart pihome.service`.
@@ -235,7 +252,7 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
    ```bash
    sudo scripts/disable-unused-services.sh
    ```
-   `sysstat-collect.timer` is the one that matters most — it wakes the CPU every 10 minutes around the clock to log stats nothing reads here, defeating idle power states all day for no benefit.
+   It also switches off the tty1 console auto-login (see "Console auto-login removed" under "Pi OS boot time"). `sysstat-collect.timer` is the one that matters most — it wakes the CPU every 10 minutes around the clock to log stats nothing reads here, defeating idle power states all day for no benefit.
 4. Install the journal size/age caps (see "Log retention" below):
    ```bash
    sudo mkdir -p /etc/systemd/journald.conf.d

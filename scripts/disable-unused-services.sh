@@ -17,6 +17,15 @@
 # (journalctl is the log), and the journal itself is size-capped by
 # systemd/journald.conf.d/zz-pihome.conf.
 #
+# The tty1 console auto-login (a getty@tty1 drop-in, added by hand in Jan
+# 2026 for an HDMI monitor that's no longer used) is switched off too: it
+# kept the user's systemd session up all day, which started PipeWire,
+# WirePlumber and a never-configured per-user Mosquitto broker (pulled in
+# by OpenVAS's notus-scanner) waking the CPU ~10x a second. SSH logins are
+# unaffected — each gets its own session, and those services then run only
+# while someone's logged in. The drop-in is renamed, not deleted (systemd
+# only reads *.conf), so renaming it back and rebooting restores it.
+#
 # Idempotent — safe to re-run after a re-flash/rebuild. Run once during
 # setup (see CLAUDE.md "Setup (on the Pi)"):
 #
@@ -38,3 +47,9 @@ UNITS=(
 )
 
 systemctl disable --now "${UNITS[@]}"
+
+AUTOLOGIN=/etc/systemd/system/getty@tty1.service.d/override.conf
+if [ -f "$AUTOLOGIN" ] && grep -q -- --autologin "$AUTOLOGIN"; then
+    mv "$AUTOLOGIN" "$AUTOLOGIN.disabled"
+    systemctl daemon-reload
+fi

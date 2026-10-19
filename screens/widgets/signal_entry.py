@@ -68,7 +68,7 @@ def collect_device_location_button(lcd: LCD, home: str, path: list[str]) -> list
         if typed and (_ir_locations(home, result) is None if i == 0
                       else i == 1 and not _takes_ir(home, values[0], result)):
             # A step device: its buttons come from steps, not IR signals.
-            lcd.write("Step device:", "no IR signals")
+            lcd.write("Not an IR device")
             time.sleep(1.5)
             continue
 

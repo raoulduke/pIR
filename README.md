@@ -110,25 +110,36 @@ sudo scripts/disable-unused-services.sh
 Lets you tell when it's actually safe to flip the PowerBoost 500C's physical battery switch after pressing the shutdown button — see [`CLAUDE.md`](CLAUDE.md)'s "Shutdown / power-off signaling" note for why this is needed at all (the OS shutting down doesn't visibly change anything on its own).
 
 ```bash
-sudo cp systemd/system-shutdown/shutdown-signal.sh /lib/systemd/system-shutdown/shutdown-signal.sh
-sudo chmod +x /lib/systemd/system-shutdown/shutdown-signal.sh
+sudo ln -sfn /home/matt/dev/ir/systemd/system-shutdown/shutdown-signal.sh /lib/systemd/system-shutdown/shutdown-signal.sh
 ```
 
 No enable step needed — systemd runs everything in that directory automatically on every shutdown/reboot. The LED's `heartbeat` trigger (set in `boot/config.txt`, step 1) needs a reboot to take effect.
 
 ### 6. Run as a service (recommended)
 
-The app runs as a systemd service so it starts on boot without a login session. Unit files and IR config live in this repo and are deployed by copying them to their real system paths:
+The app runs as a systemd service so it starts on boot without a login session. Unit files and IR config live in this repo and are symlinked into their real system paths, so `git pull` keeps them current (see [`CLAUDE.md`](CLAUDE.md)'s "Installed system files"):
 
 ```bash
-sudo cp systemd/pihome.service systemd/ir-keymap.service systemd/ir-nec.service systemd/usb0-gadget.service /etc/systemd/system/
-sudo cp etc/rc_maps.cfg /etc/rc_maps.cfg
-sudo cp etc/rc_keymaps/shutdown.toml /etc/rc_keymaps/shutdown.toml
+for u in pihome ir-keymap ir-nec usb0-gadget; do sudo ln -sfn /home/matt/dev/ir/systemd/$u.service /etc/systemd/system/$u.service; done
+```
+
+```bash
+sudo ln -sfn /home/matt/dev/ir/etc/rc_maps.cfg /etc/rc_maps.cfg
+```
+
+```bash
+sudo ln -sfn /home/matt/dev/ir/etc/rc_keymaps/shutdown.toml /etc/rc_keymaps/shutdown.toml
+```
+
+```bash
 sudo systemctl daemon-reload
+```
+
+```bash
 sudo systemctl enable --now ir-keymap.service ir-nec.service usb0-gadget.service pihome.service
 ```
 
-Keep both copies in sync whenever one changes, the same as `boot/config.txt`.
+After a pull that changes a unit file, run `sudo systemctl daemon-reload` and restart that service.
 
 - **`pihome.service`** — runs the app (as root — required for keypad/GPIO access) from `.venv/bin/python3`. Starts in parallel with the two IR units below, not after them (see [`CLAUDE.md`](CLAUDE.md)'s "Pi OS boot time" note) — the app needs a human to press a button before anything matters, which takes far longer than these finishing up in the background.
 - **`ir-keymap.service`** — loads the custom IR keymap (`etc/rc_keymaps/shutdown.toml`, matched via `etc/rc_maps.cfg`) onto the receiver.

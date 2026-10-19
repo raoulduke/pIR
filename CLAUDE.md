@@ -208,8 +208,9 @@ logged in neither Mosquitto nor PipeWire runs (they start with an SSH
 session and stop ~10s after it ends). Undo: rename it back and reboot.
 
 Applying the `pihome.service` ordering change (or any future edit to it) on
-the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
-&& sudo systemctl daemon-reload && sudo systemctl restart pihome.service`.
+the Pi: `/etc/systemd/system/pihome.service` is a symlink to the repo's
+file (see "Installed system files" under Setup), so after `git pull` it's
+`sudo systemctl daemon-reload && sudo systemctl restart pihome.service`.
 `scripts/disable-unused-services.sh` (Setup step 3) now also disables
 `runonce.service`.
 
@@ -234,7 +235,7 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
   ```bash
   ssh 10.0.0.56 "cd /home/matt/dev/ir && git pull && sudo systemctl restart pihome.service; sleep 2; sudo systemctl is-active pihome.service"
   ```
-  Replaces the earlier rsync-based deploy: rsync wrote files to disk but never touched the Pi's `.git`, so its repo silently diverged from `origin/main` on every deploy (confirmed 2026-09-09 — Pi's repo was a commit behind with the last deploy's changes sitting as uncommitted local diffs instead of a pulled commit). `git pull` keeps the Pi's repo meaning something (real history, rollback via `git checkout <sha>`) and is safer for `signals/` — it's tracked in git, and pull refuses to overwrite uncommitted local changes there rather than silently deleting them the way rsync `--delete` once did (see `[[scope-rsync-delete-to-code]]`). `.venv/` needs no exclude — it's gitignored, never tracked, per the "never sync `.venv/` to the Pi" rule below. `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service && sudo systemctl daemon-reload` is still a separate manual step, only needed when `systemd/pihome.service` itself changed (see "Pi OS boot time" above) — `git pull` does not install that file.
+  Replaces the earlier rsync-based deploy: rsync wrote files to disk but never touched the Pi's `.git`, so its repo silently diverged from `origin/main` on every deploy (confirmed 2026-09-09 — Pi's repo was a commit behind with the last deploy's changes sitting as uncommitted local diffs instead of a pulled commit). `git pull` keeps the Pi's repo meaning something (real history, rollback via `git checkout <sha>`) and is safer for `signals/` — it's tracked in git, and pull refuses to overwrite uncommitted local changes there rather than silently deleting them the way rsync `--delete` once did (see `[[scope-rsync-delete-to-code]]`). `.venv/` needs no exclude — it's gitignored, never tracked, per the "never sync `.venv/` to the Pi" rule below. System files are symlinked into the checkout, so `git pull` updates them too; a changed unit file still needs `sudo systemctl daemon-reload` and a restart of that service (see "Installed system files" under Setup). `boot/config.txt`/`cmdline.txt` are the only copies left — copy them to `/boot/firmware/` by hand when they change.
   - **Learn captures made directly on the Pi** land in `signals/` as uncommitted local changes on the Pi's checkout (Learn writes to disk, not to git) — they aren't backed up anywhere until pushed. Periodically run `git add signals/ && git commit && git push` from the Pi, then `git pull` on WSL2, to bring them back into the shared history instead of letting them sit as permanent local drift.
 - Hardware-dependent libraries (e.g. `smbus2`) will not function on WSL2 — expect import/runtime errors there for hardware-touching code paths
 - IDE: CLion, with `ir/` marked as Sources Root; `pyproject.toml` added to the project to resolve import resolution issues in CLion
@@ -254,26 +255,52 @@ the Pi: `sudo cp systemd/pihome.service /etc/systemd/system/pihome.service
    sudo scripts/disable-unused-services.sh
    ```
    It also disables `cron.service` (2026-10-18: every cron job here is a no-op under systemd or disabled, but the daemon woke every minute; a crontab entry added later needs `sudo systemctl enable --now cron`) and switches off the tty1 console auto-login (see "Console auto-login removed" under "Pi OS boot time"). `sysstat-collect.timer` is the one that matters most — it wakes the CPU every 10 minutes around the clock to log stats nothing reads here, defeating idle power states all day for no benefit.
-4. Install the journal size/age caps (see "Log retention" below):
+4. Link the journal size/age caps (see "Log retention" below):
    ```bash
    sudo mkdir -p /etc/systemd/journald.conf.d
    ```
    ```bash
-   sudo cp systemd/journald.conf.d/zz-pihome.conf /etc/systemd/journald.conf.d/zz-pihome.conf
+   sudo ln -sfn /home/matt/dev/ir/systemd/journald.conf.d/zz-pihome.conf /etc/systemd/journald.conf.d/zz-pihome.conf
    ```
    ```bash
    sudo systemctl restart systemd-journald
    ```
-5. Install the shutdown LED signal (see "Shutdown / power-off signaling" above):
+5. Link the shutdown LED signal (see "Shutdown / power-off signaling" above).
+   The script is executable in git (mode 755), which systemd requires:
    ```bash
-   sudo cp systemd/system-shutdown/shutdown-signal.sh /lib/systemd/system-shutdown/shutdown-signal.sh
-   sudo chmod +x /lib/systemd/system-shutdown/shutdown-signal.sh
+   sudo ln -sfn /home/matt/dev/ir/systemd/system-shutdown/shutdown-signal.sh /lib/systemd/system-shutdown/shutdown-signal.sh
    ```
    No enable step needed — systemd runs everything in that directory automatically on every shutdown/reboot. The `heartbeat` LED trigger itself (step 1) needs a reboot to take effect.
 6. Run:
    ```bash
    sudo .venv/bin/python3 main.py
    ```
+
+### Installed system files (2026-10-18)
+
+The OS only reads its config from fixed paths, so repo files there are
+**symlinks back into the checkout**, not copies — `git pull` updates what
+the system reads, and nothing drifts (a copied shutdown script had fallen
+behind the repo before this change):
+
+| Repo file | Linked from |
+|---|---|
+| `systemd/{pihome,usb0-gadget,ir-keymap,ir-nec}.service` | `/etc/systemd/system/` |
+| `systemd/journald.conf.d/zz-pihome.conf` | `/etc/systemd/journald.conf.d/` |
+| `systemd/system-shutdown/shutdown-signal.sh` | `/lib/systemd/system-shutdown/` |
+| `etc/rc_maps.cfg`, `etc/rc_keymaps/shutdown.toml` | `/etc/` |
+
+Safe because `/home` is on the root partition, readable from early boot to
+the final shutdown step. systemd still caches unit files and journald its
+config: after a pull that changes one, run `sudo systemctl daemon-reload`
+and restart that service (or `systemd-journald`). The shutdown script is
+read fresh at each shutdown. Because root runs these, the checkout must not
+be group/world-writable (fixed 2026-10-18; the Pi's git has
+`core.fileMode=false`, so modes there are set by hand, not by pulls).
+
+`boot/config.txt` and `boot/cmdline.txt` stay **copies**:
+`/boot/firmware` is FAT (no symlinks) and the firmware reads it before
+Linux starts. Each deploy checks them with `cmp`.
 
 ## Log retention (2026-10-13)
 

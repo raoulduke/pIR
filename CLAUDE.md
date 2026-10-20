@@ -301,6 +301,7 @@ behind the repo before this change):
 | `etc/rc_maps.cfg`, `etc/rc_keymaps/shutdown.toml` | `/etc/` |
 | `etc/NetworkManager/conf.d/brcmfmac-no-scan-rand-mac.conf` | `/etc/NetworkManager/conf.d/` |
 | `systemd/wifi-chip-check.service` | `/etc/systemd/system/` (enabled) |
+| `home/zshenv` | `~/.zshenv` (user `matt`) |
 
 Safe because `/home` is on the root partition, readable from early boot to
 the final shutdown step. systemd still caches unit files and journald its
@@ -310,8 +311,8 @@ read fresh at each shutdown. Because root runs these, the checkout must not
 be group/world-writable (fixed 2026-10-18; the Pi's git has
 `core.fileMode=false`, so modes there are set by hand, not by pulls).
 Pulls wrote new files with the default umask 002, which undid that fix, so
-the Pi's `~/.zshenv` (read by every zsh, `ssh pi "git pull"` included) sets
-`umask 022` (2026-10-20; not tracked in this repo).
+`home/zshenv`, linked as the Pi's `~/.zshenv` (read by every zsh, `ssh pi
+"git pull"` included), sets `umask 022` (2026-10-20).
 
 `boot/config.txt` and `boot/cmdline.txt` stay **copies**:
 `/boot/firmware` is FAT (no symlinks) and the firmware reads it before

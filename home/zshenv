@@ -1,0 +1,4 @@
+# Linked from ~/.zshenv on the Pi (read by every zsh, `ssh pi "git pull"`
+# included). Files created by this user, git pulls of the checkout included,
+# must not be group-writable: root runs scripts and unit files from it.
+umask 022

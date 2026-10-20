@@ -309,6 +309,9 @@ and restart that service (or `systemd-journald`). The shutdown script is
 read fresh at each shutdown. Because root runs these, the checkout must not
 be group/world-writable (fixed 2026-10-18; the Pi's git has
 `core.fileMode=false`, so modes there are set by hand, not by pulls).
+Pulls wrote new files with the default umask 002, which undid that fix, so
+the Pi's `~/.zshenv` (read by every zsh, `ssh pi "git pull"` included) sets
+`umask 022` (2026-10-20; not tracked in this repo).
 
 `boot/config.txt` and `boot/cmdline.txt` stay **copies**:
 `/boot/firmware` is FAT (no symlinks) and the firmware reads it before

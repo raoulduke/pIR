@@ -142,9 +142,17 @@ SWEEP_GAP_CHOICES = [1.0, 0.5, 0.25]   # seconds between codes
 # Keypad scan timing. Kept light: too much GPIO traffic (short gaps, long
 # per-pin settle) disrupts the LCD's bit-banged I2C on GPIO23/24.
 KEYPAD_SCAN_DELAY_SECONDS = 0.0005  # settle time after driving a pin low
-KEYPAD_DEBOUNCE_SCANS = 3           # consecutive identical reads required
-# Gap between sweeps while polling (after an edge wake, or when edge
-# detection is unavailable): also the shortest press guaranteed to be seen.
+KEYPAD_DEBOUNCE_SCANS = 3           # scripts/keypad_wizard.py: consecutive identical reads
+# The running scanner: a key registers once read in this many sweeps (~3.6ms
+# each), not necessarily in a row, so a light press whose contact flickers
+# still counts; and it's released once unread for KEYPAD_RELEASE_SECONDS,
+# which also ends a flickering press's run of reads (a gap that long
+# starts the count over).
+KEYPAD_PRESS_HITS = 2
+KEYPAD_RELEASE_SECONDS = 0.025  # well under the ~50ms a key is up between fast repeat taps
+# Gap between sweeps when edge detection is unavailable and nothing is
+# pressed: the shortest press guaranteed to be seen. After an edge wake the
+# sweeps run back to back instead.
 KEYPAD_POLL_INTERVAL_SECONDS = 0.01
 # After an edge wake, go back to sleep once nothing has read as pressed for
 # this long (contact noise, or a press too short to debounce).

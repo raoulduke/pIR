@@ -683,6 +683,26 @@ edge.
 Verified by hand 2026-10-18: taps, held Up/Down, the smooth volume hold
 and hold-Enter in a paused Sweep all work.
 
+**Light and overlapping presses** (2026-10-20). Presses that clicked but
+didn't register: a key counted only after 3 sweeps in a row read it, and
+one sweep missing it (a light press's contact flickers) restarted the count
+after a 10ms nap. Now (`hardware/keypad.py`'s `_new_press()`), after a wake
+the sweeps run back to back (~4.2ms each: 7 drive pins x 0.5ms settle), and
+a key registers once read in `KEYPAD_PRESS_HITS` (2) sweeps, not
+necessarily in a row; it's released only once unread for
+`KEYPAD_RELEASE_SECONDS` (25ms), so a flicker can't read as release and a
+second press. Sweeps read every key down (`_pressed()`), and a key's
+handling ends on its own release: a key pressed before the previous one
+was let go used to be dropped (except after Up/Down). Simulated against
+the old scanner (fake GPIO, sweep time matched to the Pi's): contact
+flickering 40-60% of a 25-60ms press went from 2-7 of 20 to 17-19
+of 20, with no doubled presses; a clean 8ms contact is still mostly
+missed (needs faster sweeps; `app/constants.py`'s keypad timing comment
+warns more GPIO traffic once garbled the LCD). Sweep speed and GPIO traffic per sweep are unchanged. A wake that
+ends without a key logs `keypad: press not registered: ...` or `keypad:
+woke on an edge but no key read` to the journal, as evidence if misses
+continue.
+
 ## IR Tools & Integrations
 
 - **IR tooling**: `ir-ctl`, `lirc`

@@ -31,6 +31,8 @@ from app.constants import (
     KEYPAD_MAP_FILE,
     KEYPAD_SCAN_DELAY_SECONDS,
     KEYPAD_DEBOUNCE_SCANS,
+    KEYPAD_PRESS_HITS,
+    KEYPAD_RELEASE_SECONDS,
     KEYPAD_POLL_INTERVAL_SECONDS,
     KEYPAD_REPEAT_DELAY_SECONDS,
     KEYPAD_REPEAT_INTERVAL_SECONDS,
@@ -261,6 +263,12 @@ class KeypadScanner:
         self._hold_keys: dict[str, str] = {}
         # The key physically held right now, or None — see is_held().
         self._held_key: str | None = None
+        # Readings already handled and still held (-> when last read):
+        # ignored until released, so a key held through another press, or
+        # flickering as it's let go, isn't read twice.
+        self._handled: dict[str, float] = {}
+        # When anything last read as pressed, for _wait_for_new_press()'s log.
+        self._last_contact = 0.0
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -283,7 +291,7 @@ class KeypadScanner:
     def _sleep_until_edge(self) -> None:
         """Idle wait: drive every side-A pin low so any key pulls its
         sense pin low, then sleep until an edge (or close()). Side A goes
-        back high before returning, ready for _scan()."""
+        back high before returning, ready for _pressed()."""
         for pin in self._side_a:
             GPIO.output(pin, GPIO.LOW)
         try:
@@ -329,66 +337,128 @@ class KeypadScanner:
         after release."""
         self._repeat_interval = KEYPAD_REPEAT_INTERVAL_SECONDS if seconds is None else seconds
 
-    def _scan(self) -> str | None:
-        """One sweep. Pin directions are set once in __init__, so this only
-        toggles output values; falls back to scan_once() for a map that
-        isn't a clean two-sided matrix."""
+    def _pressed(self) -> set[str]:
+        """Every reading pressed right now, so overlapping presses are each
+        seen. Pin directions are set once in __init__, so this only toggles
+        output values. Falls back to scan_once()'s single reading for a map
+        that isn't a clean two-sided matrix."""
         if not self._fast_path:
-            return scan_once()
+            reading = scan_once()
+            return {reading} if reading is not None else set()
 
-        for pin in self._direct_pins:
-            if GPIO.input(pin) == GPIO.LOW:
-                return str(pin)
-
+        pressed = {str(pin) for pin in self._direct_pins if GPIO.input(pin) == GPIO.LOW}
         for drive_pin in self._side_a:
             GPIO.output(drive_pin, GPIO.LOW)
             time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
-
-            hit = None
             for sense_pin in self._side_b:
                 if GPIO.input(sense_pin) == GPIO.LOW:
-                    hit = sense_pin
-                    break
-
+                    pressed.add(f"{min(drive_pin, sense_pin)}+{max(drive_pin, sense_pin)}")
             GPIO.output(drive_pin, GPIO.HIGH)
-
-            if hit is not None:
-                return f"{min(drive_pin, hit)}+{max(drive_pin, hit)}"
-
-        return None
+        return pressed
 
     def _emit(self, key: str) -> None:
         self.events.put(key)
         os.write(self._wake_w, b"\x00")
 
-    def _repeat_while_held(self, reading: str, key: str) -> None:
-        """Repeat *key* at the repeat interval once held past
-        KEYPAD_REPEAT_DELAY_SECONDS, until released."""
+    def _new_press(self, pressed: set[str], hits: dict[str, list[float]],
+                   now: float) -> str | None:
+        """A reading newly pressed (not one already handled and still held)
+        once it's been read in KEYPAD_PRESS_HITS sweeps of one contact: a
+        gap over KEYPAD_RELEASE_SECONDS starts its count over. *hits*
+        (reading -> [count, last read]) carries counts between sweeps. Also
+        forgets handled keys unread for KEYPAD_RELEASE_SECONDS."""
+        if pressed:
+            self._last_contact = now
+        for reading in pressed & self._handled.keys():
+            self._handled[reading] = now
+        for reading, seen in list(self._handled.items()):
+            if now - seen >= KEYPAD_RELEASE_SECONDS:
+                del self._handled[reading]
+        for reading, (_, seen) in list(hits.items()):
+            if now - seen >= KEYPAD_RELEASE_SECONDS:
+                del hits[reading]
+        for reading in pressed - self._handled.keys():
+            count = hits.get(reading, [0, now])[0] + 1
+            hits[reading] = [count, now]
+            if count >= KEYPAD_PRESS_HITS:
+                return reading
+        return None
+
+    def _wait_for_new_press(self, give_up_after: float | None) -> str | None:
+        """Wait for _new_press(). None once nothing new has read as pressed
+        for *give_up_after* seconds (back to the edge sleep), or on close().
+        After an edge wake (*give_up_after* set) the sweeps run back to back.
+        A wake that ends with no key is logged, as evidence for missed
+        presses: a reading seen too few times, or none at all."""
+        hits: dict[str, list[float]] = {}
+        best: tuple[str, int] | None = None
+        started = last_seen = time.monotonic()
+        quiet_before = started - self._last_contact
+        while not self._stop.is_set():
+            pressed = self._pressed()
+            now = time.monotonic()
+            reading = self._new_press(pressed, hits, now)
+            if reading is not None:
+                return reading
+            for r, (count, _) in hits.items():
+                if best is None or count > best[1]:
+                    best = (r, count)
+            if hits:
+                last_seen = now
+            elif give_up_after is not None and now - last_seen >= give_up_after:
+                if best is not None:
+                    log.info("keypad: press not registered: %s (%s) read in %d of %d sweeps needed",
+                             best[0], self._map.get(best[0], "unmapped"), best[1], KEYPAD_PRESS_HITS)
+                elif not self._handled and quiet_before >= 0.2:
+                    # Wakes right after a release are its bounce, not a press.
+                    log.info("keypad: woke on an edge but no key read")
+                return None
+            if give_up_after is None and not hits:
+                time.sleep(KEYPAD_POLL_INTERVAL_SECONDS)
+            else:
+                time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
+        return None
+
+    def _until_released(self, reading: str, repeat_key: str | None = None) -> str | None:
+        """Wait for *reading*'s release (unread for KEYPAD_RELEASE_SECONDS),
+        repeating *repeat_key* while it's held. Returns a key pressed
+        meanwhile (handled next, so a press that overlaps the last one
+        isn't lost), or None once released."""
+        hits: dict[str, list[float]] = {}
         held_since = time.monotonic()
         repeating = False
         while not self._stop.is_set():
-            if self._scan() != reading:
-                return  # released (or a different combo now reads as pressed)
-            interval = self._repeat_interval if repeating else KEYPAD_REPEAT_DELAY_SECONDS
-            if time.monotonic() - held_since >= interval:
-                self._emit(key)
-                held_since = time.monotonic()
-                repeating = True
+            now = time.monotonic()
+            new = self._new_press(self._pressed(), hits, now)
+            if new is not None or reading not in self._handled:
+                return new
+            if repeat_key is not None:
+                interval = self._repeat_interval if repeating else KEYPAD_REPEAT_DELAY_SECONDS
+                if now - held_since >= interval:
+                    self._emit(repeat_key)
+                    held_since = now
+                    repeating = True
             time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
+        return None
 
-    def _tap_or_hold(self, reading: str, key: str, hold_event: str) -> None:
-        """Emit *key* on release, or *hold_event* once held past
-        KEYPAD_HOLD_SECONDS (see set_hold_keys())."""
+    def _tap_or_hold(self, reading: str, key: str, hold_event: str) -> str | None:
+        """Emit *key* on release (or when another key is pressed), or
+        *hold_event* once held past KEYPAD_HOLD_SECONDS (see
+        set_hold_keys()). Returns a key pressed meanwhile, like
+        _until_released()."""
+        hits: dict[str, list[float]] = {}
         pressed_at = time.monotonic()
         while not self._stop.is_set():
-            if self._scan() != reading:
+            now = time.monotonic()
+            new = self._new_press(self._pressed(), hits, now)
+            if new is not None or reading not in self._handled:
                 self._emit(key)
-                return
-            if time.monotonic() - pressed_at >= KEYPAD_HOLD_SECONDS:
+                return new
+            if now - pressed_at >= KEYPAD_HOLD_SECONDS:
                 self._emit(hold_event)
-                _wait_for_release(self._stop, self._scan)
-                return
+                return self._until_released(reading)
             time.sleep(KEYPAD_SCAN_DELAY_SECONDS)
+        return None
 
     def _run(self) -> None:
         """Scan forever. An unexpected error (GPIO, gpiod) is logged once and
@@ -404,36 +474,40 @@ class KeypadScanner:
                     log.exception("Keypad scanner error; retrying every second")
                 failing = True
                 self._held_key = None
+                self._handled = {}
                 self._stop.wait(1)
 
     def _scan_once_through(self) -> None:
-        """Wait for one press and handle it through to release."""
+        """Wait for a press and handle it, and any pressed before it was
+        released, through to release. With a handled key still held, the
+        edge sleep returns at once (its sense pin is low), so this polls
+        until it's let go."""
         if self._edges is not None:
             self._sleep_until_edge()
-            reading = _wait_for_press(self._stop, self._scan, KEYPAD_WAKE_IDLE_SECONDS)
+            reading = self._wait_for_new_press(KEYPAD_WAKE_IDLE_SECONDS)
         else:
-            reading = _wait_for_press(self._stop, self._scan)
-        if reading is None:
-            return
+            reading = self._wait_for_new_press(None)
+        while reading is not None and not self._stop.is_set():
+            reading = self._handle(reading)
+
+    def _handle(self, reading: str) -> str | None:
+        """Emit *reading*'s key (with repeat or tap/hold) until it's
+        released or another key is pressed; returns that key, if any."""
+        self._handled[reading] = time.monotonic()
         label = self._map.get(reading)
         if label is None:
-            _wait_for_release(self._stop, self._scan)
-            return
+            log.info("keypad: unmapped reading %s", reading)
+            return self._until_released(reading)
 
         key = resolve_label(label)
         self._held_key = key
         try:
             hold_event = self._hold_keys.get(key)
             if hold_event is not None:
-                self._tap_or_hold(reading, key, hold_event)
-                return
-
+                return self._tap_or_hold(reading, key, hold_event)
             self._emit(key)
-
-            if key in self._repeatable_keys:
-                self._repeat_while_held(reading, key)
-            else:
-                _wait_for_release(self._stop, self._scan)
+            return self._until_released(
+                reading, key if key in self._repeatable_keys else None)
         finally:
             self._held_key = None
 

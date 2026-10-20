@@ -521,10 +521,28 @@ firmware download over SDIO failed (`Downloaded RAM image is corrupted`,
 inhibit bit(s)`), so `wlan0` didn't exist and NetworkManager never saw it.
 Every network step failed for that whole boot: voice lights (Lamp,
 Ceiling: "Network error"), Google TV (`Network is unreachable`, status
-`-`). A reboot loaded it fine. 1 of the 91 boots in the journal; the
-driver is Kali's out-of-tree nexmon brcmfmac (`brcmfmac-nexmon` DKMS),
-whether the stock module does better isn't known. Lights don't depend on
-the Google TV connection; both just needed Wi-Fi.
+`-`). A reboot loaded it fine. 1 of the 91 boots in the journal. Lights
+don't depend on the Google TV connection; both just needed Wi-Fi.
+
+What the error means (from the driver source in
+`/usr/src/brcmfmac-nexmon-6.12.2/sdio.c`): at probe the driver writes the
+firmware (`cypress/cyfmac43430-sdio.bin`, 374,608 bytes) into the chip's
+RAM over SDIO (50 MHz, 4-bit), then reads it back in 2048-byte blocks and
+compares it with its in-memory copy of the file. The first 182 blocks
+matched; the last, partial one (offset 372736, 1872 bytes) didn't, so a
+transfer over the bus went wrong. The file is fine: the same one loads on
+every other boot, and it's the reference for the compare. Right after,
+the SDIO host controller hung (`Controller never released inhibit bit(s)`).
+On failure the driver releases the device and nothing retries it until a
+module reload, host rebind or reboot (what wifi-chip-check does). The
+read-back check exists only because Kali's nexmon build (`brcmfmac-nexmon`
+DKMS, for monitor mode) compiles with `-DDEBUG`; the stock module skips it
+and would start the firmware anyway (the original module is kept in
+`/var/lib/dkms/brcmfmac-nexmon/original_module/`). No under-voltage was
+logged on any boot, but that boot's `vcgencmd get_throttled` is lost, so
+power isn't ruled out. Not changed: lowering the SDIO clock
+(`dtparam=sdio_overclock=<MHz>`) might make the transfer more robust, but
+for a 1-in-91 event it's a guess; the recovery script covers it.
 
 `scripts/wifi-chip-check.sh`, run at every boot by
 `systemd/wifi-chip-check.service` (`Type=exec`, so boot doesn't wait on

@@ -155,10 +155,9 @@ class LCD:
 
     def wake(self) -> bool:
         """Backlight on and restart the idle countdown (set_idle_seconds()).
-        Returns True if it was off — hardware/input.py's wake handler
-        swallows that key, so a press in the dark only lights the screen.
-        Also called by screens that change without key presses and need
-        to stay readable (the running Sweep)."""
+        Returns True if it was off. Called on every key press (main.py's
+        wake handler) and by screens that change without key presses and
+        need to stay readable (the running Sweep)."""
         with self._lock:
             was_off = not self._lcd.backlight_enabled
             if was_off:

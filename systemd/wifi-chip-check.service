@@ -1,0 +1,11 @@
+[Unit]
+Description=Recover the Wi-Fi chip if its firmware failed to load at boot
+# Type=exec, not oneshot: multi-user.target would otherwise wait on it. It
+# runs alongside the rest of boot and exits as soon as wlan0 exists.
+
+[Service]
+Type=exec
+ExecStart=/home/matt/dev/ir/scripts/wifi-chip-check.sh
+
+[Install]
+WantedBy=multi-user.target

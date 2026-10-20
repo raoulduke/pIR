@@ -70,7 +70,7 @@ def main() -> None:
     quick_actions.init(state)
     set_quick_action_handler(quick_actions.handle)
     set_key_observer(wifi_wake_service.wake)  # wake the Wi-Fi radio early
-    # Any key relights a dark backlight, and that press does nothing else.
+    # Any key relights a dark backlight; the press still does its usual job.
     set_wake_handler(lambda key: lcd.wake())
     # Google TV's connection is held open on its screen only while lit.
     lcd.set_backlight_listener(androidtv_service.set_screen_lit)

@@ -289,8 +289,9 @@ def set_key_observer(observer) -> None:
 
 
 def set_wake_handler(handler) -> None:
-    """Register *handler(key)*, called after the observer; True swallows the
-    key (main.py: the press that relights a dark screen does nothing else)."""
+    """Register *handler(key)*, called after the observer (main.py: any key
+    relights a dark screen). The key then goes on as usual, so the press
+    that wakes the screen also does its normal job."""
     global _wake_handler
     _wake_handler = handler
 
@@ -312,8 +313,8 @@ def read_key(timeout: float | None = None) -> str | None:
         _press_count += 1
         if _key_observer is not None:
             _key_observer(key)
-        if _wake_handler is not None and _wake_handler(key):
-            continue
+        if _wake_handler is not None:
+            _wake_handler(key)
         if _quick_handler is not None and key in QUICK_ACTION_KEYS:
             if _quick_handler(key):
                 return None

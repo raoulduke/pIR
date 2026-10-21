@@ -428,7 +428,12 @@ TV reports that app in front (`current_app`, pushed by the TV on connect and
 on each app change). Unknown launches as before: just connected and not yet
 reported, or after our own Home key (not verified that the TV reports the
 launcher, so the old app isn't trusted). The skip is logged
-(`already open, not relaunching`).
+(`already open, not relaunching`). Being tested (2026-10-20): YouTube's step also has
+`"if_open_keyevent": "KEYCODE_MEDIA_PLAY_PAUSE"`, so pressing the preset
+inside YouTube sends the TV's built-in play/pause key instead, as a
+one-send alternative to hold-Enter's Enter, Enter, Back. On a fresh connection
+`launch_app()` waits up to 3s for the app report before deciding, so a
+press from a dark screen doesn't relaunch YouTube over what's playing.
 
 **Hold Enter in YouTube = pause/resume** (2026-10-20): on the Google TV
 screen with YouTube in front (`androidtv_service.current_app()`; never

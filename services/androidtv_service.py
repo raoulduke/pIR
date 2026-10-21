@@ -35,6 +35,8 @@ _CALL_TIMEOUT_SECONDS = 5
 # and _send()'s own timeout can never fire.
 _CALL_BACKSTOP_SECONDS = _CALL_TIMEOUT_SECONDS + 2
 _IDLE_DISCONNECT_SECONDS = 30
+# The TV had reported its foreground app within 1.5s of a connect (one probe).
+_APP_REPORT_WAIT_SECONDS = 3
 # Gaps between reconnect attempts while held, the last one repeating —
 # bounded anyway, since the hold ends with the backlight timeout.
 _HOLD_RETRY_SECONDS = (0, 5, 10, 30, 60)
@@ -351,15 +353,28 @@ def send_keyevent(keycode: str) -> tuple[bool, str]:
     return _run(f"send_keyevent({keycode})", action)
 
 
-def launch_app(app_link: str, package: str | None = None) -> tuple[bool, str]:
+def launch_app(app_link: str, package: str | None = None,
+               if_open_keyevent: str | None = None) -> tuple[bool, str]:
     """Launch an app by deep link (e.g. "https://www.youtube.com/tv"). A
     bare package name reports success but may not leave the current app.
     With *package* (e.g. "com.google.android.youtube.tv"), nothing is sent
     if the TV reports that app already in front, so pressing it again
-    doesn't interrupt what's playing. Unknown (just connected, not reported yet) launches."""
+    doesn't interrupt what's playing; *if_open_keyevent* (e.g.
+    "KEYCODE_MEDIA_PLAY_PAUSE") is sent instead, if given. On a fresh
+    connection it first waits up to _APP_REPORT_WAIT_SECONDS for the TV to
+    report its app; still unknown, it launches."""
+    if package and current_app() is None:
+        ok, message = _run("connect", lambda remote: None)
+        if not ok:
+            return ok, message
+        wait_for_app(_APP_REPORT_WAIT_SECONDS)
+
     def action(remote):
         if package and _app_known and remote.current_app == package:
-            log.info("launch_app(%s): %s already open, not relaunching", app_link, package)
+            log.info("launch_app(%s): %s already open, not relaunching%s", app_link, package,
+                     f"; sending {if_open_keyevent}" if if_open_keyevent else "")
+            if if_open_keyevent:
+                remote.send_key_command(if_open_keyevent)
             return
         remote.send_launch_app_command(app_link)
     return _run(f"launch_app({app_link})", action)

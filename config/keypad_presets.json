@@ -9,7 +9,7 @@
       "1": {"name": "Back", "steps": [{"home": "home", "device": "google_tv", "location": "living_room", "button": "back"}]},
       "2": {"name": "Home", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_HOME"}]},
       "3": {"name": "YouTube", "steps": [{"type": "androidtv_app", "app_link": "https://www.youtube.com/tv",
-        "package": "com.google.android.youtube.tv"}]},
+        "package": "com.google.android.youtube.tv", "if_open_keyevent": "KEYCODE_MEDIA_PLAY_PAUSE"}]},
       "4": {"name": "Captions", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_CAPTIONS"}]}
     },
     "receiver/living_room": {

@@ -17,7 +17,8 @@ Steps ("delay_after" is optional, default PRESET_DEFAULT_DELAY_SECONDS):
                    "package": "com.google.android.youtube.tv"}
                   (a deep link: a bare package name may not leave the
                   current app; "package" is optional, and skips the
-                  launch when that app is already in front)
+                  launch when that app is already in front, sending
+                  "if_open_keyevent" instead if given)
   Hue             {"type": "hue", "action": "toggle", "light_id": "3"}
                   "action" is on/off/toggle; "bri_inc"/"ct_inc" (relative)
                   or "bri"/"ct" (absolute) take priority over it.
@@ -142,7 +143,8 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                 if success:
                     sent += 1
             elif step.get("type") == "androidtv_app":
-                success, error = androidtv_service.launch_app(step["app_link"], step.get("package"))
+                success, error = androidtv_service.launch_app(
+                    step["app_link"], step.get("package"), step.get("if_open_keyevent"))
                 if success:
                     sent += 1
             elif step.get("type") == "hue" and hue_service.is_known_unreachable(step.get("light_id", "")):

@@ -446,8 +446,7 @@ with the controls hidden. On one connection the TV gets them in order. The
 earlier no-delay test mixed the two paths, so it doesn't apply here.
 With no delay, 5 of 6 presses hid the controls (all toggled; the miss
 looked the same as the rest in the log), and at 0.25s 3 of 4 did (the
-miss again unremarkable in the log), so the Back now goes 0.5s after the
-play/pause. An Up was tried first
+miss again unremarkable in the log); after 0.5s, the user set 1s. An Up was tried first
 (network at 0.3s, IR at 0.5/1.5/2.5s) and never hid them: after a pause,
 YouTube highlights the play/pause control, then the timeline after ~1s,
 and Up hid the controls from neither. Unknown app still launches. A hold-Enter Enter, Enter, Back version was built

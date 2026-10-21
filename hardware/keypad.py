@@ -261,6 +261,7 @@ class KeypadScanner:
         self._repeatable_keys = set(_REPEATABLE_KEYS)
         self._repeat_interval = KEYPAD_REPEAT_INTERVAL_SECONDS
         self._hold_keys: dict[str, str] = {}
+        self._hold_when = None
         # The key physically held right now, or None — see is_held().
         self._held_key: str | None = None
         # Readings already handled and still held (-> when last read):
@@ -316,12 +317,13 @@ class KeypadScanner:
         *exclude*. Read at the next press, so no lock is needed."""
         self._repeatable_keys = (set(_REPEATABLE_KEYS) | set(extra)) - set(exclude)
 
-    def set_hold_keys(self, holds: dict[str, str]) -> None:
+    def set_hold_keys(self, holds: dict[str, str], when=None) -> None:
         """Tap vs. hold for the keys in *holds* (key -> event sent on a
         hold): a tap sends the key on release; holding past
         KEYPAD_HOLD_SECONDS sends the hold event instead. {} restores
-        on-press. Only the sweep uses it — elsewhere Enter must act on
-        press."""
+        on-press. With *when*, a callable checked at each press, only while
+        it returns True (Google TV's Enter, only with YouTube in front)."""
+        self._hold_when = when
         self._hold_keys = dict(holds)
 
     def is_held(self, key: str) -> bool:
@@ -501,6 +503,9 @@ class KeypadScanner:
         self._held_key = key
         try:
             hold_event = self._hold_keys.get(key)
+            when = self._hold_when
+            if hold_event is not None and when is not None and not when():
+                hold_event = None
             if hold_event is not None:
                 return self._tap_or_hold(reading, key, hold_event)
             self._emit(key)

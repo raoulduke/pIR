@@ -430,6 +430,17 @@ reported, or after our own Home key (not verified that the TV reports the
 launcher, so the old app isn't trusted). The skip is logged
 (`already open, not relaunching`).
 
+**Hold Enter in YouTube = pause/resume** (2026-10-20): on the Google TV
+screen with YouTube in front (`androidtv_service.current_app()`; never
+connects, None when unknown), holding Enter (`KEYPAD_HOLD_SECONDS`) sends
+the IR Enter, Enter, Back 0.5s apart (`active_device_screen.py`'s
+`_YOUTUBE_PLAY_PAUSE_BUTTONS`/`_GAP_SECONDS`, in the background): the first
+Enter shows the player controls, the second toggles, Back hides them. The
+user's own sequence; it works for both pause and resume. Tap-vs-hold
+is armed only while YouTube is in front, checked at each press
+(`set_hold_keys(..., when=)`), so a tap there acts on release and
+everywhere else Enter still acts on press. Not yet tried on the TV.
+
 ## Wi-Fi Power Save + Speculative Wake (2026-09-09)
 
 Reverses the earlier "disable Wi-Fi power management outright" decision.
@@ -584,9 +595,9 @@ the code on screen, sending it first unless it already went out since
 landing on it, so no code goes out twice in a row (2026-10-18; Up/Down
 used to send as they stepped). **Holding Enter** (`KEYPAD_HOLD_SECONDS`, 0.7s)
 saves it under a typed name, Left goes back a level. Tap-vs-hold is opted
-into by this screen only (`hardware.input.set_hold_keys()`) — a tap acts
-on release there; Enter acts on press everywhere else (Google TV's D-pad
-needs that). Sweep with the TV **on** — turning off shows immediately,
+into by this screen and Google TV-with-YouTube only
+(`hardware.input.set_hold_keys()`) — a tap acts on release there; Enter
+acts on press everywhere else. Sweep with the TV **on** — turning off shows immediately,
 turning on can take seconds. `Sweep → Saved` mirrors the same path and
 sends a saved code on Enter.
 

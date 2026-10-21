@@ -249,6 +249,15 @@ async def _ensure_connected() -> AndroidTVRemote:
     return _remote
 
 
+def current_app() -> str | None:
+    """The TV's foreground app package (e.g. "com.google.android.youtube.tv"),
+    or None if not connected or not known yet. Never connects; any thread."""
+    remote = _remote
+    if not _connected or not _app_known or remote is None:
+        return None
+    return remote.current_app or None
+
+
 def _on_app_updated(app: str) -> None:
     global _app_known
     _app_known = True

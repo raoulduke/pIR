@@ -10,7 +10,7 @@
       "2": {"name": "Home", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_HOME"}]},
       "3": {"name": "YouTube", "steps": [{"type": "androidtv_app", "app_link": "https://www.youtube.com/tv",
         "package": "com.google.android.youtube.tv", "if_open_gap_seconds": 1.5, "if_open_steps": [
-          {"type": "androidtv", "keyevent": "KEYCODE_MEDIA_PLAY_PAUSE", "delay_after": 0.25},
+          {"type": "androidtv", "keyevent": "KEYCODE_MEDIA_PLAY_PAUSE", "delay_after": 0.5},
           {"type": "androidtv", "keyevent": "KEYCODE_BACK"}
         ]}]},
       "4": {"name": "Captions", "steps": [{"type": "androidtv", "keyevent": "KEYCODE_CAPTIONS"}]}

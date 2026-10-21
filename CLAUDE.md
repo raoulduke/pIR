@@ -443,7 +443,10 @@ two IR Ups (1s, then 0.5s apart), then, under test, a network
 exits: the play/pause goes over Wi-Fi (power-save wake up to ~1.6s, plus the
 router) and the Back by IR, so a late play/pause let the Back arrive first,
 with the controls hidden. On one connection the TV gets them in order. The
-earlier no-delay test mixed the two paths, so it doesn't apply here. An Up was tried first
+earlier no-delay test mixed the two paths, so it doesn't apply here.
+With no delay, 5 of 6 presses hid the controls (all toggled; the miss
+looked the same as the rest in the log), so the Back now goes 0.25s after
+the play/pause. An Up was tried first
 (network at 0.3s, IR at 0.5/1.5/2.5s) and never hid them: after a pause,
 YouTube highlights the play/pause control, then the timeline after ~1s,
 and Up hid the controls from neither. Unknown app still launches. A hold-Enter Enter, Enter, Back version was built

@@ -20,7 +20,7 @@ print(f"[BOOT] PID={os.getpid()}")
 
 from app.startup import initialize
 from app import quick_actions
-from app.constants import ANDROIDTV_STATUS_CHARS, STATEMENT_SHUTTING_DOWN, YOUTUBE_PACKAGE
+from app.constants import ANDROIDTV_STATUS_CHARS, STATEMENT_SHUTTING_DOWN
 from hardware.lcd import lcd
 from hardware.input import (
     set_quick_action_handler, set_key_observer, set_wake_handler, request_quit,
@@ -60,17 +60,6 @@ def _write_exit_message() -> None:
         pass
 
 
-def _update_play_glyph(*_) -> None:
-    """The preset line's play/pause cell: shown with YouTube in front, as
-    the action Preset 3 would take (play when paused, pause when playing)."""
-    if androidtv_service.current_app() != YOUTUBE_PACKAGE:
-        lcd.set_play_glyph(None)
-    elif cast_service.player_state() in ("PLAYING", "BUFFERING"):
-        lcd.set_play_glyph("pause")
-    else:
-        lcd.set_play_glyph("play")
-
-
 def main() -> None:
     print("[BOOT] starting")
 
@@ -93,8 +82,8 @@ def main() -> None:
     )
     # YouTube's play state (Cast) follows the held Google TV connection.
     androidtv_service.set_hold_listener(cast_service.set_held)
-    androidtv_service.set_app_listener(_update_play_glyph)
-    cast_service.set_state_listener(_update_play_glyph)
+    androidtv_service.set_app_listener(active_device_screen.update_play_glyph)
+    cast_service.set_state_listener(active_device_screen.update_play_glyph)
 
     stopping = False
     quit_timer: threading.Timer | None = None

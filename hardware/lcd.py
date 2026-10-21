@@ -43,10 +43,10 @@ _ARROW_UPDOWN_ROWS = [
 # cell; the ROM has none. Slot 6, loaded once at startup.
 GLYPH_ELLIPSIS = chr(6)
 _ELLIPSIS_ROWS = [0, 0, 0, 0, 0, 0, 0b10101, 0]
-# YouTube's play/pause state, after "YT" on Google TV's preset line: blank
-# unless YouTube is in front, then play (paused) or pause (playing). Slot 7,
-# redefined in place (set_play_glyph()), so the cell changes with no redraw
-# and nothing has to track which screen is up.
+# The "plause" glyph: YouTube's play/pause state, in place of "YT" on Google
+# TV's preset line while YouTube is in front (set_status_line2_swap()): play
+# when paused, pause when playing. Slot 7, redefined in place
+# (set_play_glyph()), so a pause or resume changes it with no redraw.
 GLYPH_PLAY_PAUSE = chr(7)
 _PLAY_PAUSE_ROWS = {
     None: [0] * 8,
@@ -158,6 +158,10 @@ class LCD:
         # background set_status_char() never draws over another screen.
         self._status_char = " "
         self._status_shown = False
+        # write_with_status()'s line 2 as given, and a (text, replacement)
+        # applied to it while set (set_status_line2_swap()).
+        self._status_line2 = ""
+        self._status_line2_swap: tuple[str, str] | None = None
         # Backlight idle-off (the backpack's P3 bit; RPLCD re-sends it with
         # every write, so writes while it's off don't relight it).
         # _idle_gen invalidates a timer that fired but is still waiting on
@@ -262,9 +266,27 @@ class LCD:
         with self._lock:
             self._lcd.cursor_pos = (0, 0)
             self._lcd.write_string(line1[:15].ljust(15) + self._status_char)
-            self._lcd.cursor_pos = (1, 0)
-            self._lcd.write_string(line2[:16].ljust(16))
+            self._status_line2 = line2
+            self._write_status_line2()
             self._status_shown = True
+
+    def _write_status_line2(self) -> None:
+        line2 = self._status_line2
+        if self._status_line2_swap is not None:
+            line2 = line2.replace(*self._status_line2_swap)
+        self._lcd.cursor_pos = (1, 0)
+        self._lcd.write_string(line2[:16].ljust(16))
+
+    def set_status_line2_swap(self, swap: tuple[str, str] | None) -> None:
+        """Replace swap[0] with swap[1] in write_with_status()'s line 2
+        (None: show it as given), redrawing line 2 only if that screen is
+        still up. Any thread. The plause glyph uses it (main.py)."""
+        with self._lock:
+            if swap == self._status_line2_swap:
+                return
+            self._status_line2_swap = swap
+            if self._status_shown:
+                self._write_status_line2()
 
     def set_status_char(self, char: str) -> None:
         """Change the status character, redrawing it in place only if

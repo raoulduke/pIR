@@ -400,7 +400,7 @@ each change `androidtv_service`'s `set_status_listener()` (wired in
 `main.py`) calls `lcd.set_status_char()`, which redraws that one cell only
 while that screen is still up — every other write touching line 1 clears
 the flag, so a background connection change never draws over another
-screen. YouTube's preset shows as `YT` text plus CGRAM slot 7, the play/pause glyph (see "YouTube play/pause" below).
+screen. YouTube's preset shows as `YT` text, replaced by the plause glyph (CGRAM slot 7) while YouTube is in front (see "YouTube play/pause" below).
 
 The library is asyncio-only; the rest of the app is fully synchronous.
 Bridged via a single dedicated event loop run in a background thread,
@@ -432,10 +432,14 @@ then `KEYCODE_DPAD_UP` 0.3s later to hide the controls the toggle leaves up
 Unknown app still launches. A hold-Enter Enter, Enter, Back version was built
 and removed the same day in favour of this.
 
-The preset line shows the state after `YT` (CGRAM slot 7, `hardware/lcd.py`'s
-`set_play_glyph()`, redefined in place so the cell changes with no redraw):
-blank unless YouTube is in front, then a play triangle when paused, two bars
-when playing (the action the preset would take). The playing/paused state
+The **plause glyph** (the user's name for it) replaces `YT` on the preset
+line while YouTube is in front: a play triangle when paused, two bars when
+playing (the action the preset would take). `active_device_screen.py`'s
+`update_play_glyph()`, wired in `main.py` to the TV's app and Cast's state:
+the YT swap is `hardware/lcd.py`'s `set_status_line2_swap()`, which redraws
+line 2 only while `write_with_status()`'s screen is still up (like the
+status character); play/pause only redefines CGRAM slot 7
+(`set_play_glyph()`), changing the cell with no redraw. The playing/paused state
 comes from **Google Cast** (`services/cast_service.py`, `pychromecast`, port
 8009, read only), since the Android TV Remote protocol only reports the app.
 Cast connects and disconnects with androidtv_service's held connection

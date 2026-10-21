@@ -26,16 +26,20 @@ from hardware.lcd import (
     GLYPH_BACK_SHAFT, GLYPH_PLAY_PAUSE,
 )
 from hardware import ir_transmitter
+from hardware.lcd import lcd as lcd_hw
 from hardware import input as input_hw
 from hardware.input import (
     read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT,
     DeviceCycledAway,
 )
-from services import home_service, signal_service, step_device_service, preset_service, androidtv_service, hue_service
+from services import (
+    home_service, signal_service, step_device_service, preset_service, androidtv_service, hue_service,
+    cast_service,
+)
 from screens.widgets.format import format_name, frame
 from app.constants import (
     DEFAULT_ACTIVE_DEVICE, MENU_DEVICE_LABELS, MENU_DEVICE_SENTINELS, MENU_SENTINEL_TO_DEVICE,
-    ASYNC_SEND_FLASH_SECONDS, STATEMENT_LIGHT_OFF,
+    ASYNC_SEND_FLASH_SECONDS, STATEMENT_LIGHT_OFF, YOUTUBE_PACKAGE,
 )
 from app.state import AppState
 from app.exceptions import HardwareError
@@ -231,13 +235,27 @@ _PRESET_ABBREVIATIONS = {
     "home": GLYPH_HOME,
     "mute": "Ssh",
     "power": "Pwr",
-    "youtube": "YT" + GLYPH_PLAY_PAUSE,  # blank unless YouTube is in front
+    "youtube": "YT",  # the plause glyph while YouTube is in front (update_play_glyph())
     "captions": GLYPH_CC_LEFT + GLYPH_CC_RIGHT,
     "candlelight": "Cdl",
     "warm white": "Wrm",
     "daylight": "Day",
     "picture": "Pic",
 }
+
+
+def update_play_glyph(*_) -> None:
+    """With YouTube in front, the plause glyph replaces "YT" on the preset
+    line, as the action Preset 3 would take: play when paused, pause when
+    playing (Cast's state). Wired to the TV's app and Cast's state in
+    main.py; any thread."""
+    if androidtv_service.current_app() != YOUTUBE_PACKAGE:
+        lcd_hw.set_status_line2_swap(None)
+        return
+    playing = cast_service.player_state() in ("PLAYING", "BUFFERING")
+    lcd_hw.set_play_glyph("pause" if playing else "play")
+    # The space keeps the other presets where they were.
+    lcd_hw.set_status_line2_swap((_PRESET_ABBREVIATIONS["youtube"], GLYPH_PLAY_PAUSE + " "))
 
 
 def _justify(words: list[str], width: int = 16) -> str:

@@ -55,6 +55,8 @@ _hold_task: asyncio.Task | None = None
 # nothing since may have changed it unreported (our own Home press), so
 # remote.current_app can be trusted (launch_app()'s skip).
 _app_known = False
+# Set whenever _app_known is (wait_for_app()).
+_app_event = threading.Event()
 
 
 def set_status_listener(listener) -> None:
@@ -131,6 +133,7 @@ def _reset_connection() -> None:
     if _remote is not None:
         _remote.disconnect()
     _connected = False
+    _app_event.clear()
     _set_status("closed")
 
 
@@ -235,6 +238,7 @@ async def _ensure_connected() -> AndroidTVRemote:
 
         if not _connected:
             _app_known = False  # the TV reports it again right after connecting
+            _app_event.clear()
             started = time.monotonic()
             _set_status("connecting")
             await _remote.async_connect()
@@ -258,9 +262,18 @@ def current_app() -> str | None:
     return remote.current_app or None
 
 
+def wait_for_app(timeout: float) -> str | None:
+    """current_app(), waiting up to *timeout* seconds for it to become known
+    (a connect in progress, e.g. the held one after the screen wakes).
+    Never connects itself. Blocks: not for the main loop."""
+    _app_event.wait(timeout)
+    return current_app()
+
+
 def _on_app_updated(app: str) -> None:
     global _app_known
     _app_known = True
+    _app_event.set()
 
 
 async def _send(action) -> None:
@@ -334,6 +347,7 @@ def send_keyevent(keycode: str) -> tuple[bool, str]:
         if keycode.removeprefix("KEYCODE_") == "HOME":
             # Not sure the TV reports the launcher, so don't trust the old app.
             _app_known = False
+            _app_event.clear()
     return _run(f"send_keyevent({keycode})", action)
 
 

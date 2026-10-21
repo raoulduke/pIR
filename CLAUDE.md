@@ -437,9 +437,14 @@ the IR Enter, Enter, Back 0.5s apart (`active_device_screen.py`'s
 `_YOUTUBE_PLAY_PAUSE_BUTTONS`/`_GAP_SECONDS`, in the background): the first
 Enter shows the player controls, the second toggles, Back hides them. The
 user's own sequence; it works for both pause and resume. Tap-vs-hold
-is armed only while YouTube is in front, checked at each press
-(`set_hold_keys(..., when=)`), so a tap there acts on release and
-everywhere else Enter still acts on press. Not yet tried on the TV.
+is armed while YouTube is in front or the app isn't known yet, checked at
+each press (`set_hold_keys(..., when=)`), so a tap there acts on release;
+in a known other app Enter still acts on press. A hold with the app
+unknown (not connected yet: the first try, from a dark screen, sent a
+plain Enter because the connection only opened as the screen woke) waits
+up to 8s for the TV to report it (`androidtv_service.wait_for_app()`),
+then sends the sequence for YouTube, a plain Enter for another app, or
+nothing (logged) if still unknown.
 
 ## Wi-Fi Power Save + Speculative Wake (2026-09-09)
 

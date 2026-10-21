@@ -13,9 +13,11 @@ Steps ("delay_after" is optional, default PRESET_DEFAULT_DELAY_SECONDS):
                    "button": "power"}                  (location optional)
   Voice (HA)      {"type": "voice", "command": "Rest"}
   Google TV key   {"type": "androidtv", "keyevent": "KEYCODE_HOME"}
-  Google TV app   {"type": "androidtv_app", "app_link": "https://www.youtube.com/tv"}
+  Google TV app   {"type": "androidtv_app", "app_link": "https://www.youtube.com/tv",
+                   "package": "com.google.android.youtube.tv"}
                   (a deep link: a bare package name may not leave the
-                  current app)
+                  current app; "package" is optional, and skips the
+                  launch when that app is already in front)
   Hue             {"type": "hue", "action": "toggle", "light_id": "3"}
                   "action" is on/off/toggle; "bri_inc"/"ct_inc" (relative)
                   or "bri"/"ct" (absolute) take priority over it.
@@ -140,7 +142,7 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                 if success:
                     sent += 1
             elif step.get("type") == "androidtv_app":
-                success, error = androidtv_service.launch_app(step["app_link"])
+                success, error = androidtv_service.launch_app(step["app_link"], step.get("package"))
                 if success:
                     sent += 1
             elif step.get("type") == "hue" and hue_service.is_known_unreachable(step.get("light_id", "")):

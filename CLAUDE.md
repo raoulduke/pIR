@@ -421,6 +421,15 @@ switch away from whatever app had foreground focus (seen with Plex open).
 `config/keypad_presets.json`'s `androidtv_app` steps use `"app_link"`
 (not `"package"`) accordingly.
 
+**YouTube preset skips relaunch when already open** (2026-10-20): an
+`androidtv_app` step may also carry `"package"` (YouTube's is
+`com.google.android.youtube.tv`); `launch_app()` then sends nothing if the
+TV reports that app in front (`current_app`, pushed by the TV on connect and
+on each app change). Unknown launches as before: just connected and not yet
+reported, or after our own Home key (not verified that the TV reports the
+launcher, so the old app isn't trusted). The skip is logged
+(`already open, not relaunching`).
+
 ## Wi-Fi Power Save + Speculative Wake (2026-09-09)
 
 Reverses the earlier "disable Wi-Fi power management outright" decision.

@@ -51,6 +51,10 @@ _connect_lock = asyncio.Lock()
 _on_tv_screen = False
 _screen_lit = True
 _hold_task: asyncio.Task | None = None
+# True once the TV has reported its foreground app on this connection and
+# nothing since may have changed it unreported (our own Home press), so
+# remote.current_app can be trusted (launch_app()'s skip).
+_app_known = False
 
 
 def set_status_listener(listener) -> None:
@@ -216,7 +220,7 @@ async def _watch_connection(protocol) -> None:
 
 async def _ensure_connected() -> AndroidTVRemote:
     """An open AndroidTVRemote, connecting first if needed. On the loop."""
-    global _remote, _connected
+    global _remote, _connected, _app_known
 
     async with _connect_lock:
         if _remote is None:
@@ -226,9 +230,11 @@ async def _ensure_connected() -> AndroidTVRemote:
             if not ip or not certfile or not keyfile:
                 raise CannotConnect("androidtv not configured")
             _remote = AndroidTVRemote(client_name="pi-ir", certfile=certfile, keyfile=keyfile, host=ip)
+            _remote.add_current_app_updated_callback(_on_app_updated)
             await _remote.async_generate_cert_if_missing()
 
         if not _connected:
+            _app_known = False  # the TV reports it again right after connecting
             started = time.monotonic()
             _set_status("connecting")
             await _remote.async_connect()
@@ -241,6 +247,11 @@ async def _ensure_connected() -> AndroidTVRemote:
 
     _arm_idle_timer()
     return _remote
+
+
+def _on_app_updated(app: str) -> None:
+    global _app_known
+    _app_known = True
 
 
 async def _send(action) -> None:
@@ -308,10 +319,24 @@ def _run(name: str, action) -> tuple[bool, str]:
 def send_keyevent(keycode: str) -> tuple[bool, str]:
     """Send an Android keyevent (e.g. "KEYCODE_HOME", "KEYCODE_BACK" — the
     "KEYCODE_" prefix is optional, androidtvremote2 adds it if missing)."""
-    return _run(f"send_keyevent({keycode})", lambda remote: remote.send_key_command(keycode))
+    def action(remote):
+        global _app_known
+        remote.send_key_command(keycode)
+        if keycode.removeprefix("KEYCODE_") == "HOME":
+            # Not sure the TV reports the launcher, so don't trust the old app.
+            _app_known = False
+    return _run(f"send_keyevent({keycode})", action)
 
 
-def launch_app(app_link: str) -> tuple[bool, str]:
+def launch_app(app_link: str, package: str | None = None) -> tuple[bool, str]:
     """Launch an app by deep link (e.g. "https://www.youtube.com/tv"). A
-    bare package name reports success but may not leave the current app."""
-    return _run(f"launch_app({app_link})", lambda remote: remote.send_launch_app_command(app_link))
+    bare package name reports success but may not leave the current app.
+    With *package* (e.g. "com.google.android.youtube.tv"), nothing is sent
+    if the TV reports that app already in front, so pressing it again
+    doesn't interrupt what's playing. Unknown (just connected, not reported yet) launches."""
+    def action(remote):
+        if package and _app_known and remote.current_app == package:
+            log.info("launch_app(%s): %s already open, not relaunching", app_link, package)
+            return
+        remote.send_launch_app_command(app_link)
+    return _run(f"launch_app({app_link})", action)

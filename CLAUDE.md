@@ -427,9 +427,9 @@ and `"if_open_steps"`. `preset_service` asks `androidtv_service.foreground_app()
 (connects if needed, then waits up to 3s for the TV's app report, so a press
 from a dark screen doesn't relaunch over what's playing); with YouTube in
 front it runs those steps instead of launching: `KEYCODE_MEDIA_PLAY_PAUSE`,
-then the IR Back (the same signal as the Back preset) 0.25s later to hide
-the controls the toggle leaves up (the user's call; 0.5s worked, being
-shortened to find the minimum). An Up was tried first
+then the IR Back (the same signal as the Back preset) 0.1s later to hide
+the controls the toggle leaves up (the user's call; 0.5s and 0.25s worked,
+being shortened to find the minimum). An Up was tried first
 (network at 0.3s, IR at 0.5/1.5/2.5s) and never hid them: after a pause,
 YouTube highlights the play/pause control, then the timeline after ~1s,
 and Up hid the controls from neither. Unknown app still launches. A hold-Enter Enter, Enter, Back version was built

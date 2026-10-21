@@ -453,7 +453,29 @@ router took 9-86ms but to the TV 10ms-669ms, one lost, and the TV connection
 showed 2 TCP retransmits in 23 segments: the TV's Wi-Fi, likely dozing. So
 the plause first pings the TV and waits for the reply (up to 1s,
 `androidtv_service.ping()`, an `androidtv_ping` step, logged as `Google TV
-ping: <ms>`), then sends play/pause, then Back 1s later. Under test.
+ping: <ms>`), then sends play/pause, then Back 1s later. Later tests
+(2026-10-21, non-invasive, during playback) showed the ping can't do that
+job: 40 single pings at 1-12s gaps took median 888ms, 17 over 1s, max
+3.7s; bursts every 0.25s still went dark for 1.3-3s at a time and then
+got every reply at once (a 9ms reply followed 0.25s later by a 2153ms
+one), while router pings at the same moment stayed 6-143ms. So the dongle's
+Wi-Fi blacks out on a cycle even under traffic (cause unknown; Wi-Fi/
+Bluetooth radio sharing is a guess). The ping step is still in the preset,
+not yet removed. Proposed instead, not built: start Back's countdown on the
+TCP ack of the play/pause (the socket's unacked byte count reaching 0).
+
+The IR D-pad doesn't reach the dongle directly: it has no IR receiver, so
+the Insignia TV or the Receiver decodes the IR and forwards the key over
+HDMI-CEC through the Receiver (the user's setup: TV and dongle both on the
+Receiver's HDMI). CEC can delay or drop keys, invisibly to the Pi.
+
+**Possibility, if things don't work out (the user's call, not started):**
+the real Google TV remote uses Bluetooth, which avoids both the Wi-Fi
+blackouts and CEC. The Pi could pair with the dongle as a Bluetooth HID
+remote (D-pad, Enter, Back, Home, play/pause, wake from standby, so also
+the deferred power button). Needs `dtoverlay=disable-bt` removed from
+`boot/config.txt` and a reboot, plus a BlueZ HID service; idle battery
+cost and any effect on the Pi's own Wi-Fi (same chip) unmeasured.
 `KEYCODE_WAKEUP` (224) was considered instead: it travels the same delayed
 path and can turn on a sleeping TV. An Up was tried first
 (network at 0.3s, IR at 0.5/1.5/2.5s) and never hid them: after a pause,

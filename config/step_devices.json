@@ -31,6 +31,12 @@
       "up_steps": [{"type": "voice", "command": "Brighten the corner"}],
       "down_steps": [{"type": "voice", "command": "Dim the corner"}]}
   ],
+  "light/track": [
+    {"name": "Power", "steps": [{"type": "voice", "command": "Toggle track lights"}]},
+    {"name": "Brightness",
+      "up_steps": [{"type": "voice", "command": "Brighten the track lights"}],
+      "down_steps": [{"type": "voice", "command": "Dim the track lights"}]}
+  ],
   "light/window": [
     {"name": "Power", "steps": [{"type": "voice", "command": "Toggle window"}]}
   ],

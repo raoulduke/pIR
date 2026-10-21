@@ -15,11 +15,13 @@ Steps ("delay_after" is optional, default PRESET_DEFAULT_DELAY_SECONDS):
   Google TV key   {"type": "androidtv", "keyevent": "KEYCODE_HOME"}
   Google TV app   {"type": "androidtv_app", "app_link": "https://www.youtube.com/tv",
                    "package": "com.google.android.youtube.tv",
-                   "if_open_steps": [...]}
+                   "if_open_steps": [...], "if_open_gap_seconds": 1.5}
                   (a deep link: a bare package name may not leave the
                   current app. "package" is optional: with it, the launch
                   is skipped when that app is already in front, and
-                  "if_open_steps" (optional, any steps) run instead)
+                  "if_open_steps" (optional, any steps) run instead, at
+                  least "if_open_gap_seconds" (optional) after they last
+                  finished)
   Hue             {"type": "hue", "action": "toggle", "light_id": "3"}
                   "action" is on/off/toggle; "bri_inc"/"ct_inc" (relative)
                   or "bri"/"ct" (absolute) take priority over it.
@@ -122,6 +124,25 @@ def _send_ir(step: dict, button: str) -> str:
         return str(e)
 
 
+# When each app's if_open_steps last finished (monotonic), for
+# "if_open_gap_seconds". Only the worker thread touches it.
+_if_open_finished: dict[str, float] = {}
+
+
+def _wait_if_open_gap(app: str, gap: float) -> None:
+    """Hold back *app*'s if_open_steps until *gap* seconds after they last
+    finished. YouTube's plause: a play/pause landing within ~1s of the
+    previous press's Back once left the controls hidden, so its own Back
+    exited the video."""
+    finished = _if_open_finished.get(app)
+    if finished is None:
+        return
+    wait = finished + gap - time.monotonic()
+    if wait > 0:
+        log.info("%s: waiting %.1fs after the last if_open_steps", app, wait)
+        time.sleep(wait)
+
+
 def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
     """Run *steps* in order. Returns (steps sent, steps configured, first
     step that failed or None). A failing or malformed step doesn't stop the
@@ -150,7 +171,11 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                     # Already in front: relaunching would interrupt it.
                     if_open = step.get("if_open_steps", [])
                     log.info("%s already open; running %d if_open_steps", app, len(if_open))
-                    if_sent, if_total, _ = run_steps(if_open)
+                    _wait_if_open_gap(app, step.get("if_open_gap_seconds", 0))
+                    try:
+                        if_sent, if_total, _ = run_steps(if_open)
+                    finally:
+                        _if_open_finished[app] = time.monotonic()
                     success = if_sent == if_total
                     error = "" if success else f"{if_total - if_sent} if_open_steps failed"
                 elif success:

@@ -15,7 +15,7 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import fun_service
 from screens import code_sweep_screen
 from screens.widgets.selector import select_from_list
-from screens.widgets.format import format_name, crumbs
+from screens.widgets.format import fit_or, format_name, crumbs
 from app.constants import MENU_TITLE, MENU_SWEEP, FUN_SAVED, FUN_ALL_BRANDS, STATEMENT_NO_SIGNALS
 from app.exceptions import HardwareError
 
@@ -130,6 +130,6 @@ def _send_saved(lcd: LCD, device_type: str, brand: str, signal: str, name: str) 
         lcd.write(brand[:16], format_name(name)[:16])
     except HardwareError as e:
         log.error("IR transmit failed (%s): %s", path, e)
-        lcd.write("TX Error", str(e)[:16])
+        lcd.write("TX Error", fit_or(str(e), ""))
     time.sleep(0.6)
     return _NAME_LEVEL  # back to the name list, on the name just sent

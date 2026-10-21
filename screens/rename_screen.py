@@ -8,7 +8,7 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service, signal_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.signal_entry import collect_device_location_button
-from screens.widgets.format import format_name, crumbs
+from screens.widgets.format import fit_or, format_name, crumbs
 from app.constants import (
     MENU_TITLE, MENU_RENAME, RENAME_SIGNAL, STEP_DEVICE, STATEMENT_FILE_EXISTS, STATEMENT_RENAMED,
     STATEMENT_SAVE_FAILED, STATEMENT_NO_SIGNALS,
@@ -57,7 +57,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
         state.active_device = new_device
         state.active_location = new_location
     except Exception as e:
-        lcd.write(STATEMENT_SAVE_FAILED, str(e)[:16])
+        lcd.write(STATEMENT_SAVE_FAILED, fit_or(str(e), ""))
         time.sleep(2)
 
     return None

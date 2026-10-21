@@ -26,6 +26,13 @@ def slugify(text: str) -> str:
     return "".join(c for c in text if c.isalnum() or c == "_")
 
 
+def fit_or(text: str, fallback: str, width: int = 16) -> str:
+    """*text* if it fits *width* columns, else *fallback*: for messages built
+    at run time (exception text, step names), which would otherwise be cut
+    mid-word."""
+    return text if len(text) <= width else fallback
+
+
 def frame(text: str) -> str:
     """Line-2 text for an Active Device Control function/leaf you can cycle
     away from with Left/Right — "<   name   >", cut to 14 characters so the

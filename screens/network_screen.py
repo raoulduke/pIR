@@ -12,7 +12,7 @@ from hardware.input import (
 )
 from services import wifi_service
 from screens.widgets.char_input import read_dpad_text
-from screens.widgets.format import format_name, with_arrows, crumbs
+from screens.widgets.format import fit_or, format_name, with_arrows, crumbs
 from app.constants import (
     WIFI_RESCAN_INTERVAL_SECONDS, WIFI_SCAN_STOP_AFTER_UNCHANGED, MENU_TITLE, MENU_NETWORK,
 )
@@ -125,7 +125,7 @@ def show(lcd: LCD) -> str | None:
         lcd.write(ssid[:16], "Connecting...")
         success, message = wifi_service.connect(ssid, password)
         lcd.wake()  # connecting can outlast the backlight timeout
-        lcd.write(ssid[:16], message[:16])
+        lcd.write(ssid[:16], fit_or(message, "Connected" if success else "Failed"))
         time.sleep(2)
 
         if success:

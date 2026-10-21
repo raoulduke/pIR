@@ -22,6 +22,7 @@ from app.startup import initialize
 from app import quick_actions
 from app.constants import ANDROIDTV_STATUS_CHARS, STATEMENT_SHUTTING_DOWN
 from hardware.lcd import lcd
+from screens.widgets.format import fit_or
 from hardware.input import (
     set_quick_action_handler, set_key_observer, set_wake_handler, request_quit,
     close as close_input,
@@ -123,7 +124,7 @@ def main() -> None:
         import traceback
         traceback.print_exc()
         try:
-            lcd.write(str(e)[:16], "Program stopped")
+            lcd.write(fit_or(str(e), "Error"), "Program stopped")
         except Exception:
             pass
 

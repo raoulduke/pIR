@@ -70,7 +70,7 @@ def show(lcd: LCD) -> str | None:
         def _on_result(sent, total, failed_step, command=command, pressed=pressed):
             # Only over this screen: a key since means it's moved on (logged anyway).
             if failed_step is not None and press_count() == pressed:
-                lcd.write(STATEMENT_FAILED, command[:16])
+                lcd.write_line1(STATEMENT_FAILED)
 
         preset_service.run_steps_background([{"type": "voice", "command": command}], _on_result)
         time.sleep(ASYNC_SEND_FLASH_SECONDS)

@@ -10,7 +10,7 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service
 from services.signal_service import signal_exists, save_signal
 from screens.widgets.selector import select_from_list
-from screens.widgets.format import format_name
+from screens.widgets.format import fit_or, format_name
 from screens.widgets.signal_entry import collect_device_location_button
 from app.constants import (
     PROMPT_BUTTON, MENU_TITLE, MENU_LEARN,
@@ -67,7 +67,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
         state.active_device = device
         state.active_location = location
     except Exception as e:
-        lcd.write(STATEMENT_SAVE_FAILED, str(e)[:16])
+        lcd.write(STATEMENT_SAVE_FAILED, fit_or(str(e), ""))
         time.sleep(2)
 
     return None
@@ -78,6 +78,6 @@ def _capture(lcd: LCD) -> str:
         return ir_receiver.capture(lcd)
     except (HardwareError, OSError, subprocess.SubprocessError) as e:
         log.error("IR capture failed: %s", e)
-        lcd.write("RX Error", str(e)[:16])
+        lcd.write("RX Error", fit_or(str(e), ""))
         time.sleep(2)
         return ""

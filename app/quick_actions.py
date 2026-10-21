@@ -19,9 +19,10 @@ from hardware.input import (
 from services import (
     device_slot_service, preset_service, signal_service, config_service, home_service,
 )
-from app.constants import ASYNC_SEND_FLASH_SECONDS, STATEMENT_LIGHT_OFF
+from app.constants import ASYNC_SEND_FLASH_SECONDS, STATEMENT_FAILED, STATEMENT_LIGHT_OFF, STATEMENT_SENDING
 from app.exceptions import HardwareError
 from app.state import AppState
+from screens.widgets.format import fit_or
 
 _DEVICE_KEYS = {
     KEY_DEVICE_1_UP: (0, "up"), KEY_DEVICE_1_DOWN: (0, "down"),
@@ -107,7 +108,7 @@ def _handle_device(key: str) -> None:
         lcd.write(label, button.replace("_", " ").title())
     except HardwareError as e:
         log.error("IR transmit failed (%s): %s", path, e)
-        lcd.write("TX Error", str(e)[:16])
+        lcd.write("TX Error", fit_or(str(e), ""))
     time.sleep(0.6)
 
 
@@ -121,7 +122,7 @@ def _stream_device(key: str, label: str, button: str, path) -> None:
         ir_transmitter.stream(path, lambda: is_key_held(key))
     except HardwareError as e:
         log.error("IR stream failed (%s): %s", path, e)
-        lcd.write("TX Error", str(e)[:16])
+        lcd.write("TX Error", fit_or(str(e), ""))
         time.sleep(1)
         return
     lcd.wake()  # a long hold mustn't leave the backlight timed out
@@ -147,12 +148,12 @@ def _handle_voice_device(label: str, slot: dict, direction: str) -> None:
 
     # Sent in the background (an HTTP call of up to 15s); only a failure
     # shows afterwards.
-    lcd.write(label, "Sending...")
+    lcd.write(label, STATEMENT_SENDING)
     still_here = _still_on_screen()
 
     def _on_result(sent, total, failed_step):
         if failed_step is not None and still_here():
-            lcd.write(label, f"Err: {preset_service.describe_step(failed_step)}"[:16])
+            lcd.write_line2(STATEMENT_FAILED)
 
     preset_service.run_steps_background([{"type": "voice", "command": command}], _on_result)
     time.sleep(ASYNC_SEND_FLASH_SECONDS)
@@ -180,12 +181,12 @@ def _handle_preset(number: int) -> None:
 
     # Steps run in the background (voice/Hue are network calls); only a
     # failure shows afterwards, naming the step that failed.
-    lcd.write(label, "Running...")
+    lcd.write_line2("Running...")
     still_here = _still_on_screen()
 
     def _on_result(sent, total, failed_step):
         if failed_step is not None and still_here():
-            lcd.write(label, f"Failed: {preset_service.describe_step(failed_step)}"[:16])
+            lcd.write_line2(STATEMENT_FAILED)
 
     preset_service.run_steps_background(steps, _on_result)
     time.sleep(ASYNC_SEND_FLASH_SECONDS)

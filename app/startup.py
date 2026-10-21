@@ -9,6 +9,7 @@ import time
 from app.state import AppState
 from app.exceptions import ConfigError, HardwareError
 from hardware.lcd import lcd
+from screens.widgets.format import fit_or
 from hardware import ir_transmitter, ir_receiver
 from services import home_service
 
@@ -47,12 +48,12 @@ def initialize() -> AppState | None:
 
     except (ConfigError, HardwareError) as e:
         log.error("Startup failed: %s", e)
-        lcd.write("Startup Failed", str(e)[:16])
+        lcd.write("Startup Failed", fit_or(str(e), ""))
         time.sleep(5)
         return None
 
     except Exception as e:
         log.exception("Startup failed")
-        lcd.write("Startup Failed", str(e)[:16])
+        lcd.write("Startup Failed", fit_or(str(e), ""))
         time.sleep(5)
         return None

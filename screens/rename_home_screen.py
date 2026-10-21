@@ -7,7 +7,7 @@ from hardware.input import KEY_QUIT, KEY_BACK
 from services import home_service
 from screens.widgets.selector import select_from_list
 from screens.widgets.char_input import read_dpad_text
-from screens.widgets.format import format_name, slugify, crumbs
+from screens.widgets.format import fit_or, format_name, slugify, crumbs
 from app.constants import (
     MENU_TITLE, MENU_RENAME, RENAME_HOME, STATEMENT_RENAMED, STATEMENT_SAVE_FAILED,
 )
@@ -60,7 +60,7 @@ def show(lcd: LCD, state: AppState) -> str | None:
             state.active_device = None
             state.active_location = None
     except Exception as e:
-        lcd.write(STATEMENT_SAVE_FAILED, str(e)[:16])
+        lcd.write(STATEMENT_SAVE_FAILED, fit_or(str(e), ""))
         time.sleep(2)
 
     return None

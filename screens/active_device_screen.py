@@ -34,10 +34,11 @@ from hardware.input import (
 from services import (
     home_service, signal_service, step_device_service, preset_service, androidtv_service, hue_service,
 )
-from screens.widgets.format import format_name, frame
+from screens.widgets.format import fit_or, format_name, frame
 from app.constants import (
     DEFAULT_ACTIVE_DEVICE, MENU_DEVICE_LABELS, MENU_DEVICE_SENTINELS, MENU_SENTINEL_TO_DEVICE,
-    ASYNC_SEND_FLASH_SECONDS, STATEMENT_LIGHT_OFF, YOUTUBE_PACKAGE,
+    ASYNC_SEND_FLASH_SECONDS, STATEMENT_FAILED, STATEMENT_LIGHT_OFF, STATEMENT_SENDING,
+    YOUTUBE_PACKAGE,
 )
 from app.state import AppState
 from app.exceptions import HardwareError
@@ -654,7 +655,7 @@ def _transmit(lcd: LCD, home: str, device: str, location: str, button: str) -> b
         return True
     except HardwareError as e:
         log.error("IR transmit failed (%s): %s", path, e)
-        lcd.write("TX Error", str(e)[:16])
+        lcd.write("TX Error", fit_or(str(e), ""))
         time.sleep(1)
         return False
 
@@ -663,14 +664,13 @@ def _run_step_function(lcd: LCD, device: str, location: str, steps: list[dict]) 
     """Run a step device's function in the background (voice/Hue are network
     calls), flashing "Sending..."; a failure shows afterwards only if this
     screen is still up."""
-    label = _device_label(device, location)
-    lcd.write(label, "Sending...")
+    lcd.write_line2(STATEMENT_SENDING)
     pressed = input_hw.press_count()
 
     def _on_result(sent, total, failed_step):
         # Only over this screen: a key since means it's moved on (logged anyway).
         if failed_step is not None and input_hw.press_count() == pressed:
-            lcd.write(label, f"Failed: {preset_service.describe_step(failed_step)}"[:16])
+            lcd.write_line2(STATEMENT_FAILED)
 
     preset_service.run_steps_background(steps, _on_result)
     time.sleep(ASYNC_SEND_FLASH_SECONDS)

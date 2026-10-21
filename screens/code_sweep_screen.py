@@ -31,7 +31,7 @@ from hardware.input import (
 from services import config_service, fun_service, ir_encode
 from screens.widgets.selector import select_from_list
 from screens.widgets.signal_entry import prompt_text
-from screens.widgets.format import format_name, with_arrows, fit_with_suffix
+from screens.widgets.format import fit_or, format_name, with_arrows, fit_with_suffix
 from app.constants import (
     PROMPT_NAME, STATEMENT_NO_SIGNALS, STATEMENT_SENDING, ASYNC_SEND_FLASH_SECONDS,
     STATEMENT_FILE_EXISTS, STATEMENT_SAVED, STATEMENT_SAVE_FAILED,
@@ -169,7 +169,7 @@ def _send(lcd: LCD, codes: list[tuple[str, dict]], index: int) -> bool:
         return True
     except (HardwareError, ValueError) as e:
         log.error("Sweep transmit failed (%s #%d %s): %s", brand, index + 1, entry, e)
-        lcd.write("TX Error", str(e)[:16])
+        lcd.write("TX Error", fit_or(str(e), ""))
         time.sleep(1.5)
         return False
 
@@ -199,6 +199,6 @@ def _save(lcd: LCD, device_type: str, brand: str, signal: str,
         time.sleep(1)
     except (OSError, ValueError) as e:
         log.error("Fun save failed (%s/%s/%s/%s): %s", device_type, brand, signal, name, e)
-        lcd.write(STATEMENT_SAVE_FAILED, str(e)[:16])
+        lcd.write(STATEMENT_SAVE_FAILED, fit_or(str(e), ""))
         time.sleep(2)
     return None

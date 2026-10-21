@@ -14,11 +14,12 @@ Steps ("delay_after" is optional, default PRESET_DEFAULT_DELAY_SECONDS):
   Voice (HA)      {"type": "voice", "command": "Rest"}
   Google TV key   {"type": "androidtv", "keyevent": "KEYCODE_HOME"}
   Google TV app   {"type": "androidtv_app", "app_link": "https://www.youtube.com/tv",
-                   "package": "com.google.android.youtube.tv"}
+                   "package": "com.google.android.youtube.tv",
+                   "if_open_steps": [...]}
                   (a deep link: a bare package name may not leave the
-                  current app; "package" is optional, and skips the
-                  launch when that app is already in front, sending
-                  "if_open_keyevent" instead if given)
+                  current app. "package" is optional: with it, the launch
+                  is skipped when that app is already in front, and
+                  "if_open_steps" (optional, any steps) run instead)
   Hue             {"type": "hue", "action": "toggle", "light_id": "3"}
                   "action" is on/off/toggle; "bri_inc"/"ct_inc" (relative)
                   or "bri"/"ct" (absolute) take priority over it.
@@ -143,8 +144,17 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                 if success:
                     sent += 1
             elif step.get("type") == "androidtv_app":
-                success, error = androidtv_service.launch_app(
-                    step["app_link"], step.get("package"), step.get("if_open_keyevent"))
+                success, error, app = (androidtv_service.foreground_app() if step.get("package")
+                                       else (True, "", None))
+                if success and app is not None and app == step["package"]:
+                    # Already in front: relaunching would interrupt it.
+                    if_open = step.get("if_open_steps", [])
+                    log.info("%s already open; running %d if_open_steps", app, len(if_open))
+                    if_sent, if_total, _ = run_steps(if_open)
+                    success = if_sent == if_total
+                    error = "" if success else f"{if_total - if_sent} if_open_steps failed"
+                elif success:
+                    success, error = androidtv_service.launch_app(step["app_link"])
                 if success:
                     sent += 1
             elif step.get("type") == "hue" and hue_service.is_known_unreachable(step.get("light_id", "")):

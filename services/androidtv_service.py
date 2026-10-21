@@ -47,6 +47,8 @@ _connected = False
 _idle_handle: asyncio.TimerHandle | None = None
 _status = "closed"  # "closed" | "connecting" | "open" — see set_status_listener()
 _status_listener = None
+_hold_listener = None
+_app_listener = None
 # One connect at a time (the hold's and a send's).
 _connect_lock = asyncio.Lock()
 # Held open while both are true. Only touched on the loop.
@@ -69,6 +71,25 @@ def set_status_listener(listener) -> None:
     must not raise."""
     global _status_listener
     _status_listener = listener
+
+
+def set_hold_listener(listener) -> None:
+    """Register *listener(held)*, called when the held connection starts or
+    ends (main.py: cast_service follows it). On the loop: quick, no raising."""
+    global _hold_listener
+    _hold_listener = listener
+
+
+def set_app_listener(listener) -> None:
+    """Register *listener()*, called when current_app() may have changed.
+    On the loop: quick, no raising."""
+    global _app_listener
+    _app_listener = listener
+
+
+def _app_changed() -> None:
+    if _app_listener is not None:
+        _app_listener()
 
 
 def _set_status(status: str) -> None:
@@ -137,6 +158,7 @@ def _reset_connection() -> None:
     _connected = False
     _app_event.clear()
     _set_status("closed")
+    _app_changed()
 
 
 def keepalive() -> None:
@@ -174,6 +196,8 @@ def _update_hold(on_tv_screen: bool | None, screen_lit: bool | None) -> None:
         if screen_lit is False:
             _reset_connection()
         return
+    if _hold_listener is not None:
+        _hold_listener(_held())
     if _held():
         _cancel_idle_timer()
         _start_hold_connect()
@@ -276,6 +300,7 @@ def _on_app_updated(app: str) -> None:
     global _app_known
     _app_known = True
     _app_event.set()
+    _app_changed()
 
 
 async def _send(action) -> None:
@@ -350,31 +375,24 @@ def send_keyevent(keycode: str) -> tuple[bool, str]:
             # Not sure the TV reports the launcher, so don't trust the old app.
             _app_known = False
             _app_event.clear()
+            _app_changed()
     return _run(f"send_keyevent({keycode})", action)
 
 
-def launch_app(app_link: str, package: str | None = None,
-               if_open_keyevent: str | None = None) -> tuple[bool, str]:
-    """Launch an app by deep link (e.g. "https://www.youtube.com/tv"). A
-    bare package name reports success but may not leave the current app.
-    With *package* (e.g. "com.google.android.youtube.tv"), nothing is sent
-    if the TV reports that app already in front, so pressing it again
-    doesn't interrupt what's playing; *if_open_keyevent* (e.g.
-    "KEYCODE_MEDIA_PLAY_PAUSE") is sent instead, if given. On a fresh
-    connection it first waits up to _APP_REPORT_WAIT_SECONDS for the TV to
-    report its app; still unknown, it launches."""
-    if package and current_app() is None:
+def foreground_app() -> tuple[bool, str, str | None]:
+    """(success, message, app): the TV's foreground app package, connecting
+    first if needed and then waiting up to _APP_REPORT_WAIT_SECONDS for the
+    TV to report it (app None if it doesn't). Blocks: for preset steps that
+    act on the app in front (preset_service's "if_open_steps")."""
+    if current_app() is None:
         ok, message = _run("connect", lambda remote: None)
         if not ok:
-            return ok, message
+            return ok, message, None
         wait_for_app(_APP_REPORT_WAIT_SECONDS)
+    return True, "", current_app()
 
-    def action(remote):
-        if package and _app_known and remote.current_app == package:
-            log.info("launch_app(%s): %s already open, not relaunching%s", app_link, package,
-                     f"; sending {if_open_keyevent}" if if_open_keyevent else "")
-            if if_open_keyevent:
-                remote.send_key_command(if_open_keyevent)
-            return
-        remote.send_launch_app_command(app_link)
-    return _run(f"launch_app({app_link})", action)
+
+def launch_app(app_link: str) -> tuple[bool, str]:
+    """Launch an app by deep link (e.g. "https://www.youtube.com/tv"). A
+    bare package name reports success but may not leave the current app."""
+    return _run(f"launch_app({app_link})", lambda remote: remote.send_launch_app_command(app_link))

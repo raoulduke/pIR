@@ -43,6 +43,34 @@ _ARROW_UPDOWN_ROWS = [
 # cell; the ROM has none. Slot 6, loaded once at startup.
 GLYPH_ELLIPSIS = chr(6)
 _ELLIPSIS_ROWS = [0, 0, 0, 0, 0, 0, 0b10101, 0]
+# YouTube's play/pause state, after "YT" on Google TV's preset line: blank
+# unless YouTube is in front, then play (paused) or pause (playing). Slot 7,
+# redefined in place (set_play_glyph()), so the cell changes with no redraw
+# and nothing has to track which screen is up.
+GLYPH_PLAY_PAUSE = chr(7)
+_PLAY_PAUSE_ROWS = {
+    None: [0] * 8,
+    "play": [
+        0b10000,
+        0b11000,
+        0b11100,
+        0b11110,
+        0b11100,
+        0b11000,
+        0b10000,
+        0b00000,
+    ],
+    "pause": [
+        0b00000,
+        0b11011,
+        0b11011,
+        0b11011,
+        0b11011,
+        0b11011,
+        0b11011,
+        0b00000,
+    ],
+}
 _PRESET_GLYPHS = {
     # Solid house with a door: a 1px gap 2px up the bottom center.
     1: [
@@ -123,6 +151,8 @@ class LCD:
             self._lcd.create_char(location, [bits] * 8)
         self._lcd.create_char(0, _ARROW_UPDOWN_ROWS)
         self._lcd.create_char(6, _ELLIPSIS_ROWS)
+        self._lcd.create_char(7, _PLAY_PAUSE_ROWS[None])
+        self._play_glyph: str | None = None
         # Status character in line 1's last column (write_with_status()).
         # _status_shown is cleared by every other line-1 write, so a
         # background set_status_char() never draws over another screen.
@@ -245,6 +275,15 @@ class LCD:
             if self._status_shown:
                 self._lcd.cursor_pos = (0, 15)
                 self._lcd.write_string(char)
+
+    def set_play_glyph(self, kind: str | None) -> None:
+        """GLYPH_PLAY_PAUSE's shape: "play", "pause" or None (blank). Any
+        thread; only touches the bus when it changes."""
+        with self._lock:
+            if kind == self._play_glyph:
+                return
+            self._play_glyph = kind
+            self._lcd.create_char(7, _PLAY_PAUSE_ROWS[kind])
 
     def load_preset_glyphs(self) -> None:
         """Replace the progress bar's CGRAM slots with the preset-line

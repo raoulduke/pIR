@@ -250,13 +250,12 @@ def use_default_keys() -> None:
     set_repeat_interval(None)
 
 
-def set_hold_keys(holds: dict[str, str], when=None) -> None:
+def set_hold_keys(holds: dict[str, str]) -> None:
     """Tap vs. hold for the keys in *holds* (key -> event sent on a hold,
-    e.g. {KEY_ENTER: KEY_ENTER_HOLD}); {} turns it off. With *when*, only
-    for presses made while when() is True. Keypad only."""
+    e.g. {KEY_ENTER: KEY_ENTER_HOLD}); {} turns it off. Keypad only."""
     reader = _get_reader()
     if reader.keypad is not None:
-        reader.keypad.set_hold_keys(holds, when)
+        reader.keypad.set_hold_keys(holds)
 
 
 def is_key_held(key: str) -> bool:

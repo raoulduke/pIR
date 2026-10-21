@@ -111,6 +111,10 @@ SIGNALS_DIR = "signals"
 # alphabetically.
 DEVICE_ORDER_FILE = "config/device_order.json"
 
+# YouTube's Android package, as the Google TV reports it in front
+# (androidtv_service.current_app()).
+YOUTUBE_PACKAGE = "com.google.android.youtube.tv"
+
 # Keypad matrix — BCM pins in wiring-table order (wire 1 .. 12). The index is
 # how the wizard and the scanner identify a physical wire, so order matters.
 KEYPAD_GPIO_PINS = [14, 15, 17, 18, 27, 5, 6, 13, 19, 16, 26, 20]

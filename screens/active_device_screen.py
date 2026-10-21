@@ -5,8 +5,7 @@ key; < Device/Device > switches the active device (app/quick_actions.py).
 One active leaf (state.active_device, state.active_location), drawn by its
 shape:
   - Google TV (DEFAULT_ACTIVE_DEVICE): Up/Down/Left/Right/Enter fire the
-    matching D-pad signal. With YouTube in front (or not known yet),
-    holding Enter pauses/resumes (_YOUTUBE_PLAY_PAUSE_BUTTONS).
+    matching D-pad signal.
   - A collapsed group stop (MENU_DEVICE_SENTINELS: Lights, TVs): shows
     "Press Enter"; Enter drills into the group's first leaf.
   - A group leaf (light, tv): Enter fires Power, Up/Down the paired action
@@ -21,16 +20,15 @@ step device (_functions_for()). Presets run from the Preset Function keys
 (app/quick_actions.py), not this screen."""
 
 import logging
-import threading
 import time
 from hardware.lcd import (
     LCD, GLYPH_HOME, GLYPH_CC_LEFT, GLYPH_CC_RIGHT, GLYPH_BACK_ARROW,
-    GLYPH_BACK_SHAFT,
+    GLYPH_BACK_SHAFT, GLYPH_PLAY_PAUSE,
 )
 from hardware import ir_transmitter
 from hardware import input as input_hw
 from hardware.input import (
-    read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_ENTER_HOLD, KEY_QUIT,
+    read_key, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT,
     DeviceCycledAway,
 )
 from services import home_service, signal_service, step_device_service, preset_service, androidtv_service, hue_service
@@ -48,25 +46,6 @@ _DPAD_BUTTONS = {
     KEY_UP: "up", KEY_DOWN: "down", KEY_LEFT: "left",
     KEY_RIGHT: "right", KEY_ENTER: "enter",
 }
-
-# Held Enter with YouTube in front: Enter shows the player controls, Enter
-# toggles play/pause, Back hides them. Works for both pause and resume.
-_YOUTUBE_PACKAGE = "com.google.android.youtube.tv"
-_YOUTUBE_PLAY_PAUSE_BUTTONS = ("enter", "enter", "back")
-# Between those sends, for YouTube to react to each one.
-_YOUTUBE_PLAY_PAUSE_GAP_SECONDS = 0.5
-# A hold while the app isn't known yet (not connected: the screen was dark,
-# or the TV was slow to answer) waits this long for it, then sends nothing.
-# Covers the held connection's first retry, 5s after a failed attempt.
-_YOUTUBE_APP_WAIT_SECONDS = 8
-
-
-def _youtube_hold_armed() -> bool:
-    """Arm Enter's tap-vs-hold with YouTube in front, or while the app
-    isn't known yet (a hold then waits for it; a tap is a plain Enter)."""
-    app = androidtv_service.current_app()
-    return app is None or app == _YOUTUBE_PACKAGE
-
 
 # Google TV's D-pad also repeats Left/Right while held (only on that screen:
 # elsewhere a repeated Left would back out several levels).
@@ -252,7 +231,7 @@ _PRESET_ABBREVIATIONS = {
     "home": GLYPH_HOME,
     "mute": "Ssh",
     "power": "Pwr",
-    "youtube": "YT",
+    "youtube": "YT" + GLYPH_PLAY_PAUSE,  # blank unless YouTube is in front
     "captions": GLYPH_CC_LEFT + GLYPH_CC_RIGHT,
     "candlelight": "Cdl",
     "warm white": "Wrm",
@@ -447,9 +426,6 @@ def show(lcd: LCD, state: AppState) -> None:
 
             device, location = state.active_device, state.active_location
             androidtv_service.set_on_tv_screen(device == DEFAULT_ACTIVE_DEVICE)
-            # Tap Enter then acts on release, but only with YouTube in front.
-            input_hw.set_hold_keys({KEY_ENTER: KEY_ENTER_HOLD} if device == DEFAULT_ACTIVE_DEVICE else {},
-                                   when=_youtube_hold_armed)
             leaf_changed = (device, location) != previous_leaf
             if leaf_changed:
                 function_index = 0
@@ -495,9 +471,6 @@ def show(lcd: LCD, state: AppState) -> None:
                 # < Device/Device > can switch devices inside read_key(); never fire a key
                 # at a device that's no longer active.
                 if (state.active_device, state.active_location) != (device, location):
-                    continue
-                if key == KEY_ENTER_HOLD:
-                    _youtube_play_pause(home, device, location)
                     continue
                 button = _DPAD_BUTTONS.get(key)
                 if button and not _transmit(lcd, home, device, location, button):
@@ -673,30 +646,6 @@ def _transmit(lcd: LCD, home: str, device: str, location: str, button: str) -> b
         lcd.write("TX Error", str(e)[:16])
         time.sleep(1)
         return False
-
-
-def _youtube_play_pause(home: str, device: str, location: str) -> None:
-    """Held Enter on Google TV: with YouTube in front, pause or resume and
-    hide the controls (_YOUTUBE_PLAY_PAUSE_BUTTONS); in another app, a plain
-    Enter. If the app isn't known yet, waits for it (_YOUTUBE_APP_WAIT_SECONDS)
-    first. All in the background, so the keypad stays live meanwhile."""
-    def on_result(sent, total, _failed):
-        if sent < total:
-            log.warning("YouTube play/pause: sent %d of %d", sent, total)
-
-    def run():
-        app = androidtv_service.wait_for_app(_YOUTUBE_APP_WAIT_SECONDS)
-        if app is None:
-            log.warning("Enter hold: Google TV app still unknown after %ds, nothing sent",
-                        _YOUTUBE_APP_WAIT_SECONDS)
-            return
-        buttons = _YOUTUBE_PLAY_PAUSE_BUTTONS if app == _YOUTUBE_PACKAGE else ("enter",)
-        steps = [{"home": home, "device": device, "location": location, "button": button,
-                  "delay_after": _YOUTUBE_PLAY_PAUSE_GAP_SECONDS}
-                 for button in buttons]
-        preset_service.run_steps_background(steps, on_result)
-
-    threading.Thread(target=run, name="youtube-hold", daemon=True).start()
 
 
 def _run_step_function(lcd: LCD, device: str, location: str, steps: list[dict]) -> None:

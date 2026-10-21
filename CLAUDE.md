@@ -128,7 +128,7 @@ config/
 
 - venv lives inside the project at `ir/.venv`
 - Correct invocation: `sudo .venv/bin/python3 main.py` — **never** `sudo python3 main.py` (bypasses the venv)
-- Confirmed third-party dependencies: `evdev`, `RPi.GPIO`, `gpiod` (keypad edge interrupts; builds from source on the Pi, ~35s), `RPLCD`, `smbus2`, `pigpio`, `androidtvremote2` (pulls in `cryptography`, `protobuf`, `aiofiles`, `cffi`, `pycparser`)
+- Confirmed third-party dependencies: `evdev`, `RPi.GPIO`, `gpiod` (keypad edge interrupts; builds from source on the Pi, ~35s), `RPLCD`, `smbus2`, `pigpio`, `androidtvremote2` (pulls in `cryptography`, `protobuf`, `aiofiles`, `cffi`, `pycparser`), `pychromecast` (YouTube's play state; pulls in `zeroconf`, `casttube`, `requests`)
 - `requirements.txt` must be generated from the Pi (the authoritative environment), not from WSL2
 - Windows-built venvs are unusable on ARM Linux — never sync `.venv/` to the Pi; it's excluded from sync
 
@@ -400,7 +400,7 @@ each change `androidtv_service`'s `set_status_listener()` (wired in
 `main.py`) calls `lcd.set_status_char()`, which redraws that one cell only
 while that screen is still up — every other write touching line 1 clears
 the flag, so a background connection change never draws over another
-screen. YouTube's preset shows as plain `YT` text (freeing CGRAM slots 6-7).
+screen. YouTube's preset shows as `YT` text plus CGRAM slot 7, the play/pause glyph (see "YouTube play/pause" below).
 
 The library is asyncio-only; the rest of the app is fully synchronous.
 Bridged via a single dedicated event loop run in a background thread,
@@ -421,35 +421,28 @@ switch away from whatever app had foreground focus (seen with Plex open).
 `config/keypad_presets.json`'s `androidtv_app` steps use `"app_link"`
 (not `"package"`) accordingly.
 
-**YouTube preset skips relaunch when already open** (2026-10-20): an
-`androidtv_app` step may also carry `"package"` (YouTube's is
-`com.google.android.youtube.tv`); `launch_app()` then sends nothing if the
-TV reports that app in front (`current_app`, pushed by the TV on connect and
-on each app change). Unknown launches as before: just connected and not yet
-reported, or after our own Home key (not verified that the TV reports the
-launcher, so the old app isn't trusted). The skip is logged
-(`already open, not relaunching`). Being tested (2026-10-20): YouTube's step also has
-`"if_open_keyevent": "KEYCODE_MEDIA_PLAY_PAUSE"`, so pressing the preset
-inside YouTube sends the TV's built-in play/pause key instead, as a
-one-send alternative to hold-Enter's Enter, Enter, Back. On a fresh connection
-`launch_app()` waits up to 3s for the app report before deciding, so a
-press from a dark screen doesn't relaunch YouTube over what's playing.
+**YouTube play/pause** (2026-10-20): the YouTube preset's
+`androidtv_app` step carries `"package"` (`com.google.android.youtube.tv`)
+and `"if_open_steps"`. `preset_service` asks `androidtv_service.foreground_app()`
+(connects if needed, then waits up to 3s for the TV's app report, so a press
+from a dark screen doesn't relaunch over what's playing); with YouTube in
+front it runs those steps instead of launching: `KEYCODE_MEDIA_PLAY_PAUSE`,
+then `KEYCODE_DPAD_UP` 0.3s later to hide the controls the toggle leaves up
+(tested by the user: the toggle works, controls stayed up; the Up is untested).
+Unknown app still launches. A hold-Enter Enter, Enter, Back version was built
+and removed the same day in favour of this.
 
-**Hold Enter in YouTube = pause/resume** (2026-10-20): on the Google TV
-screen with YouTube in front (`androidtv_service.current_app()`; never
-connects, None when unknown), holding Enter (`KEYPAD_HOLD_SECONDS`) sends
-the IR Enter, Enter, Back 0.5s apart (`active_device_screen.py`'s
-`_YOUTUBE_PLAY_PAUSE_BUTTONS`/`_GAP_SECONDS`, in the background): the first
-Enter shows the player controls, the second toggles, Back hides them. The
-user's own sequence; it works for both pause and resume. Tap-vs-hold
-is armed while YouTube is in front or the app isn't known yet, checked at
-each press (`set_hold_keys(..., when=)`), so a tap there acts on release;
-in a known other app Enter still acts on press. A hold with the app
-unknown (not connected yet: the first try, from a dark screen, sent a
-plain Enter because the connection only opened as the screen woke) waits
-up to 8s for the TV to report it (`androidtv_service.wait_for_app()`),
-then sends the sequence for YouTube, a plain Enter for another app, or
-nothing (logged) if still unknown.
+The preset line shows the state after `YT` (CGRAM slot 7, `hardware/lcd.py`'s
+`set_play_glyph()`, redefined in place so the cell changes with no redraw):
+blank unless YouTube is in front, then a play triangle when paused, two bars
+when playing (the action the preset would take). The playing/paused state
+comes from **Google Cast** (`services/cast_service.py`, `pychromecast`, port
+8009, read only), since the Android TV Remote protocol only reports the app.
+Cast connects and disconnects with androidtv_service's held connection
+(`set_hold_listener()`, wired in `main.py`), so it costs battery only on the
+lit Google TV screen; its own pings add to the remote's there. Confirmed
+2026-10-20 that it reports `PLAYING` with the title for native YouTube;
+not yet confirmed that pauses are pushed while connected.
 
 ## Wi-Fi Power Save + Speculative Wake (2026-09-09)
 
@@ -605,9 +598,9 @@ the code on screen, sending it first unless it already went out since
 landing on it, so no code goes out twice in a row (2026-10-18; Up/Down
 used to send as they stepped). **Holding Enter** (`KEYPAD_HOLD_SECONDS`, 0.7s)
 saves it under a typed name, Left goes back a level. Tap-vs-hold is opted
-into by this screen and Google TV-with-YouTube only
-(`hardware.input.set_hold_keys()`) — a tap acts on release there; Enter
-acts on press everywhere else. Sweep with the TV **on** — turning off shows immediately,
+into by this screen only (`hardware.input.set_hold_keys()`) — a tap acts
+on release there; Enter acts on press everywhere else (Google TV's D-pad
+needs that). Sweep with the TV **on** — turning off shows immediately,
 turning on can take seconds. `Sweep → Saved` mirrors the same path and
 sends a saved code on Enter.
 

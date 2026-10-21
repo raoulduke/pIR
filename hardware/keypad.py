@@ -366,7 +366,9 @@ class KeypadScanner:
         once it's been read in KEYPAD_PRESS_HITS sweeps of one contact: a
         gap over KEYPAD_RELEASE_SECONDS starts its count over. *hits*
         (reading -> [count, last read]) carries counts between sweeps. Also
-        forgets handled keys unread for KEYPAD_RELEASE_SECONDS."""
+        forgets handled keys unread for KEYPAD_RELEASE_SECONDS, and logs a
+        reading that stopped before reaching the count, as evidence for
+        missed presses."""
         if pressed:
             self._last_contact = now
         for reading in pressed & self._handled.keys():
@@ -374,9 +376,11 @@ class KeypadScanner:
         for reading, seen in list(self._handled.items()):
             if now - seen >= KEYPAD_RELEASE_SECONDS:
                 del self._handled[reading]
-        for reading, (_, seen) in list(hits.items()):
+        for reading, (count, seen) in list(hits.items()):
             if now - seen >= KEYPAD_RELEASE_SECONDS:
                 del hits[reading]
+                log.info("keypad: press not registered: %s (%s) read in %d of %d sweeps needed",
+                         reading, self._map.get(reading, "unmapped"), count, KEYPAD_PRESS_HITS)
         for reading in pressed - self._handled.keys():
             count = hits.get(reading, [0, now])[0] + 1
             hits[reading] = [count, now]
@@ -388,10 +392,9 @@ class KeypadScanner:
         """Wait for _new_press(). None once nothing new has read as pressed
         for *give_up_after* seconds (back to the edge sleep), or on close().
         After an edge wake (*give_up_after* set) the sweeps run back to back.
-        A wake that ends with no key is logged, as evidence for missed
-        presses: a reading seen too few times, or none at all."""
+        A wake that reads nothing at all is logged, as evidence for missed
+        presses (a reading seen too few times is logged by _new_press())."""
         hits: dict[str, list[float]] = {}
-        best: tuple[str, int] | None = None
         started = last_seen = time.monotonic()
         quiet_before = started - self._last_contact
         while not self._stop.is_set():
@@ -400,16 +403,10 @@ class KeypadScanner:
             reading = self._new_press(pressed, hits, now)
             if reading is not None:
                 return reading
-            for r, (count, _) in hits.items():
-                if best is None or count > best[1]:
-                    best = (r, count)
             if hits:
                 last_seen = now
             elif give_up_after is not None and now - last_seen >= give_up_after:
-                if best is not None:
-                    log.info("keypad: press not registered: %s (%s) read in %d of %d sweeps needed",
-                             best[0], self._map.get(best[0], "unmapped"), best[1], KEYPAD_PRESS_HITS)
-                elif not self._handled and quiet_before >= 0.2:
+                if self._last_contact < started and not self._handled and quiet_before >= 0.2:
                     # Wakes right after a release are its bounce, not a press.
                     log.info("keypad: woke on an edge but no key read")
                 return None
@@ -500,6 +497,7 @@ class KeypadScanner:
             return self._until_released(reading)
 
         key = resolve_label(label)
+        log.info("keypad: %s (%s)", key, reading)
         self._held_key = key
         try:
             hold_event = self._hold_keys.get(key)

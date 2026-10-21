@@ -427,8 +427,8 @@ and `"if_open_steps"`. `preset_service` asks `androidtv_service.foreground_app()
 (connects if needed, then waits up to 3s for the TV's app report, so a press
 from a dark screen doesn't relaunch over what's playing); with YouTube in
 front it runs those steps instead of launching: `KEYCODE_MEDIA_PLAY_PAUSE`,
-then the IR Back (the same signal as the Back preset) 1s later to hide the
-controls the toggle leaves up (the user's call). Tested down from 0.5s:
+then (until 2026-10-20 late) the IR Back 1s later to hide the
+controls the toggle leaves up (the user's call); now two IR Ups, below. Tested down from 0.5s:
 0.5, 0.25 and 0.1s hid them after a pause, and no delay was too quick;
 at 0.1s a resume exited the video, so it went back up to 1s. At 1s, one press in a fast run exited the video: it sent its
 play/pause ~0.8s after the previous press's Back (that press had waited
@@ -436,7 +436,10 @@ its turn in the step queue), and the guess is YouTube was still closing
 the controls, left them hidden, and the Back exited. So presses are spaced:
 `"if_open_gap_seconds": 1.5` holds a plause run back until 1.5s after the
 last one finished (`preset_service._wait_if_open_gap()`, logged when it
-waits). An Up was tried first
+waits). That didn't cure it: a lone press (23:40:53, no queue, no gap wait,
+nothing odd in the log) still exited the video, so Back was dropped for
+**two IR Ups**, 1s after the play/pause and 0.5s apart (the user's call;
+an Up can't exit the video). An Up was tried first
 (network at 0.3s, IR at 0.5/1.5/2.5s) and never hid them: after a pause,
 YouTube highlights the play/pause control, then the timeline after ~1s,
 and Up hid the controls from neither. Unknown app still launches. A hold-Enter Enter, Enter, Back version was built

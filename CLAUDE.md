@@ -427,13 +427,11 @@ and `"if_open_steps"`. `preset_service` asks `androidtv_service.foreground_app()
 (connects if needed, then waits up to 3s for the TV's app report, so a press
 from a dark screen doesn't relaunch over what's playing); with YouTube in
 front it runs those steps instead of launching: `KEYCODE_MEDIA_PLAY_PAUSE`,
-then the IR Up (the same signal the keypad's Up sends) 2.5s later to hide
-the controls the toggle leaves up. Hiding them with an Up was the user's
-finding. YouTube ignores an Up sent too soon: a network `KEYCODE_DPAD_UP`
-0.3s after and IR Ups 0.5s and 1.5s after were all sent and all left
-the controls up. By hand, the Up worked about 1s after the pause/resume
-showed on screen.
-Unknown app still launches. A hold-Enter Enter, Enter, Back version was built
+then the IR Back (the same signal as the Back preset) 0.5s later to hide
+the controls the toggle leaves up (the user's call). An Up was tried first
+(network at 0.3s, IR at 0.5/1.5/2.5s) and never hid them: after a pause,
+YouTube highlights the play/pause control, then the timeline after ~1s,
+and Up hid the controls from neither. Unknown app still launches. A hold-Enter Enter, Enter, Back version was built
 and removed the same day in favour of this.
 
 The **plause pair** (the user's name for it): while YouTube is in front, a

@@ -427,8 +427,10 @@ and `"if_open_steps"`. `preset_service` asks `androidtv_service.foreground_app()
 (connects if needed, then waits up to 3s for the TV's app report, so a press
 from a dark screen doesn't relaunch over what's playing); with YouTube in
 front it runs those steps instead of launching: `KEYCODE_MEDIA_PLAY_PAUSE`,
-then `KEYCODE_DPAD_UP` 0.3s later to hide the controls the toggle leaves up
-(tested by the user: the toggle works, controls stayed up; the Up is untested).
+then the IR Up (the same signal the keypad's Up sends) 0.5s later to hide
+the controls the toggle leaves up. Hiding them with an Up was the user's
+finding. A network `KEYCODE_DPAD_UP` 0.3s after was tried first: it was
+sent, but the user still asked for the Up.
 Unknown app still launches. A hold-Enter Enter, Enter, Back version was built
 and removed the same day in favour of this.
 

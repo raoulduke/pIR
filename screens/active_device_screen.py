@@ -22,8 +22,7 @@ step device (_functions_for()). Presets run from the Preset Function keys
 import logging
 import time
 from hardware.lcd import (
-    LCD, GLYPH_HOME, GLYPH_CC_LEFT, GLYPH_CC_RIGHT, GLYPH_BACK_ARROW,
-    GLYPH_BACK_SHAFT, GLYPH_PLAY_PAUSE,
+    LCD, GLYPH_HOME, GLYPH_CC_LEFT, GLYPH_CC_RIGHT, GLYPH_PLAY, GLYPH_PAUSE,
 )
 from hardware import ir_transmitter
 from hardware.lcd import lcd as lcd_hw
@@ -34,7 +33,6 @@ from hardware.input import (
 )
 from services import (
     home_service, signal_service, step_device_service, preset_service, androidtv_service, hue_service,
-    cast_service,
 )
 from screens.widgets.format import format_name, frame
 from app.constants import (
@@ -229,13 +227,13 @@ def _menu_leaf_label(home: str, device: str, location: str) -> str:
 # Hand-picked short forms for preset names (keyed lowercase). A name with no
 # entry makes _preset_entries() fall back to full names.
 _PRESET_ABBREVIATIONS = {
-    "back": GLYPH_BACK_ARROW + GLYPH_BACK_SHAFT,
+    "back": "<-",
     "rust": "Rst",
     "rest": "Rst",
     "home": GLYPH_HOME,
     "mute": "Ssh",
     "power": "Pwr",
-    "youtube": "YT",  # the plause glyph while YouTube is in front (update_play_glyph())
+    "youtube": "YT",  # the plause pair while YouTube is in front (update_play_glyph())
     "captions": GLYPH_CC_LEFT + GLYPH_CC_RIGHT,
     "candlelight": "Cdl",
     "warm white": "Wrm",
@@ -244,18 +242,13 @@ _PRESET_ABBREVIATIONS = {
 }
 
 
-def update_play_glyph(*_) -> None:
-    """With YouTube in front, the plause glyph replaces "YT" on the preset
-    line, as the action Preset 3 would take: play when paused, pause when
-    playing (Cast's state). Wired to the TV's app and Cast's state in
-    main.py; any thread."""
-    if androidtv_service.current_app() != YOUTUBE_PACKAGE:
-        lcd_hw.set_status_line2_swap(None)
-        return
-    playing = cast_service.player_state() in ("PLAYING", "BUFFERING")
-    lcd_hw.set_play_glyph("pause" if playing else "play")
-    # The space keeps the other presets where they were.
-    lcd_hw.set_status_line2_swap((_PRESET_ABBREVIATIONS["youtube"], GLYPH_PLAY_PAUSE + " "))
+def update_play_glyph() -> None:
+    """With YouTube in front, the plause pair (play, pause) replaces "YT" on
+    the preset line: Preset 3 toggles playback there. Wired to the TV's
+    app reports in main.py; any thread."""
+    in_youtube = androidtv_service.current_app() == YOUTUBE_PACKAGE
+    lcd_hw.set_status_line2_swap(
+        (_PRESET_ABBREVIATIONS["youtube"], GLYPH_PLAY + GLYPH_PAUSE) if in_youtube else None)
 
 
 def _justify(words: list[str], width: int = 16) -> str:

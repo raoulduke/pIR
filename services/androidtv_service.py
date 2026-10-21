@@ -47,7 +47,6 @@ _connected = False
 _idle_handle: asyncio.TimerHandle | None = None
 _status = "closed"  # "closed" | "connecting" | "open" — see set_status_listener()
 _status_listener = None
-_hold_listener = None
 _app_listener = None
 # One connect at a time (the hold's and a send's).
 _connect_lock = asyncio.Lock()
@@ -71,13 +70,6 @@ def set_status_listener(listener) -> None:
     must not raise."""
     global _status_listener
     _status_listener = listener
-
-
-def set_hold_listener(listener) -> None:
-    """Register *listener(held)*, called when the held connection starts or
-    ends (main.py: cast_service follows it). On the loop: quick, no raising."""
-    global _hold_listener
-    _hold_listener = listener
 
 
 def set_app_listener(listener) -> None:
@@ -196,8 +188,6 @@ def _update_hold(on_tv_screen: bool | None, screen_lit: bool | None) -> None:
         if screen_lit is False:
             _reset_connection()
         return
-    if _hold_listener is not None:
-        _hold_listener(_held())
     if _held():
         _cancel_idle_timer()
         _start_hold_connect()

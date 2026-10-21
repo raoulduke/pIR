@@ -128,7 +128,7 @@ config/
 
 - venv lives inside the project at `ir/.venv`
 - Correct invocation: `sudo .venv/bin/python3 main.py` — **never** `sudo python3 main.py` (bypasses the venv)
-- Confirmed third-party dependencies: `evdev`, `RPi.GPIO`, `gpiod` (keypad edge interrupts; builds from source on the Pi, ~35s), `RPLCD`, `smbus2`, `pigpio`, `androidtvremote2` (pulls in `cryptography`, `protobuf`, `aiofiles`, `cffi`, `pycparser`), `pychromecast` (YouTube's play state; pulls in `zeroconf`, `casttube`, `requests`)
+- Confirmed third-party dependencies: `evdev`, `RPi.GPIO`, `gpiod` (keypad edge interrupts; builds from source on the Pi, ~35s), `RPLCD`, `smbus2`, `pigpio`, `androidtvremote2` (pulls in `cryptography`, `protobuf`, `aiofiles`, `cffi`, `pycparser`)
 - `requirements.txt` must be generated from the Pi (the authoritative environment), not from WSL2
 - Windows-built venvs are unusable on ARM Linux — never sync `.venv/` to the Pi; it's excluded from sync
 
@@ -400,7 +400,7 @@ each change `androidtv_service`'s `set_status_listener()` (wired in
 `main.py`) calls `lcd.set_status_char()`, which redraws that one cell only
 while that screen is still up — every other write touching line 1 clears
 the flag, so a background connection change never draws over another
-screen. YouTube's preset shows as `YT` text, replaced by the plause glyph (CGRAM slot 7) while YouTube is in front (see "YouTube play/pause" below).
+screen. YouTube's preset shows as `YT` text, replaced by the plause pair (CGRAM slots 4-5) while YouTube is in front (see "YouTube play/pause" below). Back is plain `<-` (2026-10-20; it was a two-cell custom arrow in slots 4-5).
 
 The library is asyncio-only; the rest of the app is fully synchronous.
 Bridged via a single dedicated event loop run in a background thread,
@@ -432,21 +432,17 @@ then `KEYCODE_DPAD_UP` 0.3s later to hide the controls the toggle leaves up
 Unknown app still launches. A hold-Enter Enter, Enter, Back version was built
 and removed the same day in favour of this.
 
-The **plause glyph** (the user's name for it) replaces `YT` on the preset
-line while YouTube is in front: a play triangle when paused, two bars when
-playing (the action the preset would take). `active_device_screen.py`'s
-`update_play_glyph()`, wired in `main.py` to the TV's app and Cast's state:
-the YT swap is `hardware/lcd.py`'s `set_status_line2_swap()`, which redraws
-line 2 only while `write_with_status()`'s screen is still up (like the
-status character); play/pause only redefines CGRAM slot 7
-(`set_play_glyph()`), changing the cell with no redraw. The playing/paused state
-comes from **Google Cast** (`services/cast_service.py`, `pychromecast`, port
-8009, read only), since the Android TV Remote protocol only reports the app.
-Cast connects and disconnects with androidtv_service's held connection
-(`set_hold_listener()`, wired in `main.py`), so it costs battery only on the
-lit Google TV screen; its own pings add to the remote's there. Confirmed
-2026-10-20 that it reports `PLAYING` with the title for native YouTube;
-not yet confirmed that pauses are pushed while connected.
+The **plause pair** (the user's name for it): while YouTube is in front, a
+play triangle and pause bars side by side (CGRAM slots 4-5, `GLYPH_PLAY`,
+`GLYPH_PAUSE`) replace `YT` on the preset line. Static: they don't follow
+whether the video is playing (the user's call). `active_device_screen.py`'s
+`update_play_glyph()`, wired in `main.py` to the TV's app reports
+(`androidtv_service.set_app_listener()`), uses `hardware/lcd.py`'s
+`set_status_line2_swap()`, which redraws line 2 only while
+`write_with_status()`'s screen is still up (like the status character).
+Tried and removed the same day: a single glyph showing the playing/paused
+state from Google Cast (`pychromecast`, port 8009). Cast does report it for
+native YouTube (`PLAYING`/`PAUSED`), if that's ever wanted again.
 
 ## Wi-Fi Power Save + Speculative Wake (2026-09-09)
 

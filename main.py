@@ -26,7 +26,7 @@ from hardware.input import (
     set_quick_action_handler, set_key_observer, set_wake_handler, request_quit,
     close as close_input,
 )
-from services import androidtv_service, cast_service, config_service, wifi_wake_service
+from services import androidtv_service, config_service, wifi_wake_service
 import screens.active_device_screen as active_device_screen
 
 
@@ -80,10 +80,8 @@ def main() -> None:
     androidtv_service.set_status_listener(
         lambda status: lcd.set_status_char(ANDROIDTV_STATUS_CHARS[status])
     )
-    # YouTube's play state (Cast) follows the held Google TV connection.
-    androidtv_service.set_hold_listener(cast_service.set_held)
+    # The plause pair replaces YT on Google TV's preset line in YouTube.
     androidtv_service.set_app_listener(active_device_screen.update_play_glyph)
-    cast_service.set_state_listener(active_device_screen.update_play_glyph)
 
     stopping = False
     quit_timer: threading.Timer | None = None

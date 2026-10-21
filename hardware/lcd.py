@@ -23,8 +23,8 @@ _BAR_FULL_CELL = chr(5)
 GLYPH_HOME = chr(1)
 GLYPH_CC_LEFT = chr(2)
 GLYPH_CC_RIGHT = chr(3)
-GLYPH_BACK_ARROW = chr(4)
-GLYPH_BACK_SHAFT = chr(5)
+GLYPH_PLAY = chr(4)
+GLYPH_PAUSE = chr(5)
 
 # List scroll indicator (format.with_arrows()): solid up and down triangles
 # in one cell. Slot 0, loaded once at startup.
@@ -43,34 +43,6 @@ _ARROW_UPDOWN_ROWS = [
 # cell; the ROM has none. Slot 6, loaded once at startup.
 GLYPH_ELLIPSIS = chr(6)
 _ELLIPSIS_ROWS = [0, 0, 0, 0, 0, 0, 0b10101, 0]
-# The "plause" glyph: YouTube's play/pause state, in place of "YT" on Google
-# TV's preset line while YouTube is in front (set_status_line2_swap()): play
-# when paused, pause when playing. Slot 7, redefined in place
-# (set_play_glyph()), so a pause or resume changes it with no redraw.
-GLYPH_PLAY_PAUSE = chr(7)
-_PLAY_PAUSE_ROWS = {
-    None: [0] * 8,
-    "play": [
-        0b10000,
-        0b11000,
-        0b11100,
-        0b11110,
-        0b11100,
-        0b11000,
-        0b10000,
-        0b00000,
-    ],
-    "pause": [
-        0b00000,
-        0b11011,
-        0b11011,
-        0b11011,
-        0b11011,
-        0b11011,
-        0b11011,
-        0b00000,
-    ],
-}
 _PRESET_GLYPHS = {
     # Solid house with a door: a 1px gap 2px up the bottom center.
     1: [
@@ -105,27 +77,26 @@ _PRESET_GLYPHS = {
         0b00001,
         0b11111,
     ],
-    # Back arrow, split across two cells: a "<" head whose tip runs right
-    # to the cell edge on row 3, then the shaft continuing on row 3 in the
-    # next cell, stopping two pixels short of its right edge.
+    # The "plause" pair, in place of "YT" while YouTube is in front
+    # (main.py): a play triangle, then pause bars.
     4: [
-        0b00000,
-        0b00100,
-        0b01000,
-        0b11111,
-        0b01000,
-        0b00100,
-        0b00000,
+        0b10000,
+        0b11000,
+        0b11100,
+        0b11110,
+        0b11100,
+        0b11000,
+        0b10000,
         0b00000,
     ],
     5: [
         0b00000,
-        0b00000,
-        0b00000,
-        0b11100,
-        0b00000,
-        0b00000,
-        0b00000,
+        0b11011,
+        0b11011,
+        0b11011,
+        0b11011,
+        0b11011,
+        0b11011,
         0b00000,
     ],
 }
@@ -151,8 +122,6 @@ class LCD:
             self._lcd.create_char(location, [bits] * 8)
         self._lcd.create_char(0, _ARROW_UPDOWN_ROWS)
         self._lcd.create_char(6, _ELLIPSIS_ROWS)
-        self._lcd.create_char(7, _PLAY_PAUSE_ROWS[None])
-        self._play_glyph: str | None = None
         # Status character in line 1's last column (write_with_status()).
         # _status_shown is cleared by every other line-1 write, so a
         # background set_status_char() never draws over another screen.
@@ -280,7 +249,7 @@ class LCD:
     def set_status_line2_swap(self, swap: tuple[str, str] | None) -> None:
         """Replace swap[0] with swap[1] in write_with_status()'s line 2
         (None: show it as given), redrawing line 2 only if that screen is
-        still up. Any thread. The plause glyph uses it (main.py)."""
+        still up. Any thread. The plause pair uses it (screens/active_device_screen.py)."""
         with self._lock:
             if swap == self._status_line2_swap:
                 return
@@ -297,15 +266,6 @@ class LCD:
             if self._status_shown:
                 self._lcd.cursor_pos = (0, 15)
                 self._lcd.write_string(char)
-
-    def set_play_glyph(self, kind: str | None) -> None:
-        """GLYPH_PLAY_PAUSE's shape: "play", "pause" or None (blank). Any
-        thread; only touches the bus when it changes."""
-        with self._lock:
-            if kind == self._play_glyph:
-                return
-            self._play_glyph = kind
-            self._lcd.create_char(7, _PLAY_PAUSE_ROWS[kind])
 
     def load_preset_glyphs(self) -> None:
         """Replace the progress bar's CGRAM slots with the preset-line

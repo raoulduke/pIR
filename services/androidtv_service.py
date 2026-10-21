@@ -18,6 +18,8 @@ call returning (success, message).
 import asyncio
 import logging
 import os
+import re
+import subprocess
 import threading
 import time
 
@@ -380,6 +382,25 @@ def foreground_app() -> tuple[bool, str, str | None]:
             return ok, message, None
         wait_for_app(_APP_REPORT_WAIT_SECONDS)
     return True, "", current_app()
+
+
+def ping(timeout_seconds: int = 1) -> float | None:
+    """Ping the TV once and wait for the reply: round trip in ms, or None if
+    none came within *timeout_seconds*. Wakes the TV's dozing Wi-Fi before a
+    key whose timing matters (it measured 10ms to 669ms, and lost, at
+    rest). Never touches the TV's software."""
+    ip = config_service.get_androidtv_ip()
+    if not ip:
+        return None
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", str(timeout_seconds), ip],
+            capture_output=True, text=True, timeout=timeout_seconds + 1,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"time=([0-9.]+) ms", result.stdout)
+    return float(match.group(1)) if match else None
 
 
 def launch_app(app_link: str) -> tuple[bool, str]:

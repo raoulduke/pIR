@@ -13,6 +13,9 @@ Steps ("delay_after" is optional, default PRESET_DEFAULT_DELAY_SECONDS):
                    "button": "power"}                  (location optional)
   Voice (HA)      {"type": "voice", "command": "Rest"}
   Google TV key   {"type": "androidtv", "keyevent": "KEYCODE_HOME"}
+  Google TV ping  {"type": "androidtv_ping", "timeout_seconds": 1}
+                  (waits for the TV's reply, to wake its Wi-Fi before a
+                  timed key; no reply isn't a failure)
   Google TV app   {"type": "androidtv_app", "app_link": "https://www.youtube.com/tv",
                    "package": "com.google.android.youtube.tv",
                    "if_open_steps": [...], "if_open_gap_seconds": 1.5}
@@ -89,6 +92,8 @@ def describe_step(step: dict) -> str:
         return step.get("keyevent", "").removeprefix("KEYCODE_").replace("_", " ").title()
     if step_type == "androidtv_app":
         return "App"
+    if step_type == "androidtv_ping":
+        return "Ping"
     if step_type == "hue":
         return "Light"
     if step_type == "ir_toggle":
@@ -164,6 +169,12 @@ def run_steps(steps: list[dict]) -> tuple[int, int, dict | None]:
                 success, error = androidtv_service.send_keyevent(step["keyevent"])
                 if success:
                     sent += 1
+            elif step.get("type") == "androidtv_ping":
+                started = time.monotonic()
+                ms = androidtv_service.ping(step.get("timeout_seconds", 1))
+                log.info("Google TV ping: %s (waited %.2fs)",
+                         f"{ms:.0f}ms" if ms is not None else "no reply", time.monotonic() - started)
+                sent += 1
             elif step.get("type") == "androidtv_app":
                 success, error, app = (androidtv_service.foreground_app() if step.get("package")
                                        else (True, "", None))

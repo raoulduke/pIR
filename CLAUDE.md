@@ -446,7 +446,16 @@ with the controls hidden. On one connection the TV gets them in order. The
 earlier no-delay test mixed the two paths, so it doesn't apply here.
 With no delay, 5 of 6 presses hid the controls (all toggled; the miss
 looked the same as the rest in the log), and at 0.25s 3 of 4 did (the
-miss again unremarkable in the log); after 0.5s, the user set 1s. An Up was tried first
+miss again unremarkable in the log); after 0.5s, the user set 1s.
+The user then saw the play/pause itself arrive late at times (no controls
+seen at all: both keys landed together). Pings from the Pi, 4s apart, to the
+router took 9-86ms but to the TV 10ms-669ms, one lost, and the TV connection
+showed 2 TCP retransmits in 23 segments: the TV's Wi-Fi, likely dozing. So
+the plause first pings the TV and waits for the reply (up to 1s,
+`androidtv_service.ping()`, an `androidtv_ping` step, logged as `Google TV
+ping: <ms>`), then sends play/pause, then Back 1s later. Under test.
+`KEYCODE_WAKEUP` (224) was considered instead: it travels the same delayed
+path and can turn on a sleeping TV. An Up was tried first
 (network at 0.3s, IR at 0.5/1.5/2.5s) and never hid them: after a pause,
 YouTube highlights the play/pause control, then the timeline after ~1s,
 and Up hid the controls from neither. Unknown app still launches. A hold-Enter Enter, Enter, Back version was built

@@ -43,6 +43,7 @@ def _set_state(state: str | None) -> None:
     if state == _player_state:
         return
     _player_state = state
+    log.info("Cast player state: %s", state)
     if _listener is not None:
         _listener(state)
 

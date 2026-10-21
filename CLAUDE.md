@@ -698,10 +698,12 @@ the old scanner (fake GPIO, sweep time matched to the Pi's): contact
 flickering 40-60% of a 25-60ms press went from 2-7 of 20 to 17-19
 of 20, with no doubled presses; a clean 8ms contact is still mostly
 missed (needs faster sweeps; `app/constants.py`'s keypad timing comment
-warns more GPIO traffic once garbled the LCD). Sweep speed and GPIO traffic per sweep are unchanged. A wake that
-ends without a key logs `keypad: press not registered: ...` or `keypad:
-woke on an edge but no key read` to the journal, as evidence if misses
-continue.
+warns more GPIO traffic once garbled the LCD). Sweep speed and GPIO traffic per sweep are unchanged. Every registered
+press logs `keypad: <KEY> (<reading>)`, and a contact read too few times
+`keypad: press not registered: ...` (also while another key is held), or
+an edge wake with no read at all `keypad: woke on an edge but no key read`,
+so a reported miss can be placed: no line = the switch never closed;
+a press line = the keypad saw it and the miss is downstream (IR, network).
 
 ## IR Tools & Integrations
 

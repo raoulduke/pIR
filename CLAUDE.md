@@ -438,8 +438,12 @@ the controls, left them hidden, and the Back exited. So presses are spaced:
 last one finished (`preset_service._wait_if_open_gap()`, logged when it
 waits). That didn't cure it: a lone press (23:40:53, no queue, no gap wait,
 nothing odd in the log) still exited the video, so Back was dropped for
-**two IR Ups**, 1s after the play/pause and 0.5s apart (the user's call;
-an Up can't exit the video). An Up was tried first
+two IR Ups (1s, then 0.5s apart), then, under test, a network
+`KEYCODE_BACK` right after the play/pause, no delay. Likely cause of the
+exits: the play/pause goes over Wi-Fi (power-save wake up to ~1.6s, plus the
+router) and the Back by IR, so a late play/pause let the Back arrive first,
+with the controls hidden. On one connection the TV gets them in order. The
+earlier no-delay test mixed the two paths, so it doesn't apply here. An Up was tried first
 (network at 0.3s, IR at 0.5/1.5/2.5s) and never hid them: after a pause,
 YouTube highlights the play/pause control, then the timeline after ~1s,
 and Up hid the controls from neither. Unknown app still launches. A hold-Enter Enter, Enter, Back version was built

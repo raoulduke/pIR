@@ -1,0 +1,17 @@
+[Unit]
+Description=LCD backlight on early in boot
+# Early, outside the normal boot ordering, but finished before the app opens
+# the LCD: its raw write must not land in the middle of the app's LCD init.
+# The bus is normally up ~1.4s before pihome.service starts, so this doesn't
+# hold the app back; at worst by the script's 3s bus wait. After
+# systemd-modules-load: it loads i2c_dev, which makes /dev/i2c-3.
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=pihome.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/matt/dev/ir/scripts/lcd-boot-backlight.sh
+
+[Install]
+WantedBy=sysinit.target

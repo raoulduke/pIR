@@ -3,7 +3,8 @@
   Sweep ─┬─ Saved → TV → Power → <saved name, any brand>  (Enter sends it)
          └─ TV → <All Brands|brand> → Power → sweep (screens/code_sweep_screen.py)
 
-Every level is a list with a breadcrumb title. Saved lists only what has a
+Every level is a list with a breadcrumb title; one with a single option
+(TV, Power) is skipped, except Saved's name list. Saved lists only what has a
 save and stays on the name just sent, so Enter resends it."""
 
 import logging
@@ -54,6 +55,7 @@ def show(lcd: LCD) -> str | None:
                  fun_service.list_saved],
                 _send_saved,
                 formatter=lambda level: format_name,
+                always_list={_SAVED_NAME_LEVEL},  # never send a lone save unasked
             )
         else:
             # The device type was picked right here, so browsing starts
@@ -72,14 +74,18 @@ def show(lcd: LCD) -> str | None:
 
 
 def _browse(lcd: LCD, path: list[str], sources: list, finish, formatter,
-            picks: list[str] | None = None) -> str | None:
+            picks: list[str] | None = None, always_list: set[int] = frozenset()) -> str | None:
     """Walk one list per entry in *sources* (each called with the picks so
     far), then call finish(lcd, *picks), which returns KEY_QUIT or the level to
     go back to. formatter(level) gives each level's display function. *picks*
-    already made skip their lists; each list reopens on its last pick. Returns KEY_QUIT, or None when Left backs out of the first list."""
+    already made skip their lists; each list reopens on its last pick. A list
+    with one option is picked without showing it, going forward, and passed
+    over going back, except at the levels in *always_list*. Returns KEY_QUIT,
+    or None when going back passes the first list."""
     picks = list(picks or [])
     floor = len(picks)
     starts = [0] * len(sources)
+    backing = False
 
     while True:
         level = len(picks)
@@ -88,13 +94,18 @@ def _browse(lcd: LCD, path: list[str], sources: list, finish, formatter,
             if result == KEY_QUIT:
                 return KEY_QUIT
             del picks[result:]
+            backing = True
             continue
 
         options = sources[level](*picks)
-        if not options:
+        if len(options) == 1 and level not in always_list and not backing:
+            picks.append(options[0])
+            continue
+        if not options or (len(options) == 1 and level not in always_list):
             if level == floor:
                 return None
             picks.pop()
+            backing = True
             continue
 
         heading = crumbs(*path, *(formatter(i)(p) for i, p in enumerate(picks)))
@@ -108,10 +119,12 @@ def _browse(lcd: LCD, path: list[str], sources: list, finish, formatter,
             if level == floor:
                 return None
             picks.pop()
+            backing = True
             continue
 
         starts[level] = options.index(choice)
         picks.append(choice)
+        backing = False
 
 
 def _sweep_formatter(level: int):

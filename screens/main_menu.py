@@ -1,7 +1,7 @@
 """Main menu (the Menu key). Up/Down scroll, Enter/Right select, Left closes
 it; < Device/Device > also leaves it (DeviceCycledAway).
 
-Returns MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME,
+Returns MENU_SWEEP, MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME,
 MENU_NETWORK, MENU_SETTINGS, KEY_QUIT (a keyboard's quit key), or None
 (closed). IP Address is display-only. WiFi is disabled, showing
 "WiFi loading", until NetworkManager is ready. There's no Quit entry: the
@@ -22,7 +22,7 @@ from screens.widgets.format import with_arrows
 
 
 _OPTIONS = [
-    MENU_LEARN, MENU_SWEEP, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_SETTINGS,
+    MENU_SWEEP, MENU_LEARN, MENU_RENAME, MENU_COMMAND, MENU_HOME, MENU_NETWORK, MENU_SETTINGS,
     MENU_IP,
 ]
 

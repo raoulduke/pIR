@@ -664,7 +664,11 @@ on release there; Enter acts on press everywhere else (Google TV's D-pad
 needs that). Sweep with the TV **on** — turning off shows immediately,
 turning on can take seconds. `Sweep → Saved → TV → Power` lists every
 saved power code, whatever brand it came from (no brand level, 2026-10-23),
-and sends one on Enter.
+and sends one on Enter. A Sweep list with only one option (TV, Power) is
+skipped going in and passed over going back, so Saved opens on the name
+list and picking a brand starts the sweep; Saved's name list always shows,
+so a lone save isn't sent unasked. Sweep is the main Menu's first option
+(2026-10-23).
 
 - **Code library**: `data/fun_codes.json`, built once on WSL2 by
   `scripts/build_fun_codes.py` from Flipper-IRDB (+ probonopd/irdb for

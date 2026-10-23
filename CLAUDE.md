@@ -92,8 +92,13 @@ config/
   (`hardware.input.use_default_keys()`), so a held Left can't back out several
   levels. The D-pad text entry (`screens/widgets/char_input.py`) matches
   it: Up/Down pick the character, Left deletes / backs out when empty,
-  Right commits the character, Enter submits. Text entry's first character
-  starts on capitals, later ones on lowercase. The one deliberate
+  Right commits the character, Enter submits. Text entry's first character,
+  and the first after a space, start on capitals, the rest on lowercase,
+  so names come out title case (2026-10-23). Space is the last character,
+  one Up from where each character starts. `~` was removed: the A00 ROM
+  has no tilde and RPLCD drew it blank, so it passed for a space and was
+  then dropped by `slugify()` ("Moneris~lounge" saved as `monerislounge`,
+  2026-10-21). The one deliberate
   exception is Active Device Control, where Up/Down are device controls
   (volume, brightness, Google TV's D-pad) and Left/Right cycle
   devices/functions with line 2 framed `<   name   >` (`frame()`). Changed
@@ -657,8 +662,9 @@ saves it under a typed name, Left goes back a level. Tap-vs-hold is opted
 into by this screen only (`hardware.input.set_hold_keys()`) — a tap acts
 on release there; Enter acts on press everywhere else (Google TV's D-pad
 needs that). Sweep with the TV **on** — turning off shows immediately,
-turning on can take seconds. `Sweep → Saved` mirrors the same path and
-sends a saved code on Enter.
+turning on can take seconds. `Sweep → Saved → TV → Power` lists every
+saved power code, whatever brand it came from (no brand level, 2026-10-23),
+and sends one on Enter.
 
 - **Code library**: `data/fun_codes.json`, built once on WSL2 by
   `scripts/build_fun_codes.py` from Flipper-IRDB (+ probonopd/irdb for
@@ -697,7 +703,7 @@ sends a saved code on Enter.
   `hardware/ir_transmitter.py` strips it and passes `ir-ctl -c N` (ir-ctl
   rejects the line mixed with `+/-` values). Files without it behave
   exactly as before.
-- **Saves**: `fun_signals/<device_type>/<brand>/<signal>/<name>.txt`
+- **Saves**: `fun_signals/<device_type>/<signal>/<name>.txt` (not split by brand, 2026-10-23)
   (`services/fun_service.py`) — top-level, deliberately not under
   `signals/`, which `signal_service` reads as homes; Fun saves never show
   in Learn, Rename or Active Device Control. Tracked in git like

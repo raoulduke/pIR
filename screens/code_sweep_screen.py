@@ -12,7 +12,7 @@ Paused ("||" on line 2):
   Right         send the code on screen, once per press
   Enter (tap)   resume from the code on screen, sending it first unless it
                 already went out since landing on it
-  Enter (hold)  save the code under a typed name (under its brand)
+  Enter (hold)  save the code under a typed name
   Left          back a level
 
 Tap vs. hold on Enter is this screen's alone (a tap acts on release here);
@@ -185,7 +185,7 @@ def _save(lcd: LCD, device_type: str, brand: str, signal: str,
     if name in (KEY_QUIT, KEY_BACK):
         return name if name == KEY_QUIT else None
 
-    if fun_service.saved_exists(device_type, brand, signal, name):
+    if fun_service.saved_exists(device_type, signal, name):
         answer = select_from_list(lcd, STATEMENT_FILE_EXISTS, [LABEL_OVERWRITE, LABEL_CANCEL])
         if answer == KEY_QUIT:
             return KEY_QUIT
@@ -194,7 +194,7 @@ def _save(lcd: LCD, device_type: str, brand: str, signal: str,
 
     try:
         text = ir_encode.to_signal_text(*ir_encode.encode(entry))
-        fun_service.save(device_type, brand, signal, name, text)
+        fun_service.save(device_type, signal, name, text)
         lcd.write(STATEMENT_SAVED, format_name(name)[:16])
         time.sleep(1)
     except (OSError, ValueError) as e:

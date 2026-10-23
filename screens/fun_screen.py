@@ -1,6 +1,6 @@
 """Sweep menu: the power-code sweep and codes saved from it.
 
-  Sweep ─┬─ Saved → TV → <brand> → Power → <saved name>  (Enter sends it)
+  Sweep ─┬─ Saved → TV → Power → <saved name, any brand>  (Enter sends it)
          └─ TV → <All Brands|brand> → Power → sweep (screens/code_sweep_screen.py)
 
 Every level is a list with a breadcrumb title. Saved lists only what has a
@@ -23,10 +23,11 @@ log = logging.getLogger(__name__)
 
 _PATH = [MENU_TITLE, MENU_SWEEP]
 
-# Level index each path's lists sit at: device type, brand, signal[, name].
+# Level index of the sweep path's brand list (device type, brand, signal)
+# and of Saved's name list (device type, signal, name).
 _BRAND_LEVEL = 1
-_SIGNAL_LEVEL = 2
-_NAME_LEVEL = 3
+_SWEEP_SIGNAL_LEVEL = 2
+_SAVED_NAME_LEVEL = 2
 
 
 def show(lcd: LCD) -> str | None:
@@ -49,10 +50,10 @@ def show(lcd: LCD) -> str | None:
             result = _browse(
                 lcd, path,
                 [fun_service.list_saved_device_types,
-                 fun_service.list_saved_brands,
                  fun_service.list_saved_signals,
                  fun_service.list_saved],
                 _send_saved,
+                formatter=lambda level: format_name,
             )
         else:
             # The device type was picked right here, so browsing starts
@@ -63,18 +64,19 @@ def show(lcd: LCD) -> str | None:
                  lambda device_type: [FUN_ALL_BRANDS, *fun_service.list_brands(device_type)],
                  fun_service.list_signals],
                 _sweep,
+                formatter=_sweep_formatter,
                 picks=[choice],
             )
         if result == KEY_QUIT:
             return KEY_QUIT
 
 
-def _browse(lcd: LCD, path: list[str], sources: list, finish,
+def _browse(lcd: LCD, path: list[str], sources: list, finish, formatter,
             picks: list[str] | None = None) -> str | None:
     """Walk one list per entry in *sources* (each called with the picks so
     far), then call finish(lcd, *picks), which returns KEY_QUIT or the level to
-    go back to. *picks* already made skip their lists; each list reopens on its
-    last pick. Returns KEY_QUIT, or None when Left backs out of the first list."""
+    go back to. formatter(level) gives each level's display function. *picks*
+    already made skip their lists; each list reopens on its last pick. Returns KEY_QUIT, or None when Left backs out of the first list."""
     picks = list(picks or [])
     floor = len(picks)
     starts = [0] * len(sources)
@@ -95,9 +97,9 @@ def _browse(lcd: LCD, path: list[str], sources: list, finish,
             picks.pop()
             continue
 
-        heading = crumbs(*path, *(_formatter(i)(p) for i, p in enumerate(picks)))
+        heading = crumbs(*path, *(formatter(i)(p) for i, p in enumerate(picks)))
         choice = select_from_list(
-            lcd, heading, options, start_index=starts[level], formatter=_formatter(level),
+            lcd, heading, options, start_index=starts[level], formatter=formatter(level),
         )
 
         if choice == KEY_QUIT:
@@ -112,7 +114,7 @@ def _browse(lcd: LCD, path: list[str], sources: list, finish,
         picks.append(choice)
 
 
-def _formatter(level: int):
+def _sweep_formatter(level: int):
     """Brands are already display names ("LG", "onn."); everything else is
     a snake_case name ("tv", "power", a typed save name)."""
     return str if level == _BRAND_LEVEL else format_name
@@ -120,16 +122,16 @@ def _formatter(level: int):
 
 def _sweep(lcd: LCD, device_type: str, brand: str, signal: str) -> str | int:
     result = code_sweep_screen.show(lcd, device_type, brand, signal)
-    return KEY_QUIT if result == KEY_QUIT else _SIGNAL_LEVEL
+    return KEY_QUIT if result == KEY_QUIT else _SWEEP_SIGNAL_LEVEL
 
 
-def _send_saved(lcd: LCD, device_type: str, brand: str, signal: str, name: str) -> int:
-    path = fun_service.save_path(device_type, brand, signal, name)
+def _send_saved(lcd: LCD, device_type: str, signal: str, name: str) -> int:
+    path = fun_service.save_path(device_type, signal, name)
     try:
         ir_transmitter.transmit(path)
-        lcd.write(brand[:16], format_name(name)[:16])
+        lcd.write(crumbs(format_name(device_type), format_name(signal)), format_name(name)[:16])
     except HardwareError as e:
         log.error("IR transmit failed (%s): %s", path, e)
         lcd.write("TX Error", fit_or(str(e), ""))
     time.sleep(0.6)
-    return _NAME_LEVEL  # back to the name list, on the name just sent
+    return _SAVED_NAME_LEVEL  # back to the name list, on the name just sent

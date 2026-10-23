@@ -6,18 +6,21 @@ submits."""
 from hardware.lcd import LCD
 from hardware.input import read_key, use_default_keys, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_QUIT, KEY_BACK
 
-# Ordered for the fewest presses: capitals first for the first character,
-# lowercase after. No `"`, so a password containing one can't be typed.
+# Ordered for the fewest presses: capitals first for a word's first
+# character (the start, or after a space), lowercase otherwise, so names
+# come out title case. Space is last, one Up from the first character.
+# No `"` or `~` (the A00 ROM has no tilde; RPLCD draws it blank, so it
+# passed for a space), so a password containing one can't be typed.
 _LOWER = "abcdefghijklmnopqrstuvwxyz"
 _UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _DIGITS = "0123456789"
-_SYMBOLS = " !#$%&'()*+,-./:;<=>?@[]^_`{|}~"
+_SYMBOLS = "!#$%&'()*+,-./:;<=>?@[]^_`{|} "
 _FIRST_CHARSET = _UPPER + _LOWER + _DIGITS + _SYMBOLS
 _CHARSET = _LOWER + _DIGITS + _UPPER + _SYMBOLS
 
 
 def _charset(text: str) -> str:
-    return _FIRST_CHARSET if not text else _CHARSET
+    return _FIRST_CHARSET if not text or text[-1] == " " else _CHARSET
 
 
 def read_dpad_text(lcd: LCD, prompt: str) -> str:
